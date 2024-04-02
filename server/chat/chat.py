@@ -7,6 +7,7 @@ from langchain.callbacks import AsyncIteratorCallbackHandler
 from typing import AsyncIterable
 import asyncio
 import json
+import uuid
 from langchain.prompts.chat import ChatPromptTemplate
 from typing import List, Optional, Union
 from server.chat.utils import History
@@ -41,11 +42,12 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         memory = None
 
         # 负责保存llm response到message db
-        message_id = add_message_to_db(chat_type="llm_chat", query=query, conversation_id=conversation_id)
-        conversation_callback = ConversationCallbackHandler(conversation_id=conversation_id, message_id=message_id,
-                                                            chat_type="llm_chat",
-                                                            query=query)
-        callbacks.append(conversation_callback)
+        # message_id = add_message_to_db(chat_type="llm_chat", query=query, conversation_id=conversation_id)
+        # conversation_callback = ConversationCallbackHandler(conversation_id=conversation_id, message_id=message_id,
+        #                                                     chat_type="llm_chat",
+        #                                                     query=query)
+        # callbacks.append(conversation_callback)
+        message_id = uuid.uuid4().hex
 
         if isinstance(max_tokens, int) and max_tokens <= 0:
             max_tokens = None

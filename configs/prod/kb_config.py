@@ -7,7 +7,7 @@ DEFAULT_KNOWLEDGE_BASE = "samples"
 DEFAULT_VS_TYPE = "faiss"
 
 # 缓存向量库数量（针对FAISS）
-CACHED_VS_NUM = 1
+CACHED_VS_NUM = 10
 
 # 缓存临时向量库数量（针对FAISS），用于文件对话
 CACHED_MEMO_VS_NUM = 10
@@ -63,7 +63,7 @@ PDF_OCR_THRESHOLD = (0.6, 0.6)
 # 每个知识库的初始化介绍，用于在初始化知识库时显示和Agent调用，没写则没有介绍，不会被Agent调用。
 KB_INFO = {
     "知识库名称": "知识库介绍",
-    "samples": "关于本项目issue的解答",
+    "samples": "基础知识库",
 }
 
 
@@ -81,37 +81,37 @@ SQLALCHEMY_DATABASE_URI = f"sqlite:///{DB_ROOT_PATH}"
 # 可选向量库类型及对应配置
 kbs_config = {
     "faiss": {
-    },
-    "milvus": {
-        "host": "127.0.0.1",
-        "port": "19530",
-        "user": "",
-        "password": "",
-        "secure": False,
-    },
-    "zilliz": {
-        "host": "in01-a7ce524e41e3935.ali-cn-hangzhou.vectordb.zilliz.com.cn",
-        "port": "19530",
-        "user": "",
-        "password": "",
-        "secure": True,
-        },
-    "pg": {
-        "connection_uri": "postgresql://postgres:postgres@127.0.0.1:5432/langchain_chatchat",
-    },
-
-    "es": {
-        "host": "127.0.0.1",
-        "port": "9200",
-        "index_name": "test_index",
-        "user": "",
-        "password": ""
-    },
-    "milvus_kwargs":{
-        "search_params":{"metric_type": "L2"}, #在此处增加search_params
-        "index_params":{"metric_type": "L2","index_type": "HNSW"} # 在此处增加index_params
-    },
-    "chromadb": {}
+    }
+    # ,"milvus": {
+    #     "host": "127.0.0.1",
+    #     "port": "19530",
+    #     "user": "",
+    #     "password": "",
+    #     "secure": False,
+    # },
+    # "zilliz": {
+    #     "host": "in01-a7ce524e41e3935.ali-cn-hangzhou.vectordb.zilliz.com.cn",
+    #     "port": "19530",
+    #     "user": "",
+    #     "password": "",
+    #     "secure": True,
+    #     },
+    # "pg": {
+    #     "connection_uri": "postgresql://postgres:postgres@127.0.0.1:5432/langchain_chatchat",
+    # },
+    #
+    # "es": {
+    #     "host": "127.0.0.1",
+    #     "port": "9200",
+    #     "index_name": "test_index",
+    #     "user": "",
+    #     "password": ""
+    # },
+    # "milvus_kwargs":{
+    #     "search_params":{"metric_type": "L2"}, #在此处增加search_params
+    #     "index_params":{"metric_type": "L2","index_type": "HNSW"} # 在此处增加index_params
+    # },
+    # "chromadb": {}
 }
 
 # TextSplitter配置项，如果你不明白其中的含义，就不要修改。

@@ -1,13 +1,14 @@
-import streamlit as st
-from webui_pages.utils import *
-from streamlit_option_menu import option_menu
-from webui_pages.dialogue.dialogue import dialogue_page, chat_box
-from webui_pages.knowledge_base.knowledge_base import knowledge_base_page
 import os
 import sys
+
+import streamlit as st
+from streamlit_option_menu import option_menu
+
 from configs import VERSION
 from server.utils import api_address
-
+from webui_pages.dialogue.dialogue import dialogue_page
+from webui_pages.knowledge_base.knowledge_base import knowledge_base_page
+from webui_pages.utils import *
 
 api = ApiRequest(base_url=api_address())
 
@@ -15,9 +16,10 @@ if __name__ == "__main__":
     is_lite = "lite" in sys.argv
 
     st.set_page_config(
-        "Langchain-Chatchat WebUI",
-        os.path.join("img", "chatchat_icon_blue_square_v2.png"),
-        initial_sidebar_state="expanded",
+        layout="wide",
+        page_title="Langchain-Chatchat WebUI",
+        page_icon=os.path.join("img", "chatchat_icon_blue_square_v2.png"),
+        initial_sidebar_state="collapsed",
         menu_items={
             'Get Help': 'https://github.com/chatchat-space/Langchain-Chatchat',
             'Report a bug': "https://github.com/chatchat-space/Langchain-Chatchat/issues",

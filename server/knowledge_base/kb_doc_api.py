@@ -134,7 +134,7 @@ def _save_files_in_thread(files: List[UploadFile],
 def upload_docs(
         files: List[UploadFile] = File(..., description="上传文件，支持多文件"),
         knowledge_base_name: str = Form(..., description="知识库名称", examples=["samples"]),
-        override: bool = Form(False, description="覆盖已有文件"),
+        override: bool = Form(True, description="覆盖已有文件"),
         to_vector_store: bool = Form(True, description="上传文件后是否进行向量化"),
         chunk_size: int = Form(CHUNK_SIZE, description="知识库中单段文本最大长度"),
         chunk_overlap: int = Form(OVERLAP_SIZE, description="知识库中相邻文本重合长度"),
