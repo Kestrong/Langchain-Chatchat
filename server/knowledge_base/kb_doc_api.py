@@ -1,11 +1,13 @@
 import os
 import urllib
-from fastapi import File, Form, Body, Query, UploadFile
+from datetime import datetime
+
+from fastapi import File, Form, Body, Query, UploadFile, HTTPException
 from configs import (DEFAULT_VS_TYPE, EMBEDDING_MODEL,
                      VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD,
                      CHUNK_SIZE, OVERLAP_SIZE, ZH_TITLE_ENHANCE,
-                     logger, log_verbose, )
-from server.utils import BaseResponse, ListResponse, run_in_thread_pool
+                     logger, log_verbose, MAX_KNOWLEDGE_FILE_SIZE)
+from server.utils import BaseResponse, ListResponse, run_in_thread_pool, PageResponse, Page
 from server.knowledge_base.utils import (validate_kb_name, list_files_from_folder, get_file_path,
                                          files2docs_in_thread, KnowledgeFile)
 from fastapi.responses import FileResponse
@@ -62,18 +64,25 @@ def update_docs_by_id(
 
 
 def list_files(
-        knowledge_base_name: str
-) -> ListResponse:
+        knowledge_base_name: str = Query(description="知识库名称"),
+        page_size: int = Query(default=10, description="分页大小"),
+        page_num: int = Query(default=1, description="页数"),
+        keyword: str = Query(None, allow_inf_nan=True, description="模糊搜索文件名称"),
+        create_time_begin: datetime = Query(None, allow_inf_nan=True, description="创建时间开始"),
+        create_time_end: datetime = Query(None, allow_inf_nan=True, description="创建时间结束"),
+) -> PageResponse:
     if not validate_kb_name(knowledge_base_name):
-        return ListResponse(code=403, msg="Don't attack me", data=[])
+        return PageResponse(code=403, msg="Don't attack me", data=None)
 
     knowledge_base_name = urllib.parse.unquote(knowledge_base_name)
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:
-        return ListResponse(code=404, msg=f"未找到知识库 {knowledge_base_name}", data=[])
+        return PageResponse(code=404, msg=f"未找到知识库 {knowledge_base_name}", data=None)
     else:
-        all_doc_names = kb.list_files()
-        return ListResponse(data=all_doc_names)
+        data, total = kb.list_files(page_size=page_size, page_num=page_num, keyword=keyword,
+                                    create_time_begin=create_time_begin, create_time_end=create_time_end,
+                                    only_name=False)
+        return PageResponse(data=Page(records=data, total=total))
 
 
 def _save_files_in_thread(files: List[UploadFile],
@@ -132,7 +141,7 @@ def _save_files_in_thread(files: List[UploadFile],
 
 
 def upload_docs(
-        files: List[UploadFile] = File(..., description="上传文件，支持多文件"),
+        files: List[UploadFile] = File(..., max_size=MAX_KNOWLEDGE_FILE_SIZE, description="上传文件，支持多文件"),
         knowledge_base_name: str = Form(..., description="知识库名称", examples=["samples"]),
         override: bool = Form(True, description="覆盖已有文件"),
         to_vector_store: bool = Form(True, description="上传文件后是否进行向量化"),
@@ -148,6 +157,11 @@ def upload_docs(
     """
     if not validate_kb_name(knowledge_base_name):
         return BaseResponse(code=403, msg="Don't attack me")
+
+    for file in files:
+        if 0 < MAX_KNOWLEDGE_FILE_SIZE < file.size:
+            raise HTTPException(status_code=413,
+                                detail=f"File({file.filename}) is too large, max size is {MAX_KNOWLEDGE_FILE_SIZE} bytes")
 
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:

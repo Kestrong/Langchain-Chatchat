@@ -18,3 +18,14 @@ class KnowledgeBaseModel(Base):
 
     def __repr__(self):
         return f"<KnowledgeBase(id='{self.id}', kb_name='{self.kb_name}',kb_intro='{self.kb_info} vs_type='{self.vs_type}', embed_model='{self.embed_model}', file_count='{self.file_count}', create_time='{self.create_time}')>"
+
+    def dict(self):
+        return {
+            "id": self.id,
+            "kb_name": self.kb_name,
+            "kb_info": self.kb_info,
+            "vs_type": self.vs_type,
+            "embed_model": self.embed_model,
+            "file_count": self.file_count,
+            "create_time": self.create_time
+        }

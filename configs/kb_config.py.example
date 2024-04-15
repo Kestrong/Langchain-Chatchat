@@ -6,6 +6,9 @@ DEFAULT_KNOWLEDGE_BASE = "samples"
 # 默认向量库/全文检索引擎类型。可选：faiss, milvus(离线) & zilliz(在线), pgvector, chromadb 全文检索引擎es
 DEFAULT_VS_TYPE = "faiss"
 
+# 默认允许上传的最大知识库文件大小
+MAX_KNOWLEDGE_FILE_SIZE = 1024 * 1024 * 10
+
 # 缓存向量库数量（针对FAISS）
 CACHED_VS_NUM = 1
 
@@ -77,6 +80,10 @@ if not os.path.exists(KB_ROOT_PATH):
 # 如果使用sqlite，可以直接修改DB_ROOT_PATH；如果使用其它数据库，请直接修改SQLALCHEMY_DATABASE_URI。
 DB_ROOT_PATH = os.path.join(KB_ROOT_PATH, "info.db")
 SQLALCHEMY_DATABASE_URI = f"sqlite:///{DB_ROOT_PATH}"
+# SQLALCHEMY_DATABASE_URI = "postgresql+psycopg2://user:password@ip:port/database?client_encoding=utf8"
+# SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://user:password@ip:port/database?charset=utf8"
+
+ECHO_SQL = False
 
 # 可选向量库类型及对应配置
 kbs_config = {
@@ -108,8 +115,8 @@ kbs_config = {
         "password": ""
     },
     "milvus_kwargs":{
-        "search_params":{"metric_type": "L2"}, #在此处增加search_params
-        "index_params":{"metric_type": "L2","index_type": "HNSW"} # 在此处增加index_params
+        "search_params": {"metric_type": "L2", "params": {"nprobe": 128}},  # 在此处增加search_params
+        "index_params": {"metric_type": "L2", "index_type": "IVF_SQ8", "params": {"nlist": 4096}}  # 在此处增加index_params
     },
     "chromadb": {}
 }

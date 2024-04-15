@@ -1,4 +1,4 @@
+# shellcheck disable=SC2164
 cd /llm/Lanchain-Chatchat
-rm -rf logs
-python copy_config_example.py prod
-python startup.py ${ARGS}
+rm -rf logs/model_worker_*.log
+python startup.py "${ARGS}"

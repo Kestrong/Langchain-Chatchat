@@ -2,6 +2,8 @@ import operator
 from abc import ABC, abstractmethod
 
 import os
+from datetime import datetime
+
 from pathlib import Path
 import numpy as np
 from langchain.embeddings.base import Embeddings
@@ -141,7 +143,7 @@ class KBService(ABC):
         """
         从知识库删除文件
         """
-        self.do_delete_doc(kb_file, **kwargs)
+        self.do_delete_doc(kb_file)
         status = delete_file_from_db(kb_file)
         if delete_content and os.path.exists(kb_file.filepath):
             os.remove(kb_file.filepath)
@@ -168,8 +170,15 @@ class KBService(ABC):
         return file_exists_in_db(KnowledgeFile(knowledge_base_name=self.kb_name,
                                                filename=file_name))
 
-    def list_files(self):
-        return list_files_from_db(self.kb_name)
+    def list_files(self,
+                   page_size: int = 1000,
+                   page_num: int = 1,
+                   keyword: str = None,
+                   create_time_begin: datetime = None,
+                   create_time_end: datetime = None,
+                   only_name: bool = True):
+        return list_files_from_db(self.kb_name, page_size=page_size, page_num=page_num, keyword=keyword,
+                                  create_time_begin=create_time_begin, create_time_end=create_time_end, only_name=only_name)
 
     def count_files(self):
         return count_files_from_db(self.kb_name)
@@ -249,7 +258,8 @@ class KBService(ABC):
 
     @classmethod
     def list_kbs(cls):
-        return list_kbs_from_db()
+        kbs, total = list_kbs_from_db(all_kbs=True)
+        return kbs
 
     def exists(self, kb_name: str = None):
         kb_name = kb_name or self.kb_name
@@ -371,8 +381,8 @@ def get_kb_details() -> List[Dict]:
             "in_db": False,
         }
 
-    for kb in kbs_in_db:
-        kb_detail = get_kb_detail(kb)
+    for kb_detail in kbs_in_db:
+        kb = kb_detail["kb_name"]
         if kb_detail:
             kb_detail["in_db"] = True
             if kb in result:
@@ -395,7 +405,7 @@ def get_kb_file_details(kb_name: str) -> List[Dict]:
         return []
 
     files_in_folder = list_files_from_folder(kb_name)
-    files_in_db = kb.list_files()
+    files_in_db, _ = kb.list_files(only_name=False)
     result = {}
 
     for doc in files_in_folder:
@@ -412,8 +422,8 @@ def get_kb_file_details(kb_name: str) -> List[Dict]:
             "in_db": False,
         }
     lower_names = {x.lower(): x for x in result}
-    for doc in files_in_db:
-        doc_detail = get_file_detail(kb_name, doc)
+    for doc_detail in files_in_db:
+        doc = doc_detail["file_name"].lower()
         if doc_detail:
             doc_detail["in_db"] = True
             if doc.lower() in lower_names:

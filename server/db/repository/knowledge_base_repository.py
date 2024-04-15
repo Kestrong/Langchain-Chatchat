@@ -17,10 +17,22 @@ def add_kb_to_db(session, kb_name, kb_info, vs_type, embed_model):
 
 
 @with_session
-def list_kbs_from_db(session, min_file_count: int = -1):
-    kbs = session.query(KnowledgeBaseModel.kb_name).filter(KnowledgeBaseModel.file_count > min_file_count).all()
-    kbs = [kb[0] for kb in kbs]
-    return kbs
+def list_kbs_from_db(session, page_size: int = 10, page_num: int = 1, keyword: str = None, min_file_count: int = -1
+                     , all_kbs: bool = False):
+    page_size = min(abs(page_size), 1000)
+    page_num = max(page_num, 1)
+    offset = (page_num - 1) * page_size
+    filters = [KnowledgeBaseModel.file_count > min_file_count]
+    if keyword is not None and keyword.strip() != "":
+        filters.append(KnowledgeBaseModel.kb_name.like(f"%{keyword}%"))
+    if not all_kbs:
+        kbs = session.query(KnowledgeBaseModel).filter(*filters).offset(offset).limit(page_size).all()
+        total = session.query(KnowledgeBaseModel).filter(*filters).count()
+    else:
+        kbs = session.query(KnowledgeBaseModel).filter(*filters).all()
+        total = len(kbs)
+    kbs = [kb.dict() for kb in kbs]
+    return kbs, total
 
 
 @with_session
@@ -52,13 +64,6 @@ def delete_kb_from_db(session, kb_name):
 def get_kb_detail(session, kb_name: str) -> dict:
     kb: KnowledgeBaseModel = session.query(KnowledgeBaseModel).filter(KnowledgeBaseModel.kb_name.ilike(kb_name)).first()
     if kb:
-        return {
-            "kb_name": kb.kb_name,
-            "kb_info": kb.kb_info,
-            "vs_type": kb.vs_type,
-            "embed_model": kb.embed_model,
-            "file_count": kb.file_count,
-            "create_time": kb.create_time,
-        }
+        return kb.dict()
     else:
         return {}

@@ -21,7 +21,7 @@ from server.llm_api import (list_running_models, list_config_models,
                             change_llm_model, stop_llm_model,
                             get_model_config, list_search_engines)
 from server.utils import (BaseResponse, ListResponse, FastAPI, MakeFastAPIOffline,
-                          get_server_configs, get_prompt_template)
+                          get_server_configs, get_prompt_template, PageResponse)
 from typing import List, Literal
 
 nltk.data.path = [NLTK_DATA_PATH] + nltk.data.path
@@ -162,7 +162,7 @@ def mount_knowledge_routes(app: FastAPI):
     # Tag: Knowledge Base Management
     app.get("/knowledge_base/list_knowledge_bases",
             tags=["Knowledge Base Management"],
-            response_model=ListResponse,
+            response_model=PageResponse,
             summary="获取知识库列表")(list_kbs)
 
     app.post("/knowledge_base/create_knowledge_base",
@@ -179,7 +179,7 @@ def mount_knowledge_routes(app: FastAPI):
 
     app.get("/knowledge_base/list_files",
             tags=["Knowledge Base Management"],
-            response_model=ListResponse,
+            response_model=PageResponse,
             summary="获取知识库内的文件列表"
             )(list_files)
 

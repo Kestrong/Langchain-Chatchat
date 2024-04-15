@@ -211,7 +211,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
             st.session_state.prompt_template_select = prompt_templates_kb_list[0]
 
         def prompt_change():
-            text = f"已切换为 {prompt_template_name} 模板。"
+            text = f"已切换为 {st.session_state.prompt_template_select} 模板。"
             st.toast(text)
 
         prompt_template_select = st.selectbox(
@@ -230,7 +230,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
 
         if dialogue_mode == "知识库问答":
             with st.expander("知识库配置", True):
-                kb_list = api.list_knowledge_bases()
+                kb_list = [kb["kb_name"] for kb in api.list_knowledge_bases()]
                 index = 0
                 if DEFAULT_KNOWLEDGE_BASE in kb_list:
                     index = kb_list.index(DEFAULT_KNOWLEDGE_BASE)

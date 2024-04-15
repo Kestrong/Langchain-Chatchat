@@ -1,3 +1,6 @@
+from datetime import datetime
+
+from configs import logger
 from server.db.models.knowledge_base_model import KnowledgeBaseModel
 from server.db.models.knowledge_file_model import KnowledgeFileModel, FileDocModel
 from server.db.session import with_session
@@ -66,8 +69,10 @@ def add_docs_to_db(session,
     '''
     # ! 这里会出现doc_infos为None的情况，需要进一步排查
     if doc_infos is None:
-        print("输入的server.db.repository.knowledge_file_repository.add_docs_to_db的doc_infos参数为None")
+        logger.error("输入的server.db.repository.knowledge_file_repository.add_docs_to_db的doc_infos参数为None")
         return False
+    begin = datetime.utcnow()
+    docs = []
     for d in doc_infos:
         obj = FileDocModel(
             kb_name=kb_name,
@@ -75,7 +80,10 @@ def add_docs_to_db(session,
             doc_id=d["id"],
             meta_data=d["metadata"],
         )
-        session.add(obj)
+        docs.append(obj)
+    session.bulk_save_objects(docs)
+    end = datetime.utcnow()
+    logger.debug(f"bulk insert {len(doc_infos)} file_docs to db cost {(end - begin).total_seconds()} seconds")
     return True
 
 
@@ -85,10 +93,35 @@ def count_files_from_db(session, kb_name: str) -> int:
 
 
 @with_session
-def list_files_from_db(session, kb_name):
-    files = session.query(KnowledgeFileModel).filter(KnowledgeFileModel.kb_name.ilike(kb_name)).all()
-    docs = [f.file_name for f in files]
-    return docs
+def list_files_from_db(session, kb_name,
+                       page_size: int = 1000,
+                       page_num: int = 1,
+                       keyword: str = None,
+                       create_time_begin: datetime = None,
+                       create_time_end: datetime = None,
+                       only_name: bool = True):
+    page_size = min(abs(page_size), 1000)
+    page_num = max(page_num, 1)
+    offset = (page_num - 1) * page_size
+    filters = [KnowledgeFileModel.kb_name.ilike(kb_name)]
+    if keyword is not None and keyword.strip() != "":
+        filters.append(KnowledgeFileModel.file_name.like(f"%{keyword}%"))
+
+    if create_time_begin is not None:
+        filters.append(KnowledgeFileModel.create_time >= create_time_begin)
+
+    if create_time_end is not None:
+        filters.append(KnowledgeFileModel.create_time <= create_time_end)
+
+    if only_name:
+        files = session.query(KnowledgeFileModel.file_name).filter(*filters).all()
+        return [f.file_name for f in files]
+    else:
+        files = session.query(KnowledgeFileModel).filter(*filters).order_by(
+            KnowledgeFileModel.create_time.desc()).offset(offset).limit(page_size).all()
+        docs = [f.dict() for f in files]
+        total = session.query(KnowledgeFileModel).filter(*filters).count()
+        return docs, total
 
 
 @with_session
@@ -181,18 +214,6 @@ def get_file_detail(session, kb_name: str, filename: str) -> dict:
                                         KnowledgeFileModel.kb_name.ilike(kb_name))
                                 .first())
     if file:
-        return {
-            "kb_name": file.kb_name,
-            "file_name": file.file_name,
-            "file_ext": file.file_ext,
-            "file_version": file.file_version,
-            "document_loader": file.document_loader_name,
-            "text_splitter": file.text_splitter_name,
-            "create_time": file.create_time,
-            "file_mtime": file.file_mtime,
-            "file_size": file.file_size,
-            "custom_docs": file.custom_docs,
-            "docs_count": file.docs_count,
-        }
+        return file.dict()
     else:
         return {}

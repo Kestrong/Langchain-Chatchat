@@ -41,9 +41,10 @@ def test_delete_kb_before(api="/knowledge_base/delete_knowledge_base"):
     r = requests.get(url)
     data = r.json()
     pprint(data)
+    records = [k["kb_name"] for k in data["data"]["records"]]
     assert data["code"] == 200
-    assert isinstance(data["data"], list) and len(data["data"]) > 0
-    assert kb not in data["data"]
+    assert isinstance(records, list) and len(records) > 0
+    assert kb not in records
 
 
 def test_create_kb(api="/knowledge_base/create_knowledge_base"):
@@ -77,9 +78,10 @@ def test_list_kbs(api="/knowledge_base/list_knowledge_bases"):
     r = requests.get(url)
     data = r.json()
     pprint(data)
+    records = [k["kb_name"] for k in data["data"]["records"]]
     assert data["code"] == 200
-    assert isinstance(data["data"], list) and len(data["data"]) > 0
-    assert kb in data["data"]
+    assert isinstance(records, list) and len(records) > 0
+    assert kb in records
 
 
 def test_upload_docs(api="/knowledge_base/upload_docs"):
@@ -120,10 +122,11 @@ def test_list_files(api="/knowledge_base/list_files"):
     r = requests.get(url, params={"knowledge_base_name": kb})
     data = r.json()
     pprint(data)
+    records = [k["kb_name"] for k in data["data"]["records"]]
     assert data["code"] == 200
-    assert isinstance(data["data"], list)
+    assert isinstance(records, list)
     for name in test_files:
-        assert name in data["data"]
+        assert name in records
 
 
 def test_search_docs(api="/knowledge_base/search_docs"):
@@ -209,6 +212,7 @@ def test_delete_kb_after(api="/knowledge_base/delete_knowledge_base"):
     r = requests.get(url)
     data = r.json()
     pprint(data)
+    records = [k["kb_name"] for k in data["data"]["records"]]
     assert data["code"] == 200
-    assert isinstance(data["data"], list) and len(data["data"]) > 0
-    assert kb not in data["data"]
+    assert isinstance(records, list) and len(records) > 0
+    assert kb not in records

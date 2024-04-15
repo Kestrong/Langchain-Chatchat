@@ -499,7 +499,7 @@ class ApiRequest:
         response = self.get("/knowledge_base/list_knowledge_bases")
         return self._get_response_value(response,
                                         as_json=True,
-                                        value_func=lambda r: r.get("data", []))
+                                        value_func=lambda r: r.get("data", {}).get("records", []))
 
     def create_knowledge_base(
             self,
@@ -548,7 +548,7 @@ class ApiRequest:
         )
         return self._get_response_value(response,
                                         as_json=True,
-                                        value_func=lambda r: r.get("data", []))
+                                        value_func=lambda r: r.get("data", {}).get("records", []))
 
     def search_kb_docs(
             self,

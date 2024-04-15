@@ -35,10 +35,7 @@ class MilvusKBService(KBService):
 
     @staticmethod
     def search(milvus_name, content, limit=3):
-        search_params = {
-            "metric_type": "L2",
-            "params": {"nprobe": 10},
-        }
+        search_params = kbs_config.get("milvus_kwargs")["search_params"]
         c = MilvusKBService.get_collection(milvus_name)
         return c.search(content, "embeddings", search_params, limit=limit, output_fields=["content"])
 
@@ -53,7 +50,8 @@ class MilvusKBService(KBService):
                              collection_name=self.kb_name,
                              connection_args=kbs_config.get("milvus"),
                              index_params=kbs_config.get("milvus_kwargs")["index_params"],
-                             search_params=kbs_config.get("milvus_kwargs")["search_params"]
+                             search_params=kbs_config.get("milvus_kwargs")["search_params"],
+                             auto_id=True
                              )
 
     def do_init(self):

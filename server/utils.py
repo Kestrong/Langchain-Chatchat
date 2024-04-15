@@ -115,8 +115,33 @@ class BaseResponse(BaseModel):
         }
 
 
+class Page(BaseModel):
+    total: int = pydantic.Field(0, description="records count")
+    records: Optional[List[Any]] = pydantic.Field(..., description="List of records")
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "total": 0,
+                "records": []
+            }
+        }
+
+
+class PageResponse(BaseResponse):
+    data: Optional[Page] = pydantic.Field(..., description="page of records")
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "code": 200,
+                "msg": "success",
+                "data": Page(total=0, records=[])
+            }
+        }
+
 class ListResponse(BaseResponse):
-    data: List[str] = pydantic.Field(..., description="List of names")
+    data: List[Any] = pydantic.Field(..., description="List of names")
 
     class Config:
         schema_extra = {

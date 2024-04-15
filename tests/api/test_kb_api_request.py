@@ -59,7 +59,7 @@ def test_create_kb():
 
 
 def test_list_kbs():
-    data = api.list_knowledge_bases()
+    data = [k["kb_name"] for k in api.list_knowledge_bases()]
     pprint(data)
     assert isinstance(data, list) and len(data) > 0
     assert kb in data
@@ -93,7 +93,7 @@ def test_upload_docs():
 
 def test_list_files():
     print("\n获取知识库中文件列表：")
-    data = api.list_kb_docs(knowledge_base_name=kb)
+    data = [k["file_name"] for k in api.list_kb_docs(knowledge_base_name=kb)]
     pprint(data)
     assert isinstance(data, list)
     for name in test_files:
@@ -155,7 +155,7 @@ def test_delete_kb_after():
 
     # check kb not exists anymore
     print("\n获取知识库列表：")
-    data = api.list_knowledge_bases()
+    data = [k["kb_name"] for k in api.list_knowledge_bases()]
     pprint(data)
     assert isinstance(data, list) and len(data) > 0
     assert kb not in data

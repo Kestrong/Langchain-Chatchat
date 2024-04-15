@@ -55,8 +55,11 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             callbacks=[callback],
         )
 
-        kb_list = {x["kb_name"]: x for x in get_kb_details()}
-        model_container.DATABASE = {name: details['kb_info'] for name, details in kb_list.items()}
+        for t in tool_names:
+            if t.__contains__("knowledgebase"):
+                kb_list = {x["kb_name"]: x for x in get_kb_details()}
+                model_container.DATABASE = {name: details['kb_info'] for name, details in kb_list.items()}
+                break
 
         if Agent_MODEL:
             model_agent = get_ChatOpenAI(
