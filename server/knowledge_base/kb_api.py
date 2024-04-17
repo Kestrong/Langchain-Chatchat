@@ -16,16 +16,17 @@ def list_kbs(page_size: int = Query(default=10, description="分页大小"),
     return PageResponse(data=Page(records=data, total=total))
 
 
-def create_kb(knowledge_base_name: str = Body(max_length=50, examples=["samples"], description="向量库的名称，只允许中英文数字和下划线"),
-              knowledge_base_info: str = Body(max_length=200, description="向量库的介绍，方便对话时模型进行智能匹配"),
+def create_kb(knowledge_base_name: str = Body(max_length=50, examples=["samples"], description="向量库的英文名称，只允许英文、数字和下划线"),
+              knowledge_base_name_cn: str = Body(max_length=50, examples=["samples知识库"], description="向量库的中文名称"),
+              knowledge_base_info: str = Body(None, max_length=200, description="向量库的介绍，方便对话时模型进行智能匹配"),
               vector_store_type: str = Body(DEFAULT_VS_TYPE, max_length=50, description="向量库类型"),
               embed_model: str = Body(EMBEDDING_MODEL, max_length=50, description="向量化使用的嵌入模型"),
               ) -> BaseResponse:
     # Create selected knowledge base
-    if knowledge_base_name is None or knowledge_base_name.strip() == "":
+    if knowledge_base_name is None or knowledge_base_name.strip() == "" or knowledge_base_name_cn is None or knowledge_base_name_cn.strip() == "":
         return BaseResponse(code=404, msg="知识库名称不能为空，请重新填写知识库名称")
     if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=403, msg="Don't attack me")
+        return BaseResponse(code=403, msg="Invalid Knowledge Base Name")
 
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is not None:
@@ -35,6 +36,7 @@ def create_kb(knowledge_base_name: str = Body(max_length=50, examples=["samples"
     try:
         if knowledge_base_info is not None and knowledge_base_info.strip() != "":
             kb.kb_info = knowledge_base_info
+        kb.kb_name_cn = knowledge_base_name_cn
         kb.create_kb()
     except Exception as e:
         msg = f"创建知识库出错： {e}"

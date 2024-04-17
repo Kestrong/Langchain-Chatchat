@@ -40,19 +40,19 @@ def test_delete_kb_before():
 
 def test_create_kb():
     print(f"\n尝试用空名称创建知识库：")
-    data = api.create_knowledge_base(" ")
+    data = api.create_knowledge_base(" ", " ")
     pprint(data)
     assert data["code"] == 404
     assert data["msg"] == "知识库名称不能为空，请重新填写知识库名称"
 
     print(f"\n创建新知识库： {kb}")
-    data = api.create_knowledge_base(kb)
+    data = api.create_knowledge_base(kb, f"{kb}知识库")
     pprint(data)
     assert data["code"] == 200
     assert data["msg"] == f"已新增知识库 {kb}"
 
     print(f"\n尝试创建同名知识库： {kb}")
-    data = api.create_knowledge_base(kb)
+    data = api.create_knowledge_base(kb, f"{kb}知识库")
     pprint(data)
     assert data["code"] == 404
     assert data["msg"] == f"已存在同名知识库 {kb}"

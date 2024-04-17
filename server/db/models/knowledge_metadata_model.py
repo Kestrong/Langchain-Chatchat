@@ -17,12 +17,12 @@ class SummaryChunkModel(Base):
     """
     __tablename__ = 'summary_chunk'
     id = Column(Integer, primary_key=True, autoincrement=True, comment='ID')
-    kb_name = Column(String(50), comment='知识库名称')
+    kb_id = Column(Integer, index=True, comment='知识库id')
     summary_context = Column(String(255), comment='总结文本')
     summary_id = Column(String(255), comment='总结矢量id')
     doc_ids = Column(String(1024), comment="向量库id关联列表")
     meta_data = Column(JSON, default={})
 
     def __repr__(self):
-        return (f"<SummaryChunk(id='{self.id}', kb_name='{self.kb_name}', summary_context='{self.summary_context}',"
-                f" doc_ids='{self.doc_ids}', metadata='{self.metadata}')>")
+        return (f"<SummaryChunk(id='{self.id}', kb_id='{self.kb_id}', summary_context='{self.summary_context}',"
+                f" doc_ids='{self.doc_ids}', metadata='{self.meta_data}')>")

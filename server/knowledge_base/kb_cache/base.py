@@ -33,7 +33,7 @@ class ThreadSafeObject:
             if self._pool is not None:
                 self._pool._cache.move_to_end(self.key)
             if log_verbose:
-                logger.debug(f"response chunk:{chunk}")
+                logger.info(f"{owner} 开始操作：{self.key}。{msg}")
             yield self._obj
         finally:
             if log_verbose:

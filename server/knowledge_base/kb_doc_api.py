@@ -234,18 +234,25 @@ def delete_docs(
 
 
 def update_info(
-        knowledge_base_name: str = Body(..., description="知识库名称", examples=["samples"]),
+        knowledge_base_name: str = Body(max_length=50, examples=["samples"], description="不允许修改"),
+        knowledge_base_name_cn: str = Body(max_length=50, examples=["samples知识库"]),
         kb_info: str = Body(..., description="知识库介绍", examples=["这是一个知识库"]),
 ):
     if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=403, msg="Don't attack me")
+        return BaseResponse(code=403, msg="Invalid Knowledge Base Name")
 
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:
         return BaseResponse(code=404, msg=f"未找到知识库 {knowledge_base_name}")
-    kb.update_info(kb_info)
-
-    return BaseResponse(code=200, msg=f"知识库介绍修改完成", data={"kb_info": kb_info})
+    try:
+        kb.update_info(knowledge_base_name_cn, kb_info)
+    except Exception as e:
+        msg = f"修改知识库出错： {e}"
+        logger.error(f'{e.__class__.__name__}: {msg}',
+                     exc_info=e if log_verbose else None)
+        return BaseResponse(code=500, msg=msg)
+    return BaseResponse(code=200, msg=f"知识库修改完成",
+                        data={"knowledge_base_name_cn": knowledge_base_name_cn, "kb_info": kb_info})
 
 
 def update_docs(

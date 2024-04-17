@@ -59,6 +59,7 @@ class KBService(ABC):
                  embed_model: str = EMBEDDING_MODEL,
                  ):
         self.kb_name = knowledge_base_name
+        self.kb_name_cn = f"{knowledge_base_name}知识库"
         self.kb_info = KB_INFO.get(knowledge_base_name, f"关于{knowledge_base_name}的知识库")
         self.embed_model = embed_model
         self.kb_path = get_kb_path(self.kb_name)
@@ -81,7 +82,7 @@ class KBService(ABC):
         if not os.path.exists(self.doc_path):
             os.makedirs(self.doc_path)
         self.do_create_kb()
-        status = add_kb_to_db(self.kb_name, self.kb_info, self.vs_type(), self.embed_model)
+        status = add_kb_to_db(self.kb_name, self.kb_name_cn, self.kb_info, self.vs_type(), self.embed_model)
         return status
 
     def clear_vs(self):
@@ -131,10 +132,14 @@ class KBService(ABC):
                     print(f"cannot convert absolute path ({source}) to relative path. error is : {e}")
             self.delete_doc(kb_file)
             doc_infos = self.do_add_doc(docs, **kwargs)
-            status = add_file_to_db(kb_file,
-                                    custom_docs=custom_docs,
-                                    docs_count=len(docs),
-                                    doc_infos=doc_infos)
+            try:
+                status = add_file_to_db(kb_file,
+                                        custom_docs=custom_docs,
+                                        docs_count=len(docs),
+                                        doc_infos=doc_infos)
+            except Exception as e:
+                print(f"add file to db error: {e}")
+                self.del_doc_by_ids([doc_info["id"] for doc_info in doc_infos])
         else:
             status = False
         return status
@@ -149,12 +154,13 @@ class KBService(ABC):
             os.remove(kb_file.filepath)
         return status
 
-    def update_info(self, kb_info: str):
+    def update_info(self, kb_name_cn: str, kb_info: str):
         """
         更新知识库介绍
         """
         self.kb_info = kb_info
-        status = add_kb_to_db(self.kb_name, self.kb_info, self.vs_type(), self.embed_model)
+        self.kb_name_cn = kb_name_cn
+        status = add_kb_to_db(self.kb_name, self.kb_name_cn, self.kb_info, self.vs_type(), self.embed_model)
         return status
 
     def update_doc(self, kb_file: KnowledgeFile, docs: List[Document] = [], **kwargs):
@@ -187,7 +193,7 @@ class KBService(ABC):
                     query: str,
                     top_k: int = VECTOR_SEARCH_TOP_K,
                     score_threshold: float = SCORE_THRESHOLD,
-                    ) ->List[Document]:
+                    ) -> List[Tuple[Document, float]]:
         docs = self.do_search(query, top_k, score_threshold)
         return docs
 
@@ -334,7 +340,7 @@ class KBServiceFactory:
             return PGKBService(kb_name, embed_model=embed_model)
         elif SupportedVSType.MILVUS == vector_store_type:
             from server.knowledge_base.kb_service.milvus_kb_service import MilvusKBService
-            return MilvusKBService(kb_name,embed_model=embed_model)
+            return MilvusKBService(kb_name, embed_model=embed_model)
         elif SupportedVSType.ZILLIZ == vector_store_type:
             from server.knowledge_base.kb_service.zilliz_kb_service import ZillizKBService
             return ZillizKBService(kb_name, embed_model=embed_model)
@@ -372,6 +378,7 @@ def get_kb_details() -> List[Dict]:
     for kb in kbs_in_folder:
         result[kb] = {
             "kb_name": kb,
+            "kb_name_cn": f"{kb}知识库",
             "vs_type": "",
             "kb_info": "",
             "embed_model": "",
@@ -449,7 +456,10 @@ class EmbeddingsFunAdapter(Embeddings):
         return normalize(embeddings).tolist()
 
     def embed_query(self, text: str) -> List[float]:
-        embeddings = embed_texts(texts=[text], embed_model=self.embed_model, to_query=True).data
+        response = embed_texts(texts=[text], embed_model=self.embed_model, to_query=True)
+        if response.data is None:
+            return []
+        embeddings = response.data
         query_embed = embeddings[0]
         query_embed_2d = np.reshape(query_embed, (1, -1))  # 将一维数组转换为二维数组
         normalized_query_embed = normalize(query_embed_2d)

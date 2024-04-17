@@ -90,6 +90,11 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
                 placeholder="新知识库名称，不支持中文命名",
                 key="kb_name",
             )
+            kb_name_cn = st.text_input(
+                "新建知识库中文名称",
+                placeholder="新知识库中文名称",
+                key="kb_name_cn",
+            )
             kb_info = st.text_input(
                 "知识库简介",
                 placeholder="知识库简介，方便Agent查找",
@@ -127,11 +132,16 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
         if submit_create_kb:
             if not kb_name or not kb_name.strip():
                 st.error(f"知识库名称不能为空！")
+            elif not kb_name_cn or not kb_name_cn.strip():
+                st.error(f"知识库中文名称不能为空！")
+            elif kb_name_cn in [kb_cn["kb_name_cn"] for kb_cn in kb_list.values()]:
+                st.error(f"名为 {kb_name_cn} 的知识库已经存在！")
             elif kb_name in kb_list:
                 st.error(f"名为 {kb_name} 的知识库已经存在！")
             else:
                 ret = api.create_knowledge_base(
                     knowledge_base_name=kb_name,
+                    knowledge_base_name_cn=kb_name_cn,
                     vector_store_type=vs_type,
                     embed_model=embed_model,
                 )
@@ -148,13 +158,22 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
                                  [i for ls in LOADER_DICT.values() for i in ls],
                                  accept_multiple_files=True,
                                  )
+        kb_name_cn = st.text_area("请输入知识库中文名称:",
+                                  value=kb_list[kb]["kb_name_cn"],
+                                  max_chars=None,
+                                  key=None,
+                                  help=None, on_change=None, args=None, kwargs=None)
         kb_info = st.text_area("请输入知识库介绍:", value=st.session_state["selected_kb_info"], max_chars=None,
                                key=None,
                                help=None, on_change=None, args=None, kwargs=None)
 
-        if kb_info != st.session_state["selected_kb_info"]:
-            st.session_state["selected_kb_info"] = kb_info
-            api.update_kb_info(kb, kb_info)
+        if kb_info != st.session_state["selected_kb_info"] or kb_name_cn != kb_list[kb]["kb_name_cn"]:
+            if kb_name_cn in [kb_cn["kb_name_cn"] if kb_cn["kb_name"] != kb else None for kb_cn in kb_list.values()]:
+                st.error(f"名为 {kb_name_cn} 的知识库已经存在！")
+            else:
+                st.session_state["selected_kb_info"] = kb_info
+                ret = api.update_kb_info(kb, kb_name_cn, kb_info)
+                st.toast(ret.get("msg", " "))
 
         # with st.sidebar:
         with st.expander(
@@ -311,6 +330,9 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
                 use_container_width=True,
         ):
             ret = api.delete_knowledge_base(kb)
+            if ret.get("code") == 200:
+                kb_list.pop(kb)
+                kb_names.remove(kb)
             st.toast(ret.get("msg", " "))
             time.sleep(1)
             st.rerun()
