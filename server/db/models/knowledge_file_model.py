@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean, JSON, func, BigInteger
 
+from configs import SQLALCHEMY_DATABASE_URI
 from server.db.base import Base
 
 
@@ -46,7 +47,8 @@ class FileDocModel(Base):
     文件-向量库文档模型
     """
     __tablename__ = 'file_doc'
-    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='ID')
+    id = Column(Integer if SQLALCHEMY_DATABASE_URI.__contains__("sqlite") else BigInteger, primary_key=True,
+                autoincrement=True, comment='ID')
     kb_id = Column(Integer, index=True, comment='知识库id')
     file_id = Column(Integer, index=True, comment='文件id')
     doc_id = Column(String(50), comment="向量库文档ID")

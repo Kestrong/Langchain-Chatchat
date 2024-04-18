@@ -138,6 +138,7 @@ class KBService(ABC):
                                         docs_count=len(docs),
                                         doc_infos=doc_infos)
             except Exception as e:
+                status = False
                 print(f"add file to db error: {e}")
                 self.del_doc_by_ids([doc_info["id"] for doc_info in doc_infos])
         else:

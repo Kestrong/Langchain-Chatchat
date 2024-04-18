@@ -203,6 +203,7 @@ def add_file_to_db(session,
             session.add(new_file)
             session.flush()
             file_id = new_file.id
+        session.commit()
         add_docs_to_db(kb_id=kb.id, file_id=file_id, doc_infos=doc_infos)
     return True
 
