@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pydantic
 from pydantic import BaseModel
 from typing import List
@@ -107,6 +109,7 @@ class BaseResponse(BaseModel):
     data: Any = pydantic.Field(None, description="API data")
 
     class Config:
+        json_encoders = {datetime: lambda dt: dt.strftime("%Y-%m-%d %H:%M:%S")}
         schema_extra = {
             "example": {
                 "code": 200,
@@ -120,6 +123,7 @@ class Page(BaseModel):
     records: Optional[List[Any]] = pydantic.Field(..., description="List of records")
 
     class Config:
+        json_encoders = {datetime: lambda dt: dt.strftime("%Y-%m-%d %H:%M:%S")}
         schema_extra = {
             "example": {
                 "total": 0,
@@ -132,6 +136,7 @@ class PageResponse(BaseResponse):
     data: Optional[Page] = pydantic.Field(..., description="page of records")
 
     class Config:
+        json_encoders = {datetime: lambda dt: dt.strftime("%Y-%m-%d %H:%M:%S")}
         schema_extra = {
             "example": {
                 "code": 200,
@@ -144,6 +149,7 @@ class ListResponse(BaseResponse):
     data: List[Any] = pydantic.Field(..., description="List of names")
 
     class Config:
+        json_encoders = {datetime: lambda dt: dt.strftime("%Y-%m-%d %H:%M:%S")}
         schema_extra = {
             "example": {
                 "code": 200,
