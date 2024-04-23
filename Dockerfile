@@ -5,7 +5,7 @@
 FROM python-langchain-chatchat:1.0.0
 MAINTAINER "KeStrong"<kestrong@foxmail.com>
 LABEL authors="kesc"
-ENV MODEL_ROOT_PATH='/llm/lanchain-chatchat/model_data' KB_ROOT_PATH='/llm/knowledges' EMBEDDING_DEVICE='auto' LLM_DEVICE='auto'
+ENV MODEL_ROOT_PATH='/llm/models' KB_ROOT_PATH='/llm/knowledges' EMBEDDING_DEVICE='auto' LLM_DEVICE='auto'
 ENV ARGS="-a"
 COPY /Lanchain-Chatchat /llm/lanchain-chatchat
 CMD  ["sh", "/llm/lanchain-chatchat/boot-server-on-docker.sh"]
