@@ -1,3 +1,5 @@
+from curses.ascii import isdigit
+
 from langchain.document_loaders.unstructured import UnstructuredFileLoader
 from typing import List
 import tqdm
@@ -53,10 +55,34 @@ class RapidOCRDocLoader(UnstructuredFileLoader):
                                     ocr_result = [line[1] for line in result]
                                     resp += "\n".join(ocr_result)
                 elif isinstance(block, Table):
+                    row_cells, column_cells = [], []
+                    index = []
+                    width, length = len(block.columns), len(block.rows)
+                    k = 0
+                    # 解决单元格合并后读取出现重复问题
                     for row in block.rows:
                         for cell in row.cells:
-                            for paragraph in cell.paragraphs:
-                                resp += paragraph.text.strip() + "\n"
+                            if cell not in row_cells:
+                                index.append([k // width, k % width])
+                                row_cells.append(cell)
+                            k += 1
+                    k = 0
+                    for column in block.columns:
+                        for cell in column.cells:
+                            if cell not in column_cells:
+                                column_cells.append(cell)
+                            elif [k % length, k // length] in index:
+                                index.remove([k % length, k // length])
+                            k += 1
+                    for rowId in range(length):
+                        for colId in range(width):
+                            if [rowId, colId] in index:
+                                for paragraph in block.rows[rowId].cells[colId].paragraphs:
+                                    context = paragraph.text.strip()
+                                    if isdigit(resp[-1]) and isdigit(context[0]):
+                                        resp += context + " "
+                                    else:
+                                        resp += context + "\n"
                 b_unit.update(1)
             return resp
 

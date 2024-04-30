@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 from fastapi import Body, Request
 from sse_starlette.sse import EventSourceResponse
 from fastapi.concurrency import run_in_threadpool
@@ -96,8 +98,19 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                                      query=query)
             print("------------after rerank------------------")
             print(docs)
-        context = "\n".join([doc.page_content for doc in docs])
 
+        docs_map = OrderedDict()
+        for doc in docs:
+            source = doc.metadata['source']
+            if source not in docs_map:
+                docs_map[source] = []
+            docs_map[source].append(doc)
+        docs = []
+        for key, value in docs_map.items():
+            if len(value) > 0 and 'index' in value[0].metadata:
+                value.sort(key=lambda x: x.metadata['index'])
+            docs.extend(value)
+        context = "\n".join([doc.page_content for doc in docs])
         if len(docs) == 0:  # 如果没有找到相关文档，使用empty模板
             prompt_template = get_prompt_template("knowledge_base_chat", "empty")
         else:

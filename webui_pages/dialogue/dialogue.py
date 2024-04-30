@@ -370,6 +370,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                     Markdown("...", in_expander=True, title="知识库匹配结果", state="complete"),
                 ])
                 text = ""
+                d = {}
                 for d in api.knowledge_base_chat(prompt,
                                                  knowledge_base_name=selected_kb,
                                                  top_k=kb_top_k,
@@ -394,6 +395,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                     Markdown("...", in_expander=True, title="文件匹配结果", state="complete"),
                 ])
                 text = ""
+                d = {}
                 for d in api.file_chat(prompt,
                                        knowledge_id=st.session_state["file_chat_id"],
                                        top_k=kb_top_k,
@@ -415,6 +417,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                     Markdown("...", in_expander=True, title="网络搜索结果", state="complete"),
                 ])
                 text = ""
+                d = {}
                 for d in api.search_engine_chat(prompt,
                                                 search_engine_name=search_engine,
                                                 top_k=se_top_k,

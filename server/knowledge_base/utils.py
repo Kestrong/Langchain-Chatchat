@@ -327,6 +327,10 @@ class KnowledgeFile:
         print(f"文档切分示例：{docs[0]}")
         if zh_title_enhance:
             docs = func_zh_title_enhance(docs)
+        i = 0
+        for doc in docs:
+            doc.metadata['index'] = i
+            i += 1
         self.splited_docs = docs
         return self.splited_docs
 
