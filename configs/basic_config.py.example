@@ -23,6 +23,8 @@ LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
 if not os.path.exists(LOG_PATH):
     os.mkdir(LOG_PATH)
 
+os.environ['LOGDIR'] = LOG_PATH
+
 
 def __build_rollover_logger__(logger_name, logger_filename):
     _logger = build_logger(logger_name, logger_filename)
