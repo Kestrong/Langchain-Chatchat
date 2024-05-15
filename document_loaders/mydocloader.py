@@ -1,5 +1,3 @@
-from curses.ascii import isdigit
-
 from langchain.document_loaders.unstructured import UnstructuredFileLoader
 from typing import List
 import tqdm
@@ -79,8 +77,8 @@ class RapidOCRDocLoader(UnstructuredFileLoader):
                             if [rowId, colId] in index:
                                 for paragraph in block.rows[rowId].cells[colId].paragraphs:
                                     context = paragraph.text.strip()
-                                    if isdigit(resp[-1]) and isdigit(context[0]):
-                                        resp += context + " "
+                                    if resp[-2].isdigit() and str(context[0]).isdigit():
+                                        resp = resp[0:-1] + " " + context + "\n"
                                     else:
                                         resp += context + "\n"
                 b_unit.update(1)

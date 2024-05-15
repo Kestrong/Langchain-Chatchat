@@ -1,3 +1,5 @@
+from typing import List
+
 from langchain.docstore.document import Document
 import re
 
@@ -85,7 +87,7 @@ def is_possible_title(
     return True
 
 
-def zh_title_enhance(docs: Document) -> Document:
+def zh_title_enhance(docs: List[Document]) -> List[Document]:
     title = None
     if len(docs) > 0:
         for doc in docs:
