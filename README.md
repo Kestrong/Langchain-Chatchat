@@ -114,7 +114,7 @@ $ pip install -r requirements_webui.txt
 请注意，LangChain-Chatchat `0.2.x` 系列是针对 Langchain `0.0.x` 系列版本的，如果你使用的是 Langchain `0.1.x`
 系列版本，需要降级您的`Langchain`版本。
 
-### 2， 模型下载
+### 2. 模型下载
 
 如需在本地或离线环境下运行本项目，需要首先将项目所需的模型下载至本地，通常开源 LLM 与 Embedding
 模型可以从 [HuggingFace](https://huggingface.co/models) 下载。
@@ -195,7 +195,7 @@ $ python startup.py -a
 [![Telegram](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white "langchain-chatglm")](https://t.me/+RjliQ3jnJ1YyN2E9)
 
 ### 项目交流群
-<img src="img/qr_code_104.jpg" alt="二维码" width="300" />
+<img src="img/qr_code_108.jpg" alt="二维码" width="300" />
 
 🎉 Langchain-Chatchat 项目微信交流群，如果你也对本项目感兴趣，欢迎加入群聊参与讨论交流。
 
