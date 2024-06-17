@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 from sqlalchemy import func
 
 from configs import logger
+from server.memory.token_info_memory import get_token_info
 from server.db.models.knowledge_base_model import KnowledgeBaseModel
 from server.db.models.knowledge_file_model import KnowledgeFileModel, FileDocModel
 from server.db.repository import get_kb_detail
@@ -188,6 +189,7 @@ def add_file_to_db(session,
             existing_file.file_version += 1
         # 否则，添加新文件
         else:
+            user_id = get_token_info().get("userId")
             new_file = KnowledgeFileModel(
                 file_name=kb_file.filename,
                 file_ext=kb_file.ext,
@@ -198,6 +200,7 @@ def add_file_to_db(session,
                 file_size=size,
                 docs_count=docs_count,
                 custom_docs=custom_docs,
+                create_by=user_id
             )
             kb.file_count += 1
             session.add(new_file)

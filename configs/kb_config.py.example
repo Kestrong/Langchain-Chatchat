@@ -4,7 +4,7 @@ import os
 DEFAULT_KNOWLEDGE_BASE = "samples"
 
 # 默认向量库/全文检索引擎类型。可选：faiss, milvus(离线) & zilliz(在线), pgvector, chromadb 全文检索引擎es
-DEFAULT_VS_TYPE = "milvus"
+DEFAULT_VS_TYPE = os.environ.get('DEFAULT_VS_TYPE', "milvus")
 
 # 默认允许上传的最大知识库文件大小
 MAX_KNOWLEDGE_FILE_SIZE = 1024 * 1024 * 10

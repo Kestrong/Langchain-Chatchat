@@ -15,10 +15,12 @@ class KnowledgeBaseModel(Base):
     vs_type = Column(String(50), comment='向量库类型')
     embed_model = Column(String(50), comment='嵌入模型名称')
     file_count = Column(Integer, default=0, comment='文件数量')
+    create_by = Column(String(50), comment='创建人id')
+    tenant_id = Column(String(50), comment='租户id')
     create_time = Column(DateTime, default=func.now(), comment='创建时间')
 
     def __repr__(self):
-        return f"<KnowledgeBase(id='{self.id}', kb_name='{self.kb_name}', kb_name_cn='{self.kb_name_cn}', kb_intro='{self.kb_info} vs_type='{self.vs_type}', embed_model='{self.embed_model}', file_count='{self.file_count}', create_time='{self.create_time}')>"
+        return f"<KnowledgeBase(id='{self.id}', kb_name='{self.kb_name}', kb_name_cn='{self.kb_name_cn}', kb_intro='{self.kb_info} vs_type='{self.vs_type}', embed_model='{self.embed_model}', file_count='{self.file_count}', create_time='{self.create_time}', create_by='{self.create_by}', tenant_id='{self.tenant_id}')>"
 
     def dict(self):
         return {
@@ -29,5 +31,7 @@ class KnowledgeBaseModel(Base):
             "vs_type": self.vs_type,
             "embed_model": self.embed_model,
             "file_count": self.file_count,
+            "create_by": self.create_by,
+            "tenant_id": self.tenant_id,
             "create_time": self.create_time
         }

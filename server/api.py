@@ -2,11 +2,15 @@ import nltk
 import sys
 import os
 
+from starlette.requests import Request
+
+from server.memory.token_info_memory import set_token
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from configs import VERSION
 from configs.model_config import NLTK_DATA_PATH
-from configs.server_config import OPEN_CROSS_DOMAIN
+from configs.server_config import OPEN_CROSS_DOMAIN, CIAM_TOKEN_COOKIE_NAME
 import argparse
 import uvicorn
 from fastapi import Body
@@ -20,7 +24,7 @@ from server.embeddings_api import embed_texts_endpoint
 from server.llm_api import (list_running_models, list_config_models,
                             change_llm_model, stop_llm_model,
                             get_model_config, list_search_engines)
-from server.utils import (BaseResponse, ListResponse, FastAPI, MakeFastAPIOffline,
+from server.utils import (BaseResponse, FastAPI, MakeFastAPIOffline,
                           get_server_configs, get_prompt_template, PageResponse)
 from typing import List, Literal
 
@@ -53,6 +57,15 @@ def create_app(run_mode: str = None):
 
 
 def mount_app_routes(app: FastAPI, run_mode: str = None):
+    @app.middleware("http")
+    async def set_thread_local_variable(request: Request, call_next):
+        token = request.headers.get("Authorization")
+        if token is None or token.strip() == '':
+            token = request.cookies.get(CIAM_TOKEN_COOKIE_NAME)
+        set_token(token)
+        response = await call_next(request)
+        return response
+
     app.get("/",
             response_model=BaseResponse,
             summary="swagger 文档")(document)

@@ -2,6 +2,7 @@ from sqlalchemy import func
 
 from server.db.models.knowledge_base_model import KnowledgeBaseModel
 from server.db.session import with_session
+from server.memory.token_info_memory import get_token_info
 
 
 @with_session
@@ -12,8 +13,10 @@ def add_kb_to_db(session, kb_name, kb_name_cn, kb_info, vs_type, embed_model):
         kb_cn = session.query(KnowledgeBaseModel).filter(KnowledgeBaseModel.kb_name_cn == kb_name_cn).first()
         if kb_cn is not None:
             raise Exception(f"已存在同名知识库 {kb_name_cn}")
+        token_info = get_token_info()
         kb = KnowledgeBaseModel(kb_name=kb_name, kb_name_cn=kb_name_cn, kb_info=kb_info, vs_type=vs_type,
-                                embed_model=embed_model)
+                                embed_model=embed_model, create_by=token_info.get("userId"),
+                                tenant_id=token_info.get("tenantId"))
         session.add(kb)
     else:  # update kb with new vs_type and embed_model
         if kb_name_cn is not None:
@@ -35,6 +38,9 @@ def list_kbs_from_db(session, page_size: int = 10, page_num: int = 1, keyword: s
     page_num = max(page_num, 1)
     offset = (page_num - 1) * page_size
     filters = [KnowledgeBaseModel.file_count > min_file_count]
+    tenant_id = get_token_info().get("tenantId")
+    if tenant_id is not None and tenant_id != "":
+        filters.append(KnowledgeBaseModel.tenant_id == tenant_id)
     if keyword is not None and keyword.strip() != "":
         filters.append(KnowledgeBaseModel.kb_name.like(f"%{keyword}%"))
     if not all_kbs:
