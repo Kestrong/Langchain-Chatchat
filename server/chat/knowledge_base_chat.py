@@ -106,11 +106,14 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             max_tokens=max_tokens,
             callbacks=callbacks,
         )
-        docs = await run_in_threadpool(search_docs,
-                                       query=query,
-                                       knowledge_base_name=knowledge_base_name,
-                                       top_k=top_k,
-                                       score_threshold=score_threshold)
+        if model_name == 'qiming-api':
+            docs = []
+        else:
+            docs = await run_in_threadpool(search_docs,
+                                           query=query,
+                                           knowledge_base_name=knowledge_base_name,
+                                           top_k=top_k,
+                                           score_threshold=score_threshold)
 
         # 加入reranker
         if USE_RERANKER:
