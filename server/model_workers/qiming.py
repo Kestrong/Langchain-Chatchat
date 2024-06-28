@@ -62,22 +62,22 @@ class QimingWorker(ApiModelWorker):
             content = params.messages[-1].get('content')
             if content.startswith('{') and content.endswith('}'):
                 contentObj = json.loads(json.dumps(eval(content)))
-                scene = contentObj['scene']
+                scene = contentObj.get('scene', '')
                 message['scene'] = scene
                 if scene in ['2', '8']:
-                    message['param1'] = contentObj['question']
+                    message['param1'] = contentObj.get('question', '')
                 elif scene == '3':
-                    message['param1'] = contentObj['question']
+                    message['param1'] = contentObj.get('question', '')
                     message['param2'] = 'true'
                 elif scene == '7':
-                    message['param1'] = contentObj['role']
-                    message['param2'] = contentObj['question']
+                    message['param1'] = contentObj.get('role', '')
+                    message['param2'] = contentObj.get('question', '')
                 elif scene == '6':
                     message['param1'] = '1'
-                    message['param2'] = contentObj['question']
+                    message['param2'] = contentObj.get('question', '')
                 else:
-                    message['param1'] = contentObj['question']
-                    message['param2'] = contentObj['description']
+                    message['param1'] = contentObj.get('question', '')
+                    message['param2'] = contentObj.get('description', '')
             else:
                 parts = content.split('###')
                 message['scene'] = parts[1]
