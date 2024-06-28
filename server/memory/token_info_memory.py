@@ -13,6 +13,9 @@ def get_token() -> str:
 def get_token_info() -> dict:
     token = get_token()
     if token:
+        parts = str(token).split(".")
+        if len(parts) != 3:
+            return {}
         part = str(token).split(".")[1]
         part = part + '=' * ((4 - (len(part) % 4)) % 4)
         return json.loads(base64.b64decode(part).decode('utf-8'))
