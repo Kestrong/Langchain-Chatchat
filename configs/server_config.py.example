@@ -132,6 +132,9 @@ FSCHAT_MODEL_WORKERS = {
     "claude-api": {
         "port": 21011,
     },
+    "qiming-api": {
+        "port": 21011,
+    },
 }
 
 FSCHAT_CONTROLLER = {

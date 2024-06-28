@@ -2,6 +2,7 @@ from server.db.session import with_session
 from typing import Dict, List
 import uuid
 from server.db.models.message_model import MessageModel
+from server.memory.token_info_memory import get_token_info
 
 
 @with_session
@@ -13,7 +14,7 @@ def add_message_to_db(session, conversation_id: str, chat_type, query, response=
     if not message_id:
         message_id = uuid.uuid4().hex
     m = MessageModel(id=message_id, chat_type=chat_type, query=query, response=response,
-                     conversation_id=conversation_id,
+                     conversation_id=conversation_id, create_by=get_token_info().get("userId"),
                      meta_data=metadata)
     session.add(m)
     session.commit()
@@ -68,5 +69,5 @@ def filter_message(session, conversation_id: str, limit: int = 10):
     # 直接返回 List[MessageModel] 报错
     data = []
     for m in messages:
-        data.append({"query": m.query, "response": m.response})
+        data.append(m.dict())
     return data

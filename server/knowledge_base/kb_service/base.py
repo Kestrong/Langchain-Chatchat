@@ -227,9 +227,10 @@ class KBService(ABC):
         '''
         doc_infos = list_docs_from_db(kb_name=self.kb_name, file_name=file_name, metadata=metadata)
         docs = []
-        docs_by_ids = {x.metadata['pk']: x for x in self.get_doc_by_ids([x["id"] for x in doc_infos])}
+        ids = [x["id"] for x in doc_infos]
+        docs_by_ids = {y: x for x, y in zip(self.get_doc_by_ids(ids), ids)}
         for x in doc_infos:
-            doc_info = docs_by_ids[int(x["id"])]
+            doc_info = docs_by_ids[x["id"]]
             if doc_info is not None:
                 # 处理非空的情况
                 doc_with_id = DocumentWithVSId(**doc_info.dict(), id=x["id"])

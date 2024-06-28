@@ -4,6 +4,9 @@ import os
 
 from starlette.requests import Request
 
+from server.chat.conversation import create_conversation, delete_conversation, update_conversation, filter_message, \
+    filter_conversation
+from server.chat.task_manager import stop
 from server.memory.token_info_memory import set_token
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -85,6 +88,36 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
              tags=["Chat"],
              summary="返回llm模型对话评分",
              )(chat_feedback)
+
+    app.post("/chat/stop",
+             tags=["Chat"],
+             summary="停止llm模型对话",
+             )(stop)
+
+    app.get("/chat/conversation",
+             tags=["Chat"],
+             summary="获取会话",
+             )(filter_conversation)
+
+    app.post("/chat/conversation",
+             tags=["Chat"],
+             summary="创建会话",
+             )(create_conversation)
+
+    app.put("/chat/conversation",
+             tags=["Chat"],
+             summary="修改会话",
+             )(update_conversation)
+
+    app.delete("/chat/conversation",
+             tags=["Chat"],
+             summary="删除会话",
+             )(delete_conversation)
+
+    app.get("/chat/messages",
+               tags=["Chat"],
+               summary="获取消息",
+               )(filter_message)
 
     # 知识库相关接口
     mount_knowledge_routes(app)

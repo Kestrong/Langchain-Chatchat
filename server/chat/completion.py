@@ -1,3 +1,5 @@
+import json
+
 from fastapi import Body
 from sse_starlette.sse import EventSourceResponse
 from configs import LLM_MODELS, TEMPERATURE
@@ -12,6 +14,7 @@ from server.utils import get_prompt_template
 
 
 async def completion(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
+                     extra: dict = Body({}, description="额外的属性"),
                      stream: bool = Body(False, description="流式输出"),
                      model_name: str = Body(LLM_MODELS[0], description="LLM 模型名称。"),
                      temperature: float = Body(TEMPERATURE, description="LLM 采样温度", ge=0.0, le=1.0),
@@ -22,6 +25,9 @@ async def completion(query: str = Body(..., description="用户输入", examples
                      ):
 
     #todo 因ApiModelWorker 默认是按chat处理的，会对params["prompt"] 解析为messages，因此ApiModelWorker 使用时需要有相应处理
+    if model_name == 'qiming-api':
+        extra['question'] = query
+        query = json.dumps(extra)
     async def completion_iterator(query: str,
                                   model_name: str = LLM_MODELS[0],
                                   prompt_name: str = prompt_name,

@@ -10,6 +10,10 @@ from configs import (LLM_MODELS,
                      USE_RERANKER,
                      RERANKER_MODEL,
                      RERANKER_MAX_LENGTH)
+from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
+from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.chat import task_manager
+from server.db.repository import add_message_to_db
 from server.utils import wrap_done, get_ChatOpenAI, get_model_path
 from server.utils import BaseResponse, get_prompt_template
 from langchain.chains import LLMChain
@@ -24,6 +28,8 @@ from server.knowledge_base.kb_doc_api import search_docs
 from server.reranker.reranker import LangchainReranker
 from server.utils import embedding_device
 async def knowledge_base_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
+                              extra: dict = Body({}, description="额外的属性"),
+                              conversation_id: str = Body("", description="对话框ID"),
                               knowledge_base_name: str = Body(..., description="知识库名称", examples=["samples"]),
                               top_k: int = Body(VECTOR_SEARCH_TOP_K, description="匹配向量数"),
                               score_threshold: float = Body(
@@ -60,6 +66,10 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
 
     history = [History.from_data(h) for h in history]
 
+    if model_name == 'qiming-api':
+        extra['question'] = query
+        query = json.dumps(extra)
+
     async def knowledge_base_chat_iterator(
             query: str,
             top_k: int,
@@ -69,10 +79,16 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
     ) -> AsyncIterable[str]:
         nonlocal max_tokens
         callback = AsyncIteratorCallbackHandler()
+        # 负责保存llm response到message db
+        message_id = add_message_to_db(chat_type="knowledge_base_chat", query=query, conversation_id=conversation_id)
+        conversation_callback = ConversationCallbackHandler(conversation_id=conversation_id, message_id=message_id,
+                                                            chat_type="knowledge_base_chat",
+                                                            query=query)
+        task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         if isinstance(max_tokens, int) and max_tokens <= 0:
             max_tokens = None
 
-        callbacks = [callback]
+        callbacks = [callback, conversation_callback, task_callback]
         # Enable langchain-chatchat to support langfuse
         import os
         langfuse_secret_key = os.environ.get('LANGFUSE_SECRET_KEY')
@@ -127,7 +143,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             prompt_template = get_prompt_template("knowledge_base_chat", "empty")
         else:
             prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
-        input_msg = History(role="user", content=prompt_template).to_msg_template(False)
+        input_msg = History(role="user", content=query if model_name == 'qiming-api' else prompt_template).to_msg_template(False)
         chat_prompt = ChatPromptTemplate.from_messages(
             [i.to_msg_template() for i in history] + [input_msg])
 
@@ -138,6 +154,8 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             chain.acall({"context": context, "question": query}),
             callback.done),
         )
+
+        task_manager.put(message_id, task)
 
         source_documents = []
         for inum, doc in enumerate(docs):

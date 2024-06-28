@@ -1,6 +1,7 @@
 from fastapi import Body
 from sse_starlette.sse import EventSourceResponse
 from configs import LLM_MODELS, TEMPERATURE
+from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.utils import wrap_done, get_ChatOpenAI
 from langchain.chains import LLMChain
 from langchain.callbacks import AsyncIteratorCallbackHandler
@@ -8,6 +9,7 @@ from typing import AsyncIterable
 import asyncio
 import json
 import uuid
+import server.chat.task_manager as task_manager
 from langchain.prompts.chat import ChatPromptTemplate
 from typing import List, Optional, Union
 from server.chat.utils import History
@@ -19,6 +21,7 @@ from server.callback_handler.conversation_callback_handler import ConversationCa
 
 
 async def chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
+               extra: dict = Body({}, description="额外的属性"),
                conversation_id: str = Body("", description="对话框ID"),
                history_len: int = Body(-1, description="从数据库中取历史消息的数量"),
                history: Union[int, List[History]] = Body([],
@@ -35,6 +38,11 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                # top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
                prompt_name: str = Body("default", description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                ):
+
+    if model_name == 'qiming-api':
+        extra['question'] = query
+        query = json.dumps(extra)
+
     async def chat_iterator() -> AsyncIterable[str]:
         nonlocal history, max_tokens
         callback = AsyncIteratorCallbackHandler()
@@ -46,7 +54,8 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         conversation_callback = ConversationCallbackHandler(conversation_id=conversation_id, message_id=message_id,
                                                             chat_type="llm_chat",
                                                             query=query)
-        callbacks.append(conversation_callback)
+        task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
+        callbacks.extend([conversation_callback, task_callback])
         # message_id = uuid.uuid4().hex
 
         # Enable langchain-chatchat to support langfuse
@@ -97,6 +106,8 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
             chain.acall({"input": query}),
             callback.done),
         )
+
+        task_manager.put(message_id, task)
 
         if stream:
             async for token in callback.aiter():

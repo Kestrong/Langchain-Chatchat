@@ -20,6 +20,21 @@ class MessageModel(Base):
     feedback_score = Column(Integer, default=-1, comment='用户评分')
     feedback_reason = Column(String(255), default="", comment='用户评分理由')
     create_time = Column(DateTime, default=func.now(), comment='创建时间')
+    create_by = Column(String(50), comment='创建人id')
 
     def __repr__(self):
-        return f"<message(id='{self.id}', conversation_id='{self.conversation_id}', chat_type='{self.chat_type}', query='{self.query}', response='{self.response}',meta_data='{self.meta_data}',feedback_score='{self.feedback_score}',feedback_reason='{self.feedback_reason}', create_time='{self.create_time}')>"
+        return f"<message(id='{self.id}', conversation_id='{self.conversation_id}', chat_type='{self.chat_type}', query='{self.query}', response='{self.response}',meta_data='{self.meta_data}',feedback_score='{self.feedback_score}',feedback_reason='{self.feedback_reason}', create_time='{self.create_time}', create_by='{self.create_by}')>"
+
+    def dict(self):
+
+        return {
+            "id": self.id,
+            "conversation_id": self.conversation_id,
+            "chat_type": self.chat_type,
+            "query": self.query,
+            "response": self.response,
+            "feedback_score": self.feedback_score,
+            "feedback_reason": self.feedback_reason,
+            "create_by": self.create_by,
+            "create_time": self.create_time
+        }

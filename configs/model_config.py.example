@@ -137,8 +137,55 @@ ONLINE_LLM_MODEL = {
         "version": "2023-06-01",
         "model_name":"claude-3-opus-20240229", 
         "provider": "ClaudeWorker",
+    },
+    "qiming-api": {
+        # "api_proxy": "ws://10.130.154.233:30000/serviceAgent/rest/ws/qiming_scene_v2",
+        "api_proxy": "ws://124.222.224.186:8800",
+        "version": "MaaS-Ws-v2",
+        "api_key": "47ea65c645a4b35a63755582208bd49f",
+        "secret_key": "2a619251d61ffa1d6cab5e0683a98c1b",
+        "provider": "QimingWorker",
+        "role_meta": {
+            "prov": "611000000000001824854982",
+            "scene": [
+                {
+                    "name": "规章制度",
+                    "value": "8"
+                },
+                {
+                    "name": "综维问答",
+                    "value": "2"
+                },
+                {
+                    "name": "无线网优",
+                    "value": "3"
+                },
+                {
+                    "name": "装维问答",
+                    "value": "7"
+                },
+                {
+                    "name": "故障复盘",
+                    "value": "6"
+                },
+                {
+                    "name": "传输故障处置",
+                    "value": "1"
+                },
+            ],
+            "role": [{
+                "name": "装维一线"
+            }, {
+                "name": "客支"
+            }, {
+                "name": "客调"
+            }, {
+                "name": "客服"
+            }, {
+                "name": "客户"
+            }]
+        }
     }
-
 }
 
 # 在以下字典中修改属性值，以指定本地embedding模型存储位置。支持3种设置方法：

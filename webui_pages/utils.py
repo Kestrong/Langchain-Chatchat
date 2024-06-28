@@ -358,6 +358,7 @@ class ApiRequest:
             self,
             query: str,
             knowledge_base_name: str,
+            conversation_id: str,
             top_k: int = VECTOR_SEARCH_TOP_K,
             score_threshold: float = SCORE_THRESHOLD,
             history: List[Dict] = [],
@@ -373,6 +374,7 @@ class ApiRequest:
         data = {
             "query": query,
             "knowledge_base_name": knowledge_base_name,
+            "conversation_id":  conversation_id,
             "top_k": top_k,
             "score_threshold": score_threshold,
             "history": history,
