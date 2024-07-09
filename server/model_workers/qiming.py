@@ -41,6 +41,7 @@ class QimingWorker(ApiModelWorker):
             4、装维问答:param1用户角色，可填写：装维一线、客支、客调、客服、客户,param2用户问题,scene固定值7;\n
             5、故障复盘:param1固定为1，代表事故复盘,param2用户问题,scene固定值6;\n
             6、传输故障处置:param1故障现象,param2故障描述,scene固定值1;\n
+            7、运维助手：param1用户问题,param2细分场景标识符，可填写：ywgfwd、gzzd、aqldxf，scene固定值9;\n
         """
         message = {
             "uid": xappid,
@@ -75,6 +76,10 @@ class QimingWorker(ApiModelWorker):
                 elif scene == '6':
                     message['param1'] = '1'
                     message['param2'] = contentObj.get('question', '')
+                elif scene == '9':
+                    message['scene'] = '9'
+                    message['param1'] = contentObj.get('question', '')  
+                    message['param2'] = contentObj.get('role', '')   
                 else:
                     message['param1'] = contentObj.get('question', '')
                     message['param2'] = contentObj.get('description', '')
