@@ -284,7 +284,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
         reason = feedback["text"]
         score_int = chat_box.set_feedback(feedback=feedback, history_index=history_index)
         api.chat_feedback(message_id=message_id,
-                          score=score_int,
+                          score=score_int if score_int == 0 else -1,
                           reason=reason)
         st.session_state["need_rerun"] = True
 
@@ -321,10 +321,12 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                     "message_id": message_id,
                 }
                 chat_box.update_msg(text, streaming=False, metadata=metadata)  # 更新最终的字符串，去除光标
-                chat_box.show_feedback(**feedback_kwargs,
-                                       key=message_id,
-                                       on_submit=on_feedback,
-                                       kwargs={"message_id": message_id, "history_index": len(chat_box.history) - 1})
+                if message_id != "":
+                    chat_box.show_feedback(**feedback_kwargs,
+                                           key=message_id,
+                                           on_submit=on_feedback,
+                                           kwargs={"message_id": message_id,
+                                                   "history_index": len(chat_box.history) - 1})
 
             elif dialogue_mode == "自定义Agent问答":
                 if not any(agent in llm_model for agent in SUPPORT_AGENT_MODEL):

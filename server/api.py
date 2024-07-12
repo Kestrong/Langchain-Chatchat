@@ -1,11 +1,11 @@
-import nltk
-import sys
 import os
+import sys
 
+import nltk
 from starlette.requests import Request
 
 from server.chat.conversation import create_conversation, delete_conversation, update_conversation, filter_message, \
-    filter_conversation
+    filter_conversation, delete_message
 from server.chat.task_manager import stop
 from server.memory.token_info_memory import set_token
 
@@ -41,7 +41,7 @@ async def document():
 def create_app(run_mode: str = None):
     app = FastAPI(
         title="Langchain-Chatchat API Server",
-        version=VERSION
+        version=VERSION, root_path="/flm"
     )
     MakeFastAPIOffline(app)
     # Add CORS middleware to allow all origins
@@ -95,9 +95,9 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
              )(stop)
 
     app.get("/chat/conversation",
-             tags=["Chat"],
-             summary="获取会话",
-             )(filter_conversation)
+            tags=["Chat"],
+            summary="获取会话",
+            )(filter_conversation)
 
     app.post("/chat/conversation",
              tags=["Chat"],
@@ -105,19 +105,24 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
              )(create_conversation)
 
     app.put("/chat/conversation",
-             tags=["Chat"],
-             summary="修改会话",
-             )(update_conversation)
+            tags=["Chat"],
+            summary="修改会话",
+            )(update_conversation)
 
     app.delete("/chat/conversation",
-             tags=["Chat"],
-             summary="删除会话",
-             )(delete_conversation)
+               tags=["Chat"],
+               summary="删除会话",
+               )(delete_conversation)
 
     app.get("/chat/messages",
+            tags=["Chat"],
+            summary="获取消息",
+            )(filter_message)
+
+    app.delete("/chat/message",
                tags=["Chat"],
-               summary="获取消息",
-               )(filter_message)
+               summary="删除消息",
+               )(delete_message)
 
     # 知识库相关接口
     mount_knowledge_routes(app)
@@ -162,11 +167,12 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
              )(list_search_engines)
 
     @app.post("/server/get_prompt_template",
-             tags=["Server State"],
-             summary="获取服务区配置的 prompt 模板")
+              tags=["Server State"],
+              summary="获取服务区配置的 prompt 模板")
     def get_server_prompt_template(
-        type: Literal["llm_chat", "knowledge_base_chat", "search_engine_chat", "agent_chat"]=Body("llm_chat", description="模板类型，可选值：llm_chat，knowledge_base_chat，search_engine_chat，agent_chat"),
-        name: str = Body("default", description="模板名称"),
+            type: Literal["llm_chat", "knowledge_base_chat", "search_engine_chat", "agent_chat"] = Body("llm_chat",
+                                                                                                        description="模板类型，可选值：llm_chat，knowledge_base_chat，search_engine_chat，agent_chat"),
+            name: str = Body("default", description="模板名称"),
     ) -> str:
         return get_prompt_template(type=type, name=name)
 
@@ -177,9 +183,9 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
              )(completion)
 
     app.post("/other/embed_texts",
-            tags=["Other"],
-            summary="将文本向量化，支持本地模型和在线模型",
-            )(embed_texts_endpoint)
+             tags=["Other"],
+             summary="将文本向量化，支持本地模型和在线模型",
+             )(embed_texts_endpoint)
 
 
 def mount_knowledge_routes(app: FastAPI):
@@ -188,9 +194,9 @@ def mount_knowledge_routes(app: FastAPI):
     from server.chat.agent_chat import agent_chat
     from server.knowledge_base.kb_api import list_kbs, create_kb, delete_kb
     from server.knowledge_base.kb_doc_api import (list_files, upload_docs, delete_docs,
-                                                update_docs, download_doc, recreate_vector_store,
-                                                search_docs, DocumentWithVSId, update_info,
-                                                update_docs_by_id,)
+                                                  update_docs, download_doc, recreate_vector_store,
+                                                  search_docs, DocumentWithVSId, update_info,
+                                                  update_docs_by_id, )
 
     app.post("/chat/knowledge_base_chat",
              tags=["Chat"],
@@ -240,7 +246,6 @@ def mount_knowledge_routes(app: FastAPI):
              response_model=BaseResponse,
              summary="直接更新知识库文档"
              )(update_docs_by_id)
-
 
     app.post("/knowledge_base/upload_docs",
              tags=["Knowledge Base Management"],
@@ -297,7 +302,6 @@ def mount_filename_summary_routes(app: FastAPI):
              tags=["Knowledge kb_summary_api Management"],
              summary="重建单个知识库文件摘要"
              )(recreate_summary_vector_store)
-
 
 
 def run_api(host, port, **kwargs):

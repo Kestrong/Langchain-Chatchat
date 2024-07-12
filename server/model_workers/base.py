@@ -77,6 +77,9 @@ class ApiChatParams(ApiModelParams):
     role_meta: Dict = {} # for minimax
 
 
+class ApiChatQimingParams(ApiChatParams):
+    feedbackUrl: str = None
+
 class ApiCompletionParams(ApiModelParams):
     prompt: str
 

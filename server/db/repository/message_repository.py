@@ -1,7 +1,8 @@
-from server.db.session import with_session
-from typing import Dict, List
 import uuid
+from typing import Dict
+
 from server.db.models.message_model import MessageModel
+from server.db.session import with_session
 from server.memory.token_info_memory import get_token_info
 
 
@@ -71,3 +72,9 @@ def filter_message(session, conversation_id: str, limit: int = 10):
     for m in messages:
         data.append(m.dict())
     return data
+
+
+@with_session
+def delete_message_from_db(session, message_id):
+    session.query(MessageModel).filter(MessageModel.id == message_id).delete()
+    return message_id

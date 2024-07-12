@@ -139,11 +139,11 @@ ONLINE_LLM_MODEL = {
         "provider": "ClaudeWorker",
     },
     "qiming-api": {
-        # "api_proxy": "ws://10.130.154.233:30000/serviceAgent/rest/ws/qiming_scene_v2",
-        "api_proxy": "ws://124.222.224.186:8800",
+        "api_proxy": "ws://10.130.154.233:30000/serviceAgent/rest/ws/qiming_scene_v2",
         "version": "MaaS-Ws-v2",
         "api_key": "47ea65c645a4b35a63755582208bd49f",
         "secret_key": "2a619251d61ffa1d6cab5e0683a98c1b",
+        "feedbackUrl": "http://10.128.86.64:8000/serviceAgent/rest/wsc/qimingmaas/feedback",
         "provider": "QimingWorker",
         "role_meta": {
             "prov": "611000000000001824854982",
@@ -172,18 +172,54 @@ ONLINE_LLM_MODEL = {
                     "name": "传输故障处置",
                     "value": "1"
                 },
+                {
+                    "name": "IT运维知识助手",
+                    "value": "9"
+                }
             ],
-            "role": [{
-                "name": "装维一线"
-            }, {
-                "name": "客支"
-            }, {
-                "name": "客调"
-            }, {
-                "name": "客服"
-            }, {
-                "name": "客户"
-            }]
+            "role": [
+                {
+                    "name": "装维一线"
+                },
+                {
+                    "name": "客支"
+                },
+                {
+                    "name": "客调"
+                },
+                {
+                    "name": "客服"
+                },
+                {
+                    "name": "客户"
+                }
+            ],
+            "iTSubScene": [
+                {
+                    "name": "变更操作管控",
+                    "value": "bgczgk"
+                },
+                {
+                    "name": "安全漏洞修复",
+                    "value": "aqldxf"
+                },
+                {
+                    "name": "故障诊断",
+                    "value": "gzzd"
+                },
+                {
+                    "name": "故障自愈",
+                    "value": "gzzy"
+                },
+                {
+                    "name": "运维规范问答",
+                    "value": "ywgfwd"
+                },
+                {
+                    "name": "服务台/翼问赋能",
+                    "value": "fwt"
+                }
+            ]
         }
     }
 }
