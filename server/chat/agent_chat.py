@@ -87,11 +87,12 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         prompt_template_agent = CustomPromptTemplate(
             template=prompt_template,
             tools=tools,
+            template_format='jinja2',
             input_variables=["input", "intermediate_steps", "history"]
         )
         output_parser = CustomOutputParser()
         llm_chain = LLMChain(llm=model, prompt=prompt_template_agent)
-        memory = ConversationBufferWindowMemory(k=HISTORY_LEN * 2)
+        memory = ConversationBufferWindowMemory(k=max(HISTORY_LEN * 2, len(history) if history else 0))
         for message in history:
             if message.role == 'user':
                 memory.chat_memory.add_user_message(message.content)

@@ -1,14 +1,17 @@
 from __future__ import annotations
 from langchain.agents import Tool, AgentOutputParser
 from langchain.prompts import StringPromptTemplate
-from typing import List
+from typing import List, Literal
 from langchain.schema import AgentAction, AgentFinish
+from langchain_core.prompts.string import DEFAULT_FORMATTER_MAPPING
 
 from configs import SUPPORT_AGENT_MODEL
 from server.agent import model_container
 class CustomPromptTemplate(StringPromptTemplate):
     template: str
     tools: List[Tool]
+    template_format: Literal["f-string", "jinja2"] = "f-string"
+    """The format of the prompt template. Options are: 'f-string', 'jinja2'."""
 
     def format(self, **kwargs) -> str:
         intermediate_steps = kwargs.pop("intermediate_steps")
@@ -19,7 +22,7 @@ class CustomPromptTemplate(StringPromptTemplate):
         kwargs["agent_scratchpad"] = thoughts
         kwargs["tools"] = "\n".join([f"{tool.name}: {tool.description}" for tool in self.tools])
         kwargs["tool_names"] = ", ".join([tool.name for tool in self.tools])
-        return self.template.format(**kwargs)
+        return DEFAULT_FORMATTER_MAPPING[self.template_format](self.template, **kwargs)
 
 class CustomOutputParser(AgentOutputParser):
     begin: bool = False

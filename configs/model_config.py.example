@@ -32,9 +32,9 @@ Agent_MODEL = None
 # LLM 模型运行设备。设为"auto"会自动检测(会有警告)，也可手动设定为 "cuda","mps","cpu","xpu" 其中之一。
 LLM_DEVICE = os.environ.get("LLM_DEVICE", "auto")
 
-HISTORY_LEN = 3
+HISTORY_LEN = 10
 
-MAX_TOKENS = 2048
+MAX_TOKENS = 10*1024
 
 TEMPERATURE = 0.7
 

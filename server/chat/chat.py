@@ -89,7 +89,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         elif conversation_id and history_len > 0: # 前端要求从数据库取历史消息
             # 使用memory 时必须 prompt 必须含有memory.memory_key 对应的变量
             prompt = get_prompt_template("llm_chat", "with_history")
-            chat_prompt = PromptTemplate.from_template(prompt)
+            chat_prompt = PromptTemplate.from_template(prompt, template_format="jinja2")
             # 根据conversation_id 获取message 列表进而拼凑 memory
             memory = ConversationBufferDBMemory(conversation_id=conversation_id,
                                                 llm=model,

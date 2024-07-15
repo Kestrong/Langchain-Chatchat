@@ -22,13 +22,13 @@ PROMPT_TEMPLATES = {
             '{{ input }}',
 
         "with_history":
-            'The following is a friendly conversation between a human and an AI. '
-            'The AI is talkative and provides lots of specific details from its context. '
-            'If the AI does not know the answer to a question, it truthfully says it does not know.\n\n'
+            'The following is a friendly conversation between a human and an Assistant. '
+            'The Assistant is talkative and provides lots of specific details from its context. '
+            'If the Assistant does not know the answer to a question, it truthfully says it does not know.\n\n'
             'Current conversation:\n'
-            '{history}\n'
-            'Human: {input}\n'
-            'AI:',
+            '{{ history }}\n'
+            'Human: {{ input }}\n'
+            'Assistant:',
 
         "py":
             '你是一个聪明的代码助手，请你给我写出简单的py代码。 \n'
@@ -38,21 +38,12 @@ PROMPT_TEMPLATES = {
     "completion": {
         "default":
             '请根据上下文内容输出下文. \n'
-            'Human: {input}\n'
-            'AI:',
-
-        "with_history":
-            'The following is a friendly conversation between a human and an AI. '
-            'The AI is talkative and provides lots of specific details from its context. '
-            'If the AI does not know the answer to a question, it truthfully says it does not know.\n\n'
-            'Current conversation:\n'
-            '{history}\n'
-            'Human: {input}\n'
+            'Human: {{ input }}\n'
             'AI:',
 
         "py":
             '你是一个聪明的代码助手，请你给我写出简单的py代码。 \n'
-            '{input}',
+            '{{ input }}',
     },
 
     "knowledge_base_chat": {
@@ -91,29 +82,29 @@ PROMPT_TEMPLATES = {
         "default":
             'Answer the following questions as best you can. If it is in order, you can use some tools appropriately. '
             'You have access to the following tools:\n\n'
-            '{tools}\n\n'
+            '{{ tools }}\n\n'
             'Use the following format:\n'
             'Question: the input question you must answer1\n'
             'Thought: you should always think about what to do and what tools to use.\n'
-            'Action: the action to take, should be one of [{tool_names}]\n'
+            'Action: the action to take, should be one of [{{ tool_names }}]\n'
             'Action Input: the input to the action\n'
             'Observation: the result of the action\n'
             '... (this Thought/Action/Action Input/Observation can be repeated zero or more times)\n'
             'Thought: I now know the final answer\n'
             'Final Answer: the final answer to the original input question\n'
             'Begin!\n\n'
-            'history: {history}\n\n'
-            'Question: {input}\n\n'
-            'Thought: {agent_scratchpad}\n',
+            'history: {{ history }}\n\n'
+            'Question: {{ input }}\n\n'
+            'Thought: {{ agent_scratchpad }}\n',
 
         "ChatGLM3":
             'You can answer using the tools, or answer directly using your knowledge without using the tools. '
             'Respond to the human as helpfully and accurately as possible.\n'
             'You have access to the following tools:\n'
-            '{tools}\n'
+            '{{ tools }}\n'
             'Use a json blob to specify a tool by providing an action key (tool name) '
             'and an action_input key (tool input).\n'
-            'Valid "action" values: "Final Answer" or  [{tool_names}]'
+            'Valid "action" values: "Final Answer" or  [{{ tool_names }}]'
             'Provide only ONE action per $JSON_BLOB, as shown:\n\n'
             '```\n'
             '{{{{\n'
@@ -139,8 +130,8 @@ PROMPT_TEMPLATES = {
             '}}}}\n'
             'Begin! Reminder to ALWAYS respond with a valid json blob of a single action. Use tools if necessary. '
             'Respond directly if appropriate. Format is Action:```$JSON_BLOB```then Observation:.\n'
-            'history: {history}\n\n'
-            'Question: {input}\n\n'
-            'Thought: {agent_scratchpad}',
+            'history: {{ history }}\n\n'
+            'Question: {{ input }}\n\n'
+            'Thought: {{ agent_scratchpad }}',
     }
 }

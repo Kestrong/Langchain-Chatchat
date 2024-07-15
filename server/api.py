@@ -203,7 +203,7 @@ def mount_knowledge_routes(app: FastAPI):
              summary="与知识库对话")(knowledge_base_chat)
 
     app.post("/chat/file_chat",
-             tags=["Knowledge Base Management"],
+             tags=["Chat"],
              summary="文件对话"
              )(file_chat)
 
