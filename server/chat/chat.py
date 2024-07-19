@@ -113,14 +113,14 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
             async for token in callback.aiter():
                 # Use server-sent-events to stream the response
                 yield json.dumps(
-                    {"text": token, "message_id": message_id},
+                    {"answer": token, "message_id": message_id},
                     ensure_ascii=False)
         else:
             answer = ""
             async for token in callback.aiter():
-                answer += token
+                answer += str(token)
             yield json.dumps(
-                {"text": answer, "message_id": message_id},
+                {"answer": answer, "message_id": message_id},
                 ensure_ascii=False)
 
         await task

@@ -92,8 +92,8 @@ kbs_config = {
     "milvus": {
         "host": os.environ.get('MILVUS_HOST', '127.0.0.1'),
         "port": os.environ.get('MILVUS_PORT', '19530'),
-        "user": "",
-        "password": "",
+        "user": os.environ.get('MILVUS_USER', ''),
+        "password": os.environ.get('MILVUS_PASSWORD', ''),
         "secure": False,
     },
     "zilliz": {

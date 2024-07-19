@@ -176,7 +176,7 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
         else:
             answer = ""
             async for token in callback.aiter():
-                answer += token
+                answer += str(token)
             yield json.dumps({"answer": answer,
                               "docs": source_documents},
                              ensure_ascii=False)

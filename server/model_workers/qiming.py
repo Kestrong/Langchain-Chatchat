@@ -7,6 +7,7 @@ from fastchat import conversation as conv
 from fastchat.conversation import Conversation
 from websocket._core import create_connection
 
+from configs import logger
 from server.model_workers import ApiModelWorker, ApiChatParams
 
 
@@ -41,7 +42,7 @@ class QimingWorker(ApiModelWorker):
             4、装维问答:param1用户角色，可填写：装维一线、客支、客调、客服、客户,param2用户问题,scene固定值7;\n
             5、故障复盘:param1固定为1，代表事故复盘,param2用户问题,scene固定值6;\n
             6、传输故障处置:param1故障现象,param2故障描述,scene固定值1;\n
-            7、运维助手：param1用户问题,param2细分场景标识符，可填写：ywgfwd、gzzd、aqldxf，scene固定值9;\n
+            7、运维助手：param1用户问题,param2细分场景标识符，可填写：变更操作管控bgczgk、故障诊断gzzd、安全漏洞修复aqldxf、故障自愈gzzy、运维规范问答ywgfwd、服务台/翼问赋能fwt，scene固定值9;\n
         """
         message = {
             "uid": xappid,
@@ -59,12 +60,13 @@ class QimingWorker(ApiModelWorker):
             "scene": ""
         }
         websocket = None
+        text = ''
         try:
             content = params.messages[-1].get('content')
             if content.startswith('{') and content.endswith('}'):
                 contentObj = json.loads(json.dumps(eval(content)))
                 if contentObj.get('question', '').startswith('###') and contentObj.get('question', '').endswith('###'):
-                    parts = content.split('###')
+                    parts = contentObj.get('question', '').split('###')
                     message['scene'] = parts[1]
                     message['param1'] = parts[2]
                     message['param2'] = parts[3] if len(parts) > 3 else ""
@@ -96,7 +98,6 @@ class QimingWorker(ApiModelWorker):
                 message['param2'] = parts[3] if len(parts) > 3 else ""
             websocket = create_connection(url=uri, header=headers, timeout=30)
             websocket.send(json.dumps(message))
-            text = ''
             while True:
                 response = websocket.recv()
                 if response == "<#END>":
@@ -104,7 +105,9 @@ class QimingWorker(ApiModelWorker):
                 text += response
                 yield {"error_code": 0, "text": text}
         except Exception as e:
-            print(f"{e}")
+            logger.error(f"{e}")
+            if text == '':
+                yield {"error_code": 0, "text": "调用启明大模型失败或者启明大模型没有任何回复内容。"}
         finally:
             try:
                 if websocket is not None:

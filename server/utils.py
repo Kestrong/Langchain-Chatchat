@@ -145,6 +145,7 @@ class PageResponse(BaseResponse):
             }
         }
 
+
 class ListResponse(BaseResponse):
     data: List[Any] = pydantic.Field(..., description="List of names")
 
@@ -480,6 +481,8 @@ def get_prompt_template(type: str, name: str) -> Optional[str]:
     from configs import prompt_config
     import importlib
     importlib.reload(prompt_config)
+    if name.startswith('[*safe_prompt*]') and name.endswith('[*safe_prompt*]'):
+        return name.lstrip('[*safe_prompt*]').rstrip('[*safe_prompt*]')
     return prompt_config.PROMPT_TEMPLATES[type].get(name)
 
 

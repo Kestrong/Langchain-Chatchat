@@ -2,10 +2,12 @@ import os
 import sys
 
 import nltk
+from fastapi.security import APIKeyHeader
 from starlette.requests import Request
 
+from server.chat.chat_router import chat_router
 from server.chat.conversation import create_conversation, delete_conversation, update_conversation, filter_message, \
-    filter_conversation, delete_message
+    filter_conversation, delete_message, delete_user_conversation
 from server.chat.task_manager import stop
 from server.memory.token_info_memory import set_token
 
@@ -16,7 +18,7 @@ from configs.model_config import NLTK_DATA_PATH
 from configs.server_config import OPEN_CROSS_DOMAIN, CIAM_TOKEN_COOKIE_NAME
 import argparse
 import uvicorn
-from fastapi import Body
+from fastapi import Body, Header, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 from server.chat.chat import chat
@@ -39,9 +41,13 @@ async def document():
 
 
 def create_app(run_mode: str = None):
+    async def verify_authorization(authorization: str = Security(APIKeyHeader(name='Authorization', auto_error=False))):
+        return authorization
+
     app = FastAPI(
         title="Langchain-Chatchat API Server",
-        version=VERSION, root_path="/flm"
+        version=VERSION, root_path="/flm",
+        dependencies=[Depends(verify_authorization)]
     )
     MakeFastAPIOffline(app)
     # Add CORS middleware to allow all origins
@@ -76,6 +82,11 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
     # Tag: Chat
     app.post("/chat/chat",
              tags=["Chat"],
+             summary="各种对话的总入口",
+             )(chat_router)
+
+    app.post("/chat/llm_chat",
+             tags=["Chat"],
              summary="与llm模型对话(通过LLMChain)",
              )(chat)
 
@@ -94,7 +105,7 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
              summary="停止llm模型对话",
              )(stop)
 
-    app.get("/chat/conversation",
+    app.get("/chat/conversations",
             tags=["Chat"],
             summary="获取会话",
             )(filter_conversation)
@@ -114,6 +125,11 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
                summary="删除会话",
                )(delete_conversation)
 
+    app.delete("/chat/user/conversations",
+               tags=["Chat"],
+               summary="删除用户的所有会话",
+               )(delete_user_conversation)
+
     app.get("/chat/messages",
             tags=["Chat"],
             summary="获取消息",
@@ -128,6 +144,8 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
     mount_knowledge_routes(app)
     # 摘要相关接口
     mount_filename_summary_routes(app)
+    # 助手相关接口
+    mount_assistant_routes(app)
 
     # LLM模型相关接口
     app.post("/llm_model/list_running_models",
@@ -186,6 +204,36 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
              tags=["Other"],
              summary="将文本向量化，支持本地模型和在线模型",
              )(embed_texts_endpoint)
+
+
+def mount_assistant_routes(app: FastAPI):
+    from server.chat.assistant import create_assistant, update_assistant, delete_assistant, get_assistants, \
+        get_assistant_detail
+
+    app.get("/chat/assistants",
+            tags=["Chat"],
+            summary="获取助手列表",
+            )(get_assistants)
+
+    app.get("/chat/assistant",
+            tags=["Chat"],
+            summary="获取助手详情",
+            )(get_assistant_detail)
+
+    app.post("/chat/assistant",
+             tags=["Chat"],
+             summary="创建助手",
+             )(create_assistant)
+
+    app.put("/chat/assistant",
+            tags=["Chat"],
+            summary="修改助手",
+            )(update_assistant)
+
+    app.delete("/chat/assistant",
+               tags=["Chat"],
+               summary="删除助手",
+               )(delete_assistant)
 
 
 def mount_knowledge_routes(app: FastAPI):

@@ -301,7 +301,7 @@ class ApiRequest:
             **kwargs,
     ):
         '''
-        对应api.py/chat/chat接口
+        对应api.py/chat/llm_chat接口
         '''
         data = {
             "query": query,
@@ -318,7 +318,7 @@ class ApiRequest:
         # print(f"received input message:")
         # pprint(data)
 
-        response = self.post("/chat/chat", json=data, stream=True, **kwargs)
+        response = self.post("/chat/llm_chat", json=data, stream=True, **kwargs)
         return self._httpx_stream2generator(response, as_json=True)
 
     @deprecated(

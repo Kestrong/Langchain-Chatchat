@@ -48,7 +48,7 @@ data = {
 }
 
 
-def test_chat_chat(api="/chat/chat"):
+def test_chat_chat(api="/chat/llm_chat"):
     url = f"{api_base_url}{api}"
     dump_input(data, api)
     response = requests.post(url, headers=headers, json=data, stream=True)

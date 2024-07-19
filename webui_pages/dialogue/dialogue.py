@@ -313,7 +313,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                     if error_msg := check_error_msg(t):  # check whether error occured
                         st.error(error_msg)
                         break
-                    text += t.get("text", "")
+                    text += t.get("answer", "")
                     chat_box.update_msg(text)
                     message_id = t.get("message_id", "")
 

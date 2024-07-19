@@ -45,7 +45,7 @@ async def completion(query: str = Body(..., description="用户输入", examples
         )
 
         prompt_template = get_prompt_template("completion", prompt_name)
-        prompt = PromptTemplate.from_template(prompt_template)
+        prompt = PromptTemplate.from_template(prompt_template, template_format="jinja2")
         chain = LLMChain(prompt=prompt, llm=model)
 
         # Begin a task that runs in the background.
@@ -57,12 +57,12 @@ async def completion(query: str = Body(..., description="用户输入", examples
         if stream:
             async for token in callback.aiter():
                 # Use server-sent-events to stream the response
-                yield token
+                yield json.dumps({"answer": token}, ensure_ascii=False)
         else:
             answer = ""
             async for token in callback.aiter():
-                answer += token
-            yield answer
+                answer += str(token)
+            yield json.dumps({"answer": answer}, ensure_ascii=False)
 
         await task
 
