@@ -62,9 +62,10 @@ def filter_message(id: str = Query(description="会话id"),
 
 
 def filter_conversation(assistant_id: int = Query(-1, description="助手ID"),
+                        page: int = Query(default=1, description="页码"),
                         limit: int = Query(default=10, description='会话数量')) -> BaseResponse:
-    conversations = get_conversation_from_db(assistant_id=assistant_id, limit=limit)
-    return BaseResponse(code=200, data={'conversations': conversations})
+    conversations, total = get_conversation_from_db(assistant_id=assistant_id, page=page, limit=limit)
+    return BaseResponse(code=200, data={'conversations': conversations, 'total': total})
 
 
 def delete_message(message_id: str = Query(description="消息id")) -> BaseResponse:

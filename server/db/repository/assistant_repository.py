@@ -1,3 +1,5 @@
+from sqlalchemy import func
+
 from server.db.models.assistant_model import AssistantModel
 from server.db.models.knowledge_base_model import KnowledgeBaseModel
 from server.db.session import with_session
@@ -47,10 +49,11 @@ def get_assistant_from_db(session, page: int = 1, size: int = 10):
     offset = (page_num - 1) * page_size
     assistants = session.query(AssistantModel).order_by(AssistantModel.sort_id.asc()).offset(offset).limit(
         page_size).all()
+    total = session.query(func.count(AssistantModel.id)).scalar()
     data = []
     for c in assistants:
         data.append(c.dict())
-    return data
+    return data, total
 
 
 @with_session

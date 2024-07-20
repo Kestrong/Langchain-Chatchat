@@ -1,5 +1,7 @@
 import uuid
 
+from sqlalchemy import func
+
 from server.db.models.conversation_model import ConversationModel
 from server.db.models.message_model import MessageModel
 from server.db.session import with_session
@@ -54,16 +56,20 @@ def delete_user_conversation_from_db(session, assistant_id: int):
 
 
 @with_session
-def get_conversation_from_db(session, assistant_id: int = -1, limit: int = 10):
+def get_conversation_from_db(session, assistant_id: int = -1, page: int = 1, limit: int = 10):
     userId = get_token_info().get("userId")
     if userId is None or userId == "":
         return []
+    page_size = abs(limit)
+    page_num = max(page, 1)
+    offset = (page_num - 1) * page_size
     filters = [ConversationModel.create_by == str(userId)]
     if assistant_id >= 0:
         filters.append(ConversationModel.assistant_id == assistant_id)
     conversations = (session.query(ConversationModel).filter(*filters)
-                     .order_by(ConversationModel.create_time.desc()).limit(limit).all())
+                     .order_by(ConversationModel.create_time.desc()).offset(offset).limit(page_size).all())
+    total = session.query(func.count(ConversationModel.id)).filter(*filters).scalar()
     data = []
     for c in conversations:
         data.append(c.dict())
-    return data
+    return data, total

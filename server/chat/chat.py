@@ -39,6 +39,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                prompt_name: str = Body("default", description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                ):
 
+    origin_query = query
     if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
         extra['question'] = query
         query = json.dumps(extra)
@@ -50,7 +51,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         memory = None
 
         # 负责保存llm response到message db
-        message_id = add_message_to_db(chat_type="llm_chat", query=query, conversation_id=conversation_id)
+        message_id = add_message_to_db(chat_type="llm_chat", query=origin_query, conversation_id=conversation_id)
         conversation_callback = ConversationCallbackHandler(conversation_id=conversation_id, message_id=message_id,
                                                             chat_type="llm_chat",
                                                             query=query)
