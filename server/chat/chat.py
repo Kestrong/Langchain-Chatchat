@@ -12,7 +12,7 @@ import uuid
 import server.chat.task_manager as task_manager
 from langchain.prompts.chat import ChatPromptTemplate
 from typing import List, Optional, Union
-from server.chat.utils import History
+from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT
 from langchain.prompts import PromptTemplate
 from server.utils import get_prompt_template
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
@@ -39,7 +39,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                prompt_name: str = Body("default", description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                ):
 
-    if model_name == 'qiming-api':
+    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
         extra['question'] = query
         query = json.dumps(extra)
 
@@ -98,6 +98,9 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
             prompt_template = get_prompt_template("llm_chat", prompt_name)
             input_msg = History(role="user", content=prompt_template).to_msg_template(False)
             chat_prompt = ChatPromptTemplate.from_messages([input_msg])
+
+        if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+            chat_prompt = EMPTY_LLM_CHAT_PROMPT
 
         chain = LLMChain(prompt=chat_prompt, llm=model, memory=memory)
 

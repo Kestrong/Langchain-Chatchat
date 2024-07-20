@@ -3,6 +3,7 @@ import json
 from fastapi import Body
 from sse_starlette.sse import EventSourceResponse
 from configs import LLM_MODELS, TEMPERATURE
+from server.chat.utils import UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT
 from server.utils import wrap_done, get_ChatOpenAI
 from langchain.chains import LLMChain
 from langchain.callbacks import AsyncIteratorCallbackHandler
@@ -25,7 +26,7 @@ async def completion(query: str = Body(..., description="用户输入", examples
                      ):
 
     #todo 因ApiModelWorker 默认是按chat处理的，会对params["prompt"] 解析为messages，因此ApiModelWorker 使用时需要有相应处理
-    if model_name == 'qiming-api':
+    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
         extra['question'] = query
         query = json.dumps(extra)
     async def completion_iterator(query: str,
@@ -43,9 +44,11 @@ async def completion(query: str = Body(..., description="用户输入", examples
             max_tokens=max_tokens,
             callbacks=[callback]
         )
-
-        prompt_template = get_prompt_template("completion", prompt_name)
-        prompt = PromptTemplate.from_template(prompt_template, template_format="jinja2")
+        if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+            prompt = EMPTY_LLM_CHAT_PROMPT
+        else:
+            prompt_template = get_prompt_template("completion", prompt_name)
+            prompt = PromptTemplate.from_template(prompt_template, template_format="jinja2")
         chain = LLMChain(prompt=prompt, llm=model)
 
         # Begin a task that runs in the background.

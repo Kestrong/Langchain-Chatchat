@@ -10,12 +10,12 @@ from langchain.memory import ConversationBufferWindowMemory
 from langchain.agents import LLMSingleActionAgent, AgentExecutor
 from typing import AsyncIterable, Optional, List
 
-from server.utils import wrap_done, get_ChatOpenAI, get_prompt_template
+from server.utils import wrap_done, get_ChatOpenAI, get_prompt_template, BaseResponse
 from server.knowledge_base.kb_service.base import get_kb_details
 from server.agent.custom_agent.ChatGLM3Agent import initialize_glm3_agent
 from server.agent.tools_select import tools, tool_names
 from server.agent.callbacks import CustomAsyncIteratorCallbackHandler, Status
-from server.chat.utils import History
+from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS
 from server.agent import model_container
 from server.agent.custom_template import CustomOutputParser, CustomPromptTemplate
 
@@ -35,6 +35,9 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                      prompt_name: str = Body("default",
                                              description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                      ):
+    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+        return BaseResponse(code=500, msg=f"对不起，agent对话不支持该模型:{model_name}")
+
     history = [History.from_data(h) for h in history]
 
     async def agent_chat_iterator(

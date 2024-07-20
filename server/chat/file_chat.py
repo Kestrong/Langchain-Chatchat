@@ -10,7 +10,7 @@ from langchain.callbacks import AsyncIteratorCallbackHandler
 from typing import AsyncIterable, List, Optional
 import asyncio
 from langchain.prompts.chat import ChatPromptTemplate
-from server.chat.utils import History
+from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS
 from server.knowledge_base.kb_service.base import EmbeddingsFunAdapter
 from server.knowledge_base.utils import KnowledgeFile
 import json
@@ -109,6 +109,8 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
                 ):
     if knowledge_id not in memo_faiss_pool.keys():
         return BaseResponse(code=404, msg=f"未找到临时知识库 {knowledge_id}，请先上传文件")
+    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+        return BaseResponse(code=500, msg=f"对不起，文件对话不支持该模型:{model_name}")
 
     history = [History.from_data(h) for h in history]
 

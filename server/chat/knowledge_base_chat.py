@@ -21,7 +21,7 @@ from langchain.callbacks import AsyncIteratorCallbackHandler
 from typing import AsyncIterable, List, Optional
 import asyncio, json
 from langchain.prompts.chat import ChatPromptTemplate
-from server.chat.utils import History
+from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS
 from server.knowledge_base.kb_service.base import KBServiceFactory
 from urllib.parse import urlencode
 from server.knowledge_base.kb_doc_api import search_docs
@@ -66,9 +66,8 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
 
     history = [History.from_data(h) for h in history]
 
-    if model_name == 'qiming-api':
-        extra['question'] = query
-        query = json.dumps(extra)
+    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+        return BaseResponse(code=500, msg=f"对不起，知识库对话不支持该模型:{model_name}")
 
     async def knowledge_base_chat_iterator(
             query: str,
@@ -106,14 +105,11 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             max_tokens=max_tokens,
             callbacks=callbacks,
         )
-        if model_name == 'qiming-api':
-            docs = []
-        else:
-            docs = await run_in_threadpool(search_docs,
-                                           query=query,
-                                           knowledge_base_name=knowledge_base_name,
-                                           top_k=top_k,
-                                           score_threshold=score_threshold)
+        docs = await run_in_threadpool(search_docs,
+                                       query=query,
+                                       knowledge_base_name=knowledge_base_name,
+                                       top_k=top_k,
+                                       score_threshold=score_threshold)
 
         # 加入reranker
         if USE_RERANKER:
@@ -146,7 +142,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             prompt_template = get_prompt_template("knowledge_base_chat", "empty")
         else:
             prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
-        input_msg = History(role="user", content=query if model_name == 'qiming-api' else prompt_template).to_msg_template(False)
+        input_msg = History(role="user", content=prompt_template).to_msg_template(False)
         chat_prompt = ChatPromptTemplate.from_messages(
             [i.to_msg_template() for i in history] + [input_msg])
 

@@ -18,7 +18,7 @@ def get_token_info() -> dict:
             return {}
         part = str(token).split(".")[1]
         part = part + '=' * ((4 - (len(part) % 4)) % 4)
-        return json.loads(base64.b64decode(part).decode('utf-8'))
+        return json.loads(base64.b64decode(part, '-_').decode('utf-8'))
     return {}
 
 
