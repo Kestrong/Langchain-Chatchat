@@ -5,6 +5,7 @@ from fastapi import Body
 
 from configs import logger, log_verbose, LLM_MODELS
 from server.db.repository import feedback_message_to_db
+from server.memory.token_info_memory import get_token_info
 from server.model_workers.base import ApiChatQimingParams
 from server.utils import BaseResponse
 
@@ -14,8 +15,12 @@ def post_feedback_to_qiming(model_name: str, score: int, reason: str, extra: dic
         params = ApiChatQimingParams(messages=[]).load_config(worker_name=model_name)
         headers = {"X-APP-ID": params.api_key, "X-APP-KEY": params.secret_key}
         extra['feedbackProvice'] = params.role_meta['prov']
+        feedbackProvider = get_token_info().get('staffName')
+        if feedbackProvider is None or feedbackProvider.strip() == '':
+            feedbackProvider = '灵晞平台'
+        extra['feedbackProvider'] = feedbackProvider
         extra['likes'] = str(score)
-        extra['feedback'] = reason
+        extra['feedback'] = reason if reason is not None and reason != '' else '回答很准确'
         response = requests.post(url=params.feedbackUrl, json=extra, headers=headers)
         if response.status_code != 200:
             response.raise_for_status()
