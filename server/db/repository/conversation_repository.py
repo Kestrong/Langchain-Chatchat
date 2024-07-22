@@ -59,7 +59,7 @@ def delete_user_conversation_from_db(session, assistant_id: int):
 def get_conversation_from_db(session, assistant_id: int = -1, page: int = 1, limit: int = 10):
     userId = get_token_info().get("userId")
     if userId is None or userId == "":
-        return []
+        return [], 0
     page_size = abs(limit)
     page_num = max(page, 1)
     offset = (page_num - 1) * page_size

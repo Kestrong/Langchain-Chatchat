@@ -1,8 +1,8 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, MetaData
 from sqlalchemy.ext.declarative import declarative_base, DeclarativeMeta
 from sqlalchemy.orm import sessionmaker
 
-from configs import SQLALCHEMY_DATABASE_URI, ECHO_SQL
+from configs import SQLALCHEMY_DATABASE_URI, ECHO_SQL, DATABASE_SCHEMA
 import json
 
 engine = create_engine(
@@ -13,4 +13,8 @@ engine = create_engine(
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base: DeclarativeMeta = declarative_base()
+metadata = MetaData(
+    schema=DATABASE_SCHEMA
+)
+
+Base: DeclarativeMeta = declarative_base(metadata=metadata)
