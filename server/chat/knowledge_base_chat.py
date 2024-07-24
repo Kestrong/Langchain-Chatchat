@@ -3,9 +3,9 @@ from collections import OrderedDict
 from fastapi import Body, Request
 from sse_starlette.sse import EventSourceResponse
 from fastapi.concurrency import run_in_threadpool
-from configs import (LLM_MODELS, 
-                     VECTOR_SEARCH_TOP_K, 
-                     SCORE_THRESHOLD, 
+from configs import (LLM_MODELS,
+                     VECTOR_SEARCH_TOP_K,
+                     SCORE_THRESHOLD,
                      TEMPERATURE,
                      USE_RERANKER,
                      RERANKER_MODEL,
@@ -80,8 +80,8 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         callback = AsyncIteratorCallbackHandler()
         # 负责保存llm response到message db
         message_id = add_message_to_db(chat_type="knowledge_base_chat", query=query, conversation_id=conversation_id)
-        conversation_callback = ConversationCallbackHandler(conversation_id=conversation_id, message_id=message_id,
-                                                            chat_type="knowledge_base_chat",
+        conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
+                                                            message_id=message_id, chat_type="knowledge_base_chat",
                                                             query=query)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         if isinstance(max_tokens, int) and max_tokens <= 0:
@@ -171,13 +171,14 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         if stream:
             async for token in callback.aiter():
                 # Use server-sent-events to stream the response
-                yield json.dumps({"answer": token, "message_id": message_id}, ensure_ascii=False)
+                yield json.dumps({"answer": token, "message_id": message_id, "conversation_id": conversation_id},
+                                 ensure_ascii=False)
             yield json.dumps({"docs": source_documents}, ensure_ascii=False)
         else:
             answer = ""
             async for token in callback.aiter():
                 answer += str(token)
-            yield json.dumps({"answer": answer, "message_id": message_id,
+            yield json.dumps({"answer": answer, "message_id": message_id, "conversation_id": conversation_id,
                               "docs": source_documents},
                              ensure_ascii=False)
         await task

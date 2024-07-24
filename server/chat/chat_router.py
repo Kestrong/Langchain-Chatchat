@@ -54,6 +54,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
             prompt_name = '[*safe_prompt*]' + prompt + '[*safe_prompt*]'
         if assistant.get('extra') is not None:
             extra.update(assistant.get('extra'))
+        extra['assistant_id'] = assistant_id
 
     if chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or (
             knowledge_base_name is not None and knowledge_base_name != ''):

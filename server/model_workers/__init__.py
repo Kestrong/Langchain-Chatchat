@@ -11,3 +11,4 @@ from .tiangong import TianGongWorker
 from .gemini import GeminiWorker
 from .claude import ClaudeWorker
 from .qiming import QimingWorker
+from .iotqwen import IotQwenWorker

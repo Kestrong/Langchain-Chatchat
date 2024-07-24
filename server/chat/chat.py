@@ -12,7 +12,7 @@ import uuid
 import server.chat.task_manager as task_manager
 from langchain.prompts.chat import ChatPromptTemplate
 from typing import List, Optional, Union
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT
+from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json
 from langchain.prompts import PromptTemplate
 from server.utils import get_prompt_template
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
@@ -42,6 +42,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
     origin_query = query
     if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
         extra['question'] = query
+        extra['stream'] = stream
         query = json.dumps(extra)
 
     async def chat_iterator() -> AsyncIterable[str]:
@@ -52,9 +53,8 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
 
         # 负责保存llm response到message db
         message_id = add_message_to_db(chat_type="llm_chat", query=origin_query, conversation_id=conversation_id)
-        conversation_callback = ConversationCallbackHandler(conversation_id=conversation_id, message_id=message_id,
-                                                            chat_type="llm_chat",
-                                                            query=query)
+        conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
+                                                            message_id=message_id, chat_type="llm_chat", query=query)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         callbacks.extend([conversation_callback, task_callback])
         # message_id = uuid.uuid4().hex
@@ -116,16 +116,16 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         if stream:
             async for token in callback.aiter():
                 # Use server-sent-events to stream the response
-                yield json.dumps(
-                    {"answer": token, "message_id": message_id},
-                    ensure_ascii=False)
+                d = {"message_id": message_id, "conversation_id": conversation_id}
+                d.update(parse_llm_token_inner_json(model_name, token))
+                yield json.dumps(d, ensure_ascii=False)
         else:
             answer = ""
             async for token in callback.aiter():
                 answer += str(token)
-            yield json.dumps(
-                {"answer": answer, "message_id": message_id},
-                ensure_ascii=False)
+            d = {"message_id": message_id, "conversation_id": conversation_id}
+            d.update(parse_llm_token_inner_json(model_name, answer))
+            yield json.dumps(d, ensure_ascii=False)
 
         await task
 

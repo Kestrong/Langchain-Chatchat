@@ -135,6 +135,9 @@ FSCHAT_MODEL_WORKERS = {
     "qiming-api": {
         "port": 21011,
     },
+    "iotqwen-api": {
+        "port": 21012,
+    },
 }
 
 FSCHAT_CONTROLLER = {

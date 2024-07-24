@@ -1,6 +1,8 @@
 import uuid
 from typing import Dict
 
+from sqlalchemy import func
+
 from server.db.models.message_model import MessageModel
 from server.db.session import with_session
 from server.memory.token_info_memory import get_token_info
@@ -62,16 +64,31 @@ def feedback_message_to_db(session, message_id, feedback_score, feedback_reason)
 
 @with_session
 def filter_message(session, conversation_id: str, limit: int = 10):
-    messages = (session.query(MessageModel).filter_by(conversation_id=conversation_id).
-                # 用户最新的query 也会插入到db，忽略这个message record
-                filter(MessageModel.response != '').
-                # 返回最近的limit 条记录
-                order_by(MessageModel.create_time.desc()).limit(limit).all())
+    # 用户最新的query 也会插入到db，忽略这个message record
+    filters = [MessageModel.conversation_id == conversation_id, MessageModel.response != '']
+    messages = session.query(MessageModel).filter(*filters).order_by(MessageModel.create_time.desc()).limit(limit).all()
     # 直接返回 List[MessageModel] 报错
     data = []
     for m in messages:
         data.append(m.dict())
     return data
+
+
+@with_session
+def filter_message_page(session, conversation_id: str, page: int = 1, limit: int = 10):
+    page_size = abs(limit)
+    page_num = max(page, 1)
+    offset = (page_num - 1) * page_size
+    # 用户最新的query 也会插入到db，忽略这个message record
+    filters = [MessageModel.conversation_id == conversation_id, MessageModel.response != '']
+    messages = session.query(MessageModel).filter(*filters).order_by(MessageModel.create_time.desc()).offset(
+        offset).limit(limit).all()
+    total = session.query(func.count(MessageModel.id)).filter(*filters).scalar()
+    # 直接返回 List[MessageModel] 报错
+    data = []
+    for m in messages:
+        data.append(m.dict())
+    return data, total
 
 
 @with_session

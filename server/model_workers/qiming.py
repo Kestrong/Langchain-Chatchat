@@ -61,10 +61,12 @@ class QimingWorker(ApiModelWorker):
         }
         websocket = None
         text = ''
+        stream = True
         try:
             content = params.messages[-1].get('content')
             if content.startswith('{') and content.endswith('}'):
-                contentObj = json.loads(json.dumps(eval(content)))
+                contentObj = json.loads(content)
+                stream = contentObj.get('stream', True)
                 if contentObj.get('question', '').startswith('###') and contentObj.get('question', '').endswith('###'):
                     parts = contentObj.get('question', '').split('###')
                     message['scene'] = parts[1]
@@ -103,11 +105,17 @@ class QimingWorker(ApiModelWorker):
                 if response == "<#END>":
                     break
                 text += response
+                if stream:
+                    yield {"error_code": 0, "text": text}
+            if not stream:
                 yield {"error_code": 0, "text": text}
         except Exception as e:
             logger.error(f"{e}")
             if text == '':
                 yield {"error_code": 0, "text": "调用启明大模型失败或者启明大模型没有任何回复内容。"}
+            else:
+                if not stream:
+                    yield {"error_code": 0, "text": text}
         finally:
             try:
                 if websocket is not None:

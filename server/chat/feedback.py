@@ -17,16 +17,16 @@ def post_feedback_to_qiming(model_name: str, score: int, reason: str, extra: dic
         extra['feedbackProvice'] = params.role_meta['prov']
         feedbackProvider = get_token_info().get('staffName')
         if feedbackProvider is None or feedbackProvider.strip() == '':
-            feedbackProvider = '灵晞平台'
+            feedbackProvider = params.role_meta.get('feedbackProvider', '灵晞平台')
         extra['feedbackProvider'] = feedbackProvider
         extra['likes'] = str(score)
         extra['feedback'] = reason if reason is not None and reason != '' else '回答很准确'
-        response = requests.post(url=params.feedbackUrl, json=extra, headers=headers)
-        if response.status_code != 200:
-            response.raise_for_status()
-        json_data = response.json()
-        if str(json_data.get('code')) != "0":
-            logger.info(json_data)
+        with requests.post(url=params.feedbackUrl, json=extra, headers=headers, timeout=10) as response:
+            if response.status_code != 200:
+                response.raise_for_status()
+            json_data = response.json()
+            if str(json_data.get('code')) != "0":
+                logger.error(json_data)
 
 
 def chat_feedback(message_id: str = Body(..., max_length=32, description="聊天记录id"),

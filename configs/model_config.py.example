@@ -26,7 +26,7 @@ EMBEDDING_MODEL_OUTPUT_PATH = "output"
 # 在这里，我们使用目前主流的两个离线模型，其中，chatglm3-6b 为默认加载模型。
 # 如果你的显存不足，可使用 Qwen-1_8B-Chat, 该模型 FP16 仅需 3.8G显存。
 
-LLM_MODELS = [os.environ.get('LLM_MODELS', "telechat-7B")]
+LLM_MODELS = os.environ.get('LLM_MODELS', "telechat-7B").split(",")
 Agent_MODEL = None
 
 # LLM 模型运行设备。设为"auto"会自动检测(会有警告)，也可手动设定为 "cuda","mps","cpu","xpu" 其中之一。
@@ -137,6 +137,19 @@ ONLINE_LLM_MODEL = {
         "version": "2023-06-01",
         "model_name":"claude-3-opus-20240229", 
         "provider": "ClaudeWorker",
+    },
+    "iotqwen-api": {
+        "version": "iotqwen-v1",
+        "api_proxy": "http://172.25.45.173:20163/v1/chat-messages",
+        "api_key": "app-8HT8uhvcwkIRhmrkQ4HKQn1N",
+        "provider": "IotQwenWorker",
+        "role_meta": {
+            "user_id": "100113",
+            "user": "1980ba7b-56d1-47d0-a1ca-2c895cce82fd",
+            "kb_name": "IT",
+            "topk": 5,
+            "score_threshold": "0.5"
+        }
     },
     "qiming-api": {
         "api_proxy": "ws://10.130.154.233:30000/serviceAgent/rest/ws/qiming_scene_v2",

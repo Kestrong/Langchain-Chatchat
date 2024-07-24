@@ -3,7 +3,7 @@ import json
 from fastapi import Body
 from sse_starlette.sse import EventSourceResponse
 from configs import LLM_MODELS, TEMPERATURE
-from server.chat.utils import UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT
+from server.chat.utils import UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json
 from server.utils import wrap_done, get_ChatOpenAI
 from langchain.chains import LLMChain
 from langchain.callbacks import AsyncIteratorCallbackHandler
@@ -28,6 +28,7 @@ async def completion(query: str = Body(..., description="用户输入", examples
     #todo 因ApiModelWorker 默认是按chat处理的，会对params["prompt"] 解析为messages，因此ApiModelWorker 使用时需要有相应处理
     if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
         extra['question'] = query
+        extra['stream'] = stream
         query = json.dumps(extra)
     async def completion_iterator(query: str,
                                   model_name: str = LLM_MODELS[0],
@@ -60,12 +61,12 @@ async def completion(query: str = Body(..., description="用户输入", examples
         if stream:
             async for token in callback.aiter():
                 # Use server-sent-events to stream the response
-                yield json.dumps({"answer": token}, ensure_ascii=False)
+                yield json.dumps(parse_llm_token_inner_json(model_name, token), ensure_ascii=False)
         else:
             answer = ""
             async for token in callback.aiter():
                 answer += str(token)
-            yield json.dumps({"answer": answer}, ensure_ascii=False)
+            yield json.dumps(parse_llm_token_inner_json(model_name, answer), ensure_ascii=False)
 
         await task
 

@@ -2,7 +2,12 @@ from sqlalchemy import create_engine, MetaData
 from sqlalchemy.ext.declarative import declarative_base, DeclarativeMeta
 from sqlalchemy.orm import sessionmaker
 
-from configs import SQLALCHEMY_DATABASE_URI, ECHO_SQL, DATABASE_SCHEMA
+from configs import SQLALCHEMY_DATABASE_URI, ECHO_SQL
+
+try:
+    from configs import DATABASE_SCHEMA
+except ImportError:
+    DATABASE_SCHEMA = None
 import json
 
 engine = create_engine(

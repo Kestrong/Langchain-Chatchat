@@ -1,3 +1,5 @@
+import json
+
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 from langchain.prompts.chat import ChatMessagePromptTemplate
@@ -46,7 +48,16 @@ class History(BaseModel):
         return h
 
 
+def parse_llm_token_inner_json(model_name: str, token: str):
+    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+        mark = f'###[{model_name}]###'
+        if token.startswith(mark) and token.endswith(mark):
+            inner_json = json.loads(token.lstrip(mark).rstrip(mark))
+            return {"answer": inner_json.get('answer'), 'extra': {"conversation_id": inner_json.get('conversation_id')}}
+    return {"answer": token}
+
+
 EMPTY_LLM_CHAT_PROMPT = PromptTemplate.from_template("{{ input }}", template_format="jinja2")
 
 # 特殊的在线大模型，不支持知识库、agent对话等模式
-UN_FORMAT_ONLINE_LLM_MODELS = ['qiming-api']
+UN_FORMAT_ONLINE_LLM_MODELS = ['qiming-api', 'iotqwen-api']

@@ -3,7 +3,8 @@ from fastapi import Body, Query
 from configs.basic_config import logger, log_verbose
 from server.db.repository.conversation_repository import add_conversation_to_db, update_conversation_to_db, \
     delete_conversation_from_db, get_conversation_from_db, delete_user_conversation_from_db
-from server.db.repository.message_repository import filter_message as filter_message_db, delete_message_from_db
+from server.db.repository.message_repository import delete_message_from_db, \
+    filter_message_page
 from server.utils import BaseResponse
 
 
@@ -56,15 +57,16 @@ def delete_user_conversation(assistant_id: int = Query(-1, description="助手ID
 
 
 def filter_message(id: str = Query(description="会话id"),
+                   page: int = Query(default=1, description="页码"),
                    limit: int = Query(default=10, description='消息数量')) -> BaseResponse:
-    messages = filter_message_db(conversation_id=id, limit=limit)
-    return BaseResponse(code=200, data={'messages': messages})
+    messages, total = filter_message_page(conversation_id=id, page=page, limit=min(abs(limit), 1000))
+    return BaseResponse(code=200, data={'messages': messages, 'total': total})
 
 
 def filter_conversation(assistant_id: int = Query(-1, description="助手ID"),
                         page: int = Query(default=1, description="页码"),
                         limit: int = Query(default=10, description='会话数量')) -> BaseResponse:
-    conversations, total = get_conversation_from_db(assistant_id=assistant_id, page=page, limit=limit)
+    conversations, total = get_conversation_from_db(assistant_id=assistant_id, page=page, limit=min(abs(limit), 1000))
     return BaseResponse(code=200, data={'conversations': conversations, 'total': total})
 
 
