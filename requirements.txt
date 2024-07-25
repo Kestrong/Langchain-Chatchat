@@ -47,6 +47,7 @@ llama-index==0.9.35
 # uncomment libs if you want to use corresponding vector store
 # pymilvus==2.3.6
 # psycopg2==2.9.9
+# pymysql==1.1.0
 # pgvector>=0.2.4
 # pgvecto-rs==0.1.4
 # chromadb==0.4.13

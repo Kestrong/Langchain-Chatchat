@@ -29,7 +29,7 @@ class IotQwenWorker(ApiModelWorker):
         params = params.load_config(self.model_names[0])
         role_meta = params.role_meta
         content = params.messages[-1].get('content')
-        contentObj = json.loads(json.dumps(eval(content)))
+        contentObj = json.loads(content)
         assistant_id = contentObj.get('assistant_id')
         assistant = None
         if assistant_id and assistant_id >= 0:
@@ -55,8 +55,8 @@ class IotQwenWorker(ApiModelWorker):
         logger.debug(f"请求物联网大模型接口参数：{data}")
         text = ""
         mark = f'###[{self.model_names[0]}]###'
-        with requests.post(url, stream=response_mode, headers=headers, timeout=30, json=data) as response:
-            try:
+        try:
+            with requests.post(url, stream=response_mode, headers=headers, timeout=30, json=data) as response:
                 response.raise_for_status()
                 if response_mode:
                     for chunk in response.iter_lines():
@@ -85,10 +85,10 @@ class IotQwenWorker(ApiModelWorker):
                     conversation_id = json_data.get('conversation_id')
                     inner_json = json.dumps({"conversation_id": conversation_id, "answer": json_data.get('answer', '')})
                     yield {"error_code": 0, "text": mark + inner_json + mark}
-            except Exception as e:
-                logger.error(f"{e}")
-                if text == '':
-                    yield {"error_code": 0, "text": "调用物联网大模型失败或者物联网大模型没有任何回复内容。"}
+        except Exception as e:
+            logger.error(f"{e}")
+            if text == '':
+                yield {"error_code": 0, "text": "调用物联网大模型失败或者物联网大模型没有任何回复内容。"}
 
     def get_embeddings(self, params):
         print("get_embedding")
