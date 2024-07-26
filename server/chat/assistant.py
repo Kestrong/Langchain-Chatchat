@@ -62,8 +62,9 @@ def delete_assistant(id: int = Query(description="助手id")) -> BaseResponse:
 
 
 def get_assistants(page: int = Query(default=1, description="页码"),
-                   size: int = Query(default=10, description="分页大小")) -> BaseResponse:
-    assistants, total = get_assistant_from_db(page=page, size=size)
+                   size: int = Query(default=10, description="分页大小"),
+                   keyword: str = Query(default=None, description="关键字搜索")) -> BaseResponse:
+    assistants, total = get_assistant_from_db(page=page, size=size, keyword=keyword)
     return BaseResponse(code=200, data={'assistants': assistants, 'total': total})
 
 

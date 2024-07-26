@@ -37,6 +37,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                max_tokens: Optional[int] = Body(None, description="限制LLM生成Token数量，默认None代表模型最大值"),
                # top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
                prompt_name: str = Body("default", description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
+               store_message: bool = Body(True, description="是否保存消息到数据库"),
                ):
 
     origin_query = query
@@ -52,7 +53,8 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         memory = None
 
         # 负责保存llm response到message db
-        message_id = add_message_to_db(chat_type="llm_chat", query=origin_query, conversation_id=conversation_id)
+        message_id = add_message_to_db(chat_type="llm_chat", query=origin_query, conversation_id=conversation_id,
+                                       store=store_message)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type="llm_chat", query=query)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)

@@ -43,6 +43,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                       # top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
                       prompt_name: str = Body("default",
                                               description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
+                      store_message: bool = Body(True, description="是否保存消息到数据库"),
                       split_result: bool = Body(False,
                                                 description="是否对搜索结果进行拆分（主要用于metaphor搜索引擎）"),
                       request: Request = None,
@@ -63,7 +64,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                          knowledge_base_name=knowledge_base_name, top_k=top_k,
                                          score_threshold=score_threshold, history=history, stream=stream,
                                          model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                                         prompt_name=prompt_name, request=request)
+                                         prompt_name=prompt_name, store_message=store_message, request=request)
 
     elif chat_type == ChatType.SEARCH_ENGINE_CHAT.value or (
             search_engine_name is not None and search_engine_name != ''):
@@ -96,4 +97,4 @@ async def chat_router(query: str = Body(..., description="用户输入", example
         return await chat(query=query, extra=extra, conversation_id=conversation_id,
                           history_len=history_len, history=history, stream=stream,
                           model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                          prompt_name=prompt_name)
+                          prompt_name=prompt_name, store_message=store_message)

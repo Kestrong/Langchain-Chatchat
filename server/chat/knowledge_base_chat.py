@@ -58,6 +58,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                   "default",
                                   description="使用的prompt模板名称(在configs/prompt_config.py中配置)"
                               ),
+                              store_message: bool = Body(True, description="是否保存消息到数据库"),
                               request: Request = None,
                               ):
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
@@ -79,7 +80,8 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         nonlocal max_tokens
         callback = AsyncIteratorCallbackHandler()
         # 负责保存llm response到message db
-        message_id = add_message_to_db(chat_type="knowledge_base_chat", query=query, conversation_id=conversation_id)
+        message_id = add_message_to_db(chat_type="knowledge_base_chat", query=query, conversation_id=conversation_id,
+                                       store=store_message)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type="knowledge_base_chat",
                                                             query=query)

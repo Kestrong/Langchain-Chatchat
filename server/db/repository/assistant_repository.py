@@ -43,13 +43,16 @@ def delete_assistant_from_db(session, assistant_id: int):
 
 
 @with_session
-def get_assistant_from_db(session, page: int = 1, size: int = 10):
+def get_assistant_from_db(session, page: int = 1, size: int = 10, keyword: str = None):
     page_size = abs(size)
     page_num = max(page, 1)
     offset = (page_num - 1) * page_size
-    assistants = session.query(AssistantModel).order_by(AssistantModel.sort_id.asc()).offset(offset).limit(
-        page_size).all()
-    total = session.query(func.count(AssistantModel.id)).scalar()
+    filters = []
+    if keyword is not None and keyword.strip() != '':
+        filters.append(AssistantModel.name.ilike('%{}%'.format(keyword)))
+    assistants = (session.query(AssistantModel).filter(*filters).order_by(AssistantModel.sort_id.asc()).offset(offset)
+                  .limit(page_size).all())
+    total = session.query(func.count(AssistantModel.id)).filter(*filters).scalar()
     data = []
     for c in assistants:
         data.append(c.dict())

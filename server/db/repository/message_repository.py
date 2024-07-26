@@ -10,12 +10,14 @@ from server.memory.token_info_memory import get_token_info
 
 @with_session
 def add_message_to_db(session, conversation_id: str, chat_type, query, response="", message_id=None,
-                      metadata: Dict = {}):
+                      metadata: Dict = {}, store: bool = True):
     """
     新增聊天记录
     """
     if not message_id:
         message_id = uuid.uuid4().hex
+    if not store:
+        return message_id
     m = MessageModel(id=message_id, chat_type=chat_type, query=query, response=response,
                      conversation_id=conversation_id, create_by=get_token_info().get("userId"),
                      meta_data=metadata)
@@ -55,11 +57,11 @@ def feedback_message_to_db(session, message_id, feedback_score, feedback_reason)
     反馈聊天记录
     """
     m = session.query(MessageModel).filter_by(id=message_id).first()
-    if m:
+    if m is not None:
         m.feedback_score = feedback_score
         m.feedback_reason = feedback_reason
-    session.commit()
-    return m.id
+        session.commit()
+        return m.id
 
 
 @with_session
