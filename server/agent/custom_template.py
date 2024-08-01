@@ -61,6 +61,40 @@ def validate_json(json_data: str):
         return False
 
 
+def parse_json(json_string: str, fallback: bool = True) -> Union[str, dict]:
+    json_input = None
+    try:
+        json_input = json.loads(json_string)
+    except:
+        # ollama部署的qwen，返回的json键值可能为单引号，可能缺少最后的引号和括号
+        if not json_string.endswith('"}'):
+            fixed_json_string = (json_string + '"}').replace("'", '"')
+
+            fixed = True
+            if not validate_json(fixed_json_string):
+                # ollama部署的qwen，返回的json可能有注释，需要去掉注释
+                fixed_json_string = (re.sub(r'//.*', '', (json_string + '"}').replace("'", '"'))
+                                     .strip()
+                                     .replace('\n', ''))
+                if not validate_json(fixed_json_string):
+                    fixed = False
+            if fixed:
+                json_string = fixed_json_string
+
+            try:
+                json_input = json.loads(json_string)
+            except Exception as e:
+                if not fallback:
+                    raise e
+                json_input = json_string
+
+    # 有概率key为command而非query，需修改
+    if isinstance(json_input, dict) and "command" in json_input:
+        json_input["query"] = json_input.pop("command")
+
+    return json_input
+
+
 class CustomOutputParser(StructuredChatOutputParser):
     begin: bool = False
 
@@ -70,9 +104,9 @@ class CustomOutputParser(StructuredChatOutputParser):
 
     def parse(self, text: str) -> Union[AgentAction, AgentFinish]:
         logger.debug(f"原始输入:{text},结束")
-        if s := (re.findall(r"\n*Action:\s*```(.+)```", text, flags=re.DOTALL) or
-                 re.findall(r"\n*Action:\s*({.+})", text, flags=re.DOTALL)):
-            action = json.loads(s[0])
+        if s := (re.findall(r"\n*Action\s*:\s*```\s*({.+})\s*```", text, flags=re.DOTALL) or
+                 re.findall(r"\n*Action\s*:\s*({.+})", text, flags=re.DOTALL)):
+            action = parse_json(json_string=s[0], fallback=False)
             tool = action.get("action")
             if tool == "Final Answer":
                 return AgentFinish({"output": action.get("action_input", "")}, log=text)
@@ -81,40 +115,14 @@ class CustomOutputParser(StructuredChatOutputParser):
                     tool=tool, tool_input=action.get("action_input", {}), log=text
                 )
         elif s := re.findall(
-                r"\n*Action:\s*(.+)\n*Action\sInput:\s*(.+)", text, flags=re.DOTALL
+                r"\n*Action\s*:\s*(.+)\n*Action\sInput\s*:\s*(.+)", text, flags=re.DOTALL
         ):
             s = s[-1]
             json_string: str = s[1]
-            json_input = None
-            try:
-                json_input = json.loads(json_string)
-            except:
-                # ollama部署的qwen，返回的json键值可能为单引号，可能缺少最后的引号和括号
-                if not json_string.endswith('"}'):
-                    fixed_json_string = (json_string + '"}').replace("'", '"')
-
-                    fixed = True
-                    if not validate_json(fixed_json_string):
-                        # ollama部署的qwen，返回的json可能有注释，需要去掉注释
-                        fixed_json_string = (re.sub(r'//.*', '', (json_string + '"}').replace("'", '"'))
-                                             .strip()
-                                             .replace('\n', ''))
-                        if not validate_json(fixed_json_string):
-                            fixed = False
-                    if fixed:
-                        json_string = fixed_json_string
-
-                    try:
-                        json_input = json.loads(json_string)
-                    except:
-                        json_input = json_string
-
-            # 有概率key为command而非query，需修改
-            if isinstance(json_input, dict) and "command" in json_input:
-                json_input["query"] = json_input.pop("command")
+            json_input = parse_json(json_string)
 
             return AgentAction(tool=s[0].strip(), tool_input=json_input, log=text)
-        elif s := re.findall(r"\n*Final\sAnswer:\s*(.+)", text, flags=re.DOTALL):
+        elif s := re.findall(r"\n*Final\sAnswer\s*:\s*(.+)", text, flags=re.DOTALL):
             s = s[-1]
             return AgentFinish({"output": s}, log=text)
         else:

@@ -106,7 +106,7 @@ PROMPT_TEMPLATES = {
             '```\n'
             '{\n'
             '  "action": "Final Answer",\n'
-            '  "action_input": "Final response to human"\n'
+            '  "action_input": "Final response to human, please in Chinese"\n'
             '}\n'
             '```\n'
             'Begin! Reminder to ALWAYS respond with a valid json blob of a single action. Use tools if necessary. '
