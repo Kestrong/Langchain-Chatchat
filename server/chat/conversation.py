@@ -65,8 +65,10 @@ def filter_message(id: str = Query(description="会话id"),
 
 def filter_conversation(assistant_id: int = Query(-1, description="助手ID"),
                         page: int = Query(default=1, description="页码"),
-                        limit: int = Query(default=10, description='会话数量')) -> BaseResponse:
-    conversations, total = get_conversation_from_db(assistant_id=assistant_id, page=page, limit=min(abs(limit), 1000))
+                        limit: int = Query(default=10, description='会话数量'),
+                        keyword: str = Query(default=None, description="关键字搜索")) -> BaseResponse:
+    conversations, total = get_conversation_from_db(assistant_id=assistant_id, page=page, limit=min(abs(limit), 1000),
+                                                    keyword=keyword)
     return BaseResponse(code=200, data={'conversations': conversations, 'total': total})
 
 

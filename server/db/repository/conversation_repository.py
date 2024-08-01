@@ -56,7 +56,7 @@ def delete_user_conversation_from_db(session, assistant_id: int):
 
 
 @with_session
-def get_conversation_from_db(session, assistant_id: int = -1, page: int = 1, limit: int = 10):
+def get_conversation_from_db(session, assistant_id: int = -1, page: int = 1, limit: int = 10, keyword: str = None):
     userId = get_token_info().get("userId")
     if userId is None or userId == "":
         return [], 0
@@ -64,6 +64,8 @@ def get_conversation_from_db(session, assistant_id: int = -1, page: int = 1, lim
     page_num = max(page, 1)
     offset = (page_num - 1) * page_size
     filters = [ConversationModel.create_by == str(userId)]
+    if keyword is not None and keyword.strip() != '':
+        filters.append(ConversationModel.name.ilike('%{}%'.format(keyword)))
     if assistant_id >= 0:
         filters.append(ConversationModel.assistant_id == assistant_id)
     conversations = (session.query(ConversationModel).filter(*filters)

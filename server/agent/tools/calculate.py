@@ -1,7 +1,9 @@
-from langchain.prompts import PromptTemplate
+import numexpr
 from langchain.chains import LLMMathChain
-from server.agent import model_container
+from langchain.prompts import PromptTemplate
 from pydantic import BaseModel, Field
+
+from server.agent import model_container
 
 _PROMPT_TEMPLATE = """
 将数学问题翻译成可以使用Python的numexpr库执行的表达式。使用运行此代码的输出来回答问题。
@@ -62,15 +64,20 @@ PROMPT = PromptTemplate(
 class CalculatorInput(BaseModel):
     query: str = Field()
 
+
 def calculate(query: str):
     model = model_container.MODEL
     llm_math = LLMMathChain.from_llm(model, verbose=True, prompt=PROMPT)
-    ans = llm_math.run(query)
-    return ans
+    try:
+        ans = llm_math.run(query)
+        return ans
+    except Exception:
+        try:
+            return str(numexpr.evaluate(query))
+        except Exception:
+            return f'```{query}```表达式无法被numexpr解析执行'
+
 
 if __name__ == "__main__":
     result = calculate("2的三次方")
-    print("答案:",result)
-
-
-
+    print("答案:", result)

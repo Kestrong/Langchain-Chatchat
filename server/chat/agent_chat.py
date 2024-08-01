@@ -91,7 +91,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             template=prompt_template,
             tools=tools,
             template_format='jinja2',
-            input_variables=["input", "intermediate_steps", "history"]
+            input_variables=["input", "intermediate_steps"]
         )
         output_parser = CustomOutputParser()
         llm_chain = LLMChain(llm=model, prompt=prompt_template_agent)
@@ -107,7 +107,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                 tools=tools,
                 callback_manager=None,
                 prompt=prompt_template,
-                input_variables=["input", "intermediate_steps", "history"],
+                input_variables=["input", "intermediate_steps"],
                 memory=memory,
                 verbose=True,
             )
@@ -115,7 +115,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             agent = LLMSingleActionAgent(
                 llm_chain=llm_chain,
                 output_parser=output_parser,
-                stop=["\nObservation:", "Observation"],
+                stop=["Observation:", "\nObservation", "<|endoftext|>", "<|im_start|>", "<|im_end|>"],
                 allowed_tools=tool_names,
             )
             agent_executor = AgentExecutor.from_agent_and_tools(agent=agent,

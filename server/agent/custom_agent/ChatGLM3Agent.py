@@ -4,41 +4,54 @@ This file is a modified version for ChatGLM3-6B the original glm3_agent.py file 
 from __future__ import annotations
 
 import json
-import logging
+import typing
 from typing import Any, List, Sequence, Tuple, Optional, Union
-from pydantic.schema import model_schema
 
-
-from langchain.agents.structured_chat.output_parser import StructuredChatOutputParser
-from langchain.memory import ConversationBufferWindowMemory
+import langchain_core
 from langchain.agents.agent import Agent
-from langchain.chains.llm import LLMChain
-from langchain.prompts.chat import ChatPromptTemplate, SystemMessagePromptTemplate
-from langchain.agents.agent import AgentOutputParser
-from langchain.output_parsers import OutputFixingParser
-from langchain.pydantic_v1 import Field
-from langchain.schema import AgentAction, AgentFinish, OutputParserException, BasePromptTemplate
 from langchain.agents.agent import AgentExecutor
+from langchain.agents.agent import AgentOutputParser
+from langchain.agents.structured_chat.base import HUMAN_MESSAGE_TEMPLATE
+from langchain.agents.structured_chat.output_parser import StructuredChatOutputParser
 from langchain.callbacks.base import BaseCallbackManager
+from langchain.chains.llm import LLMChain
+from langchain.memory import ConversationBufferWindowMemory
+from langchain.output_parsers import OutputFixingParser
+from langchain.prompts.chat import ChatPromptTemplate
+from langchain.pydantic_v1 import Field
+from langchain.schema import AgentAction, AgentFinish, BasePromptTemplate
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.tools.base import BaseTool
+from langchain_core.messages import ToolMessage, FunctionMessage, SystemMessage, ChatMessage, HumanMessage, AIMessage
+from langchain_core.prompts import HumanMessagePromptTemplate
+from pydantic.schema import model_schema
 
-HUMAN_MESSAGE_TEMPLATE = "{input}\n\n{agent_scratchpad}"
-logger = logging.getLogger(__name__)
+from configs import logger
+
+SYSTEM_PROMPT = "Answer the following questions as best as you can. You have access to the following tools:\n{tools}\n"
+HUMAN_MESSAGE = "Let's start! Human:{input}\n\nThought:{agent_scratchpad}\n"
 
 
-class StructuredChatOutputParserWithRetries(AgentOutputParser):
-    """Output parser with retries for the structured chat agent."""
+class StructuredGLM3ChatOutputParser(StructuredChatOutputParser):
+    """
+    Output parser with retries for the structured chat agent.
+    """
 
     base_parser: AgentOutputParser = Field(default_factory=StructuredChatOutputParser)
-    """The base parser to use."""
     output_fixing_parser: Optional[OutputFixingParser] = None
-    """The output fixing parser to use."""
 
     def parse(self, text: str) -> Union[AgentAction, AgentFinish]:
+        logger.debug(f"原始输入:{text},结束")
+        origin_text = text
         special_tokens = ["Action:", "<|observation|>"]
-        first_index = min([text.find(token) if token in text else len(text) for token in special_tokens])
+        first_index = min(
+            [
+                text.find(token) if token in text else len(text)
+                for token in special_tokens
+            ]
+        )
         text = text[:first_index]
+
         if "tool_call" in text:
             action_end = text.find("```")
             action = text[:action_end].strip()
@@ -46,56 +59,45 @@ class StructuredChatOutputParserWithRetries(AgentOutputParser):
             params_str_end = text.rfind(")")
             params_str = text[params_str_start:params_str_end]
 
-            params_pairs = [param.split("=") for param in params_str.split(",") if "=" in param]
-            params = {pair[0].strip(): pair[1].strip().strip("'\"") for pair in params_pairs}
-
-            action_json = {
-                "action": action,
-                "action_input": params
+            params_pairs = [
+                param.split("=") for param in params_str.split(",") if "=" in param
+            ]
+            params = {
+                pair[0].strip(): pair[1].strip().strip("'\"") for pair in params_pairs
             }
+            return AgentAction(tool=action, tool_input=params, log=text)
         else:
-            action_json = {
-                "action": "Final Answer",
-                "action_input": text
-            }
-        action_str = f"""
-Action:
-```
-{json.dumps(action_json, ensure_ascii=False)}
-```"""
-        try:
-            if self.output_fixing_parser is not None:
-                parsed_obj: Union[
-                    AgentAction, AgentFinish
-                ] = self.output_fixing_parser.parse(action_str)
-            else:
-                parsed_obj = self.base_parser.parse(action_str)
-            return parsed_obj
-        except Exception as e:
-            raise OutputParserException(f"Could not parse LLM output: {text}") from e
+            finish_tokens = ['<|assistant|>', '<|user|>']
+            index = min(
+                [
+                    text.find(token) if token in text else len(text)
+                    for token in finish_tokens
+                ]
+            )
+            return AgentFinish({"output": text[:index]}, log=text)
 
     @property
     def _type(self) -> str:
-        return "structured_chat_ChatGLM3_6b_with_retries"
+        return "StructuredGLM3ChatOutputParser"
 
 
 class StructuredGLM3ChatAgent(Agent):
     """Structured Chat Agent."""
 
     output_parser: AgentOutputParser = Field(
-        default_factory=StructuredChatOutputParserWithRetries
+        default_factory=StructuredGLM3ChatOutputParser
     )
     """Output parser for the agent."""
 
     @property
     def observation_prefix(self) -> str:
-        """Prefix to append the ChatGLM3-6B observation with."""
-        return "Observation:"
+        """Prefix to append the observation with."""
+        return "<|observation|>"
 
     @property
     def llm_prefix(self) -> str:
         """Prefix to append the llm call with."""
-        return "Thought:"
+        return "Action:"
 
     def _construct_scratchpad(
             self, intermediate_steps: List[Tuple[AgentAction, str]]
@@ -105,9 +107,7 @@ class StructuredGLM3ChatAgent(Agent):
             raise ValueError("agent_scratchpad should be of type string.")
         if agent_scratchpad:
             return (
-                f"This was your previous work "
-                f"(but I haven't seen any of it! I only see what "
-                f"you return as final answer):\n{agent_scratchpad}"
+                f"These were previous tasks you completed:\n{agent_scratchpad}\n\n"
             )
         else:
             return agent_scratchpad
@@ -116,7 +116,7 @@ class StructuredGLM3ChatAgent(Agent):
     def _get_default_output_parser(
             cls, llm: Optional[BaseLanguageModel] = None, **kwargs: Any
     ) -> AgentOutputParser:
-        return StructuredChatOutputParserWithRetries(llm=llm)
+        return StructuredGLM3ChatOutputParser(llm=llm)
 
     @property
     def _stop(self) -> List[str]:
@@ -134,32 +134,60 @@ class StructuredGLM3ChatAgent(Agent):
         tool_names = []
         for tool in tools:
             tool_schema = model_schema(tool.args_schema) if tool.args_schema else {}
+            description = (
+                tool.description.split(" - ")[1].strip()
+                if tool.description and " - " in tool.description
+                else tool.description
+            )
+            parameters = {
+                k: {sub_k: sub_v for sub_k, sub_v in v.items() if sub_k != "title"}
+                for k, v in tool_schema.get("properties", {}).items()
+            }
             simplified_config_langchain = {
                 "name": tool.name,
-                "description": tool.description,
-                "parameters": tool_schema.get("properties", {})
+                "description": description,
+                "parameters": parameters,
             }
             tools_json.append(simplified_config_langchain)
             tool_names.append(tool.name)
-        formatted_tools = "\n".join([
-            f"{tool['name']}: {tool['description']}, args: {tool['parameters']}"
-            for tool in tools_json
-        ])
-        formatted_tools = formatted_tools.replace("'", "\\'").replace("{", "{{").replace("}", "}}")
-        template = prompt.format(tool_names=tool_names,
-                                 tools=formatted_tools,
-                                 history="None",
-                                 input="{input}",
-                                 agent_scratchpad="{agent_scratchpad}")
+        formatted_tools = "\n".join(
+            [json.dumps(tool, indent=4, ensure_ascii=False) for tool in tools_json]
+        )
 
         if input_variables is None:
             input_variables = ["input", "agent_scratchpad"]
-        _memory_prompts = memory_prompts or []
-        messages = [
-            SystemMessagePromptTemplate.from_template(template),
-            *_memory_prompts,
-        ]
-        return ChatPromptTemplate(input_variables=input_variables, messages=messages)
+
+        return ChatPromptTemplate(
+            input_variables=input_variables,
+            input_types={
+                "chat_history": typing.List[
+                    typing.Union[
+                        AIMessage,
+                        HumanMessage,
+                        ChatMessage,
+                        SystemMessage,
+                        FunctionMessage,
+                        ToolMessage,
+                    ]
+                ]
+            },
+            messages=[
+                langchain_core.prompts.SystemMessagePromptTemplate(
+                    prompt=langchain_core.prompts.PromptTemplate(
+                        input_variables=["tools"], template=SYSTEM_PROMPT
+                    )
+                ),
+                langchain_core.prompts.MessagesPlaceholder(
+                    variable_name="chat_history", optional=True
+                ),
+                langchain_core.prompts.HumanMessagePromptTemplate(
+                    prompt=langchain_core.prompts.PromptTemplate(
+                        input_variables=["agent_scratchpad", "input"],
+                        template=HUMAN_MESSAGE,
+                    )
+                ),
+            ],
+        ).partial(tools=formatted_tools)
 
     @classmethod
     def from_llm_and_tools(
