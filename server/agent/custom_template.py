@@ -85,6 +85,7 @@ def parse_json(json_string: str, fallback: bool = True) -> Union[str, dict]:
                 json_input = json.loads(json_string)
             except Exception as e:
                 if not fallback:
+                    logger.error(f'parse json string error:{json_string}')
                     raise e
                 json_input = json_string
 
@@ -104,9 +105,9 @@ class CustomOutputParser(StructuredChatOutputParser):
 
     def parse(self, text: str) -> Union[AgentAction, AgentFinish]:
         logger.debug(f"原始输入:{text},结束")
-        if s := (re.findall(r"\n*Action\s*:\s*```\s*({.+})\s*```", text, flags=re.DOTALL) or
+        if s := (re.findall(r"\n*Action\s*:\s*```(json)?\s*({.+})\s*```", text, flags=re.DOTALL) or
                  re.findall(r"\n*Action\s*:\s*({.+})", text, flags=re.DOTALL)):
-            action = parse_json(json_string=s[0], fallback=False)
+            action = parse_json(json_string=s[0][1] if isinstance(s[0], tuple) else s[0], fallback=False)
             tool = action.get("action")
             if tool == "Final Answer":
                 return AgentFinish({"output": action.get("action_input", "")}, log=text)
