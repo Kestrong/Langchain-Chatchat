@@ -56,7 +56,7 @@ def get_ChatOpenAI(
         **kwargs: Any,
 ) -> ChatOpenAI:
     config = get_model_worker_config(model_name)
-    if model_name == "openai-api":
+    if model_name == "openai-api" or config.get('resource_name') == "openai-api":
         model_name = config.get("model_name")
     ChatOpenAI._get_encoding_model = MinxChatOpenAI.get_encoding_model
     model = ChatOpenAI(

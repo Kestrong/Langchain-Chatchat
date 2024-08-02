@@ -1,28 +1,26 @@
-import json
 import sys
-
-from fastchat.conversation import Conversation
-from configs import TEMPERATURE
-from http import HTTPStatus
 from typing import List, Literal, Dict
 
 from fastchat import conversation as conv
+from fastchat.conversation import Conversation
+from openai import OpenAI
+
+from configs import logger, log_verbose
 from server.model_workers.base import *
 from server.model_workers.base import ApiEmbeddingsParams
-from configs import logger, log_verbose
 
 
 class QwenWorker(ApiModelWorker):
     DEFAULT_EMBED_MODEL = "text-embedding-v1"
 
     def __init__(
-        self,
-        *,
-        version: Literal["qwen-turbo", "qwen-plus"] = "qwen-turbo",
-        model_names: List[str] = ["qwen-api"],
-        controller_addr: str = None,
-        worker_addr: str = None,
-        **kwargs,
+            self,
+            *,
+            version: Literal["qwen-turbo", "qwen-plus"] = "qwen-turbo",
+            model_names: List[str] = ["qwen-api"],
+            controller_addr: str = None,
+            worker_addr: str = None,
+            **kwargs,
     ):
         kwargs.update(model_names=model_names, controller_addr=controller_addr, worker_addr=worker_addr)
         kwargs.setdefault("context_len", 16384)
@@ -30,72 +28,65 @@ class QwenWorker(ApiModelWorker):
         self.version = version
 
     def do_chat(self, params: ApiChatParams) -> Dict:
-        import dashscope
         params.load_config(self.model_names[0])
         if log_verbose:
             logger.info(f'{self.__class__.__name__}:params: {params}')
 
-        gen = dashscope.Generation()
-        responses = gen.call(
-            model=params.version,
-            temperature=params.temperature,
-            api_key=params.api_key,
-            messages=params.messages,
-            result_format='message',  # set the result is message format.
-            stream=True,
+        client = OpenAI(
+            api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
+            base_url=params.api_base_url,  # 填写DashScope服务的base_url
         )
-
-        for resp in responses:
-            if resp["status_code"] == 200:
-                if choices := resp["output"]["choices"]:
-                    yield {
-                        "error_code": 0,
-                        "text": choices[0]["message"]["content"],
-                    }
-            else:
-                data = {
-                    "error_code": resp["status_code"],
-                    "text": resp["message"],
-                    "error": {
-                        "message": resp["message"],
-                        "type": "invalid_request_error",
-                        "param": None,
-                        "code": None,
-                    }
-                }
-                self.logger.error(f"请求千问 API 时发生错误：{data}")
-                yield data
+        try:
+            with client.chat.completions.create(
+                    model=params.version,
+                    temperature=params.temperature,
+                    messages=params.messages,
+                    stream=True,
+                    max_tokens=params.max_tokens,
+                    top_p=params.top_p
+            ) as responses:
+                text = ''
+                for resp in responses:
+                    if resp.choices and resp.choices[0].delta and resp.choices[0].delta.content:
+                        text += resp.choices[0].delta.content
+                        yield {
+                            "error_code": 0,
+                            "text": text,
+                        }
+        except Exception as e:
+            data = {
+                "error_code": 500,
+                "text": f'{e}'
+            }
+            self.logger.error(f"请求千问 API 时发生错误：{data}")
+            yield data
 
     def do_embeddings(self, params: ApiEmbeddingsParams) -> Dict:
-        import dashscope
         params.load_config(self.model_names[0])
         if log_verbose:
             logger.info(f'{self.__class__.__name__}:params: {params}')
+        client = OpenAI(
+            api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
+            base_url=params.api_base_url,  # 填写DashScope服务的base_url
+        )
         result = []
         i = 0
         while i < len(params.texts):
-            texts = params.texts[i:i+25]
-            resp = dashscope.TextEmbedding.call(
-                model=params.embed_model or self.DEFAULT_EMBED_MODEL,
-                input=texts, # 最大25行
-                api_key=params.api_key,
-            )
-            if resp["status_code"] != 200:
+            texts = params.texts[i:i + 25]
+            try:
+                with client.embeddings.create(
+                        model=params.embed_model or self.DEFAULT_EMBED_MODEL,
+                        input=texts,  # 最大25行
+                ) as resp:
+                    embeddings = [x.embedding for x in resp.data]
+                    result += embeddings
+            except Exception as e:
                 data = {
-                            "code": resp["status_code"],
-                            "msg": resp.message,
-                            "error": {
-                                "message": resp["message"],
-                                "type": "invalid_request_error",
-                                "param": None,
-                                "code": None,
-                            }
-                        }
+                    "error_code": 500,
+                    "text": f'{e}'
+                }
                 self.logger.error(f"请求千问 API 时发生错误：{data}")
                 return data
-            else:
-                embeddings = [x["embedding"] for x in resp["output"]["embeddings"]]
-                result += embeddings
             i += 25
         return {"code": 200, "data": result}
 
