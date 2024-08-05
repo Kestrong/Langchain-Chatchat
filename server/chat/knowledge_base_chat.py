@@ -169,7 +169,8 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
 
         if len(source_documents) == 0:  # 没有找到相关文档
             source_documents.append(f"<span style='color:red'>未找到相关文档,该回答为大模型自身能力解答！</span>")
-
+        d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
+        yield json.dumps(d, ensure_ascii=False)
         if stream:
             async for token in callback.aiter():
                 # Use server-sent-events to stream the response

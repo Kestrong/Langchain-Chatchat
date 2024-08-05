@@ -115,17 +115,17 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
 
         task_manager.put(message_id, task)
 
+        d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
+        yield json.dumps(d, ensure_ascii=False)
         if stream:
             async for token in callback.aiter():
                 # Use server-sent-events to stream the response
-                d = {"message_id": message_id, "conversation_id": conversation_id}
                 d.update(parse_llm_token_inner_json(model_name, token))
                 yield json.dumps(d, ensure_ascii=False)
         else:
             answer = ""
             async for token in callback.aiter():
                 answer += str(token)
-            d = {"message_id": message_id, "conversation_id": conversation_id}
             d.update(parse_llm_token_inner_json(model_name, answer))
             yield json.dumps(d, ensure_ascii=False)
 
