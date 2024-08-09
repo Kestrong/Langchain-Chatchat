@@ -139,7 +139,7 @@ def list_files_from_db(session, kb_name,
         if only_name:
             return list()
         return list(), 0
-    page_size = min(abs(page_size), 1000)
+    page_size = abs(page_size)
     page_num = max(page_num, 1)
     offset = (page_num - 1) * page_size
     filters = [KnowledgeFileModel.kb_id == kb.id]

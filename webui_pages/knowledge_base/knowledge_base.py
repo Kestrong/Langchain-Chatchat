@@ -1,17 +1,17 @@
-import streamlit as st
-from webui_pages.utils import *
-from st_aggrid import AgGrid, JsCode
-from st_aggrid.grid_options_builder import GridOptionsBuilder
-import pandas as pd
-from server.knowledge_base.utils import get_file_path, LOADER_DICT
-from server.knowledge_base.kb_service.base import get_kb_details, get_kb_file_details
-from typing import Literal, Dict, Tuple
-from configs import (kbs_config,
-                     EMBEDDING_MODEL, DEFAULT_VS_TYPE,
-                     CHUNK_SIZE, OVERLAP_SIZE, ZH_TITLE_ENHANCE)
-from server.utils import list_embed_models, list_online_embed_models
-import os
 import time
+
+import pandas as pd
+import streamlit as st
+from st_aggrid import AgGrid, JsCode, ColumnsAutoSizeMode
+from st_aggrid.grid_options_builder import GridOptionsBuilder
+from urllib3 import HTTPResponse
+
+from configs import (kbs_config)
+from server.knowledge_base.kb_service.base import get_kb_details, get_kb_file_details
+from server.knowledge_base.oss import default_oss
+from server.knowledge_base.utils import LOADER_DICT
+from server.utils import list_embed_models, list_online_embed_models
+from webui_pages.utils import *
 
 cell_renderer = JsCode("""function(params) {if(params.value==true){return '✓'}else{return '×'}}""")
 
@@ -46,9 +46,8 @@ def file_exists(kb: str, selected_rows: List) -> Tuple[str, str]:
     """
     if selected_rows:
         file_name = selected_rows[0]["file_name"]
-        file_path = get_file_path(kb, file_name)
-        if os.path.isfile(file_path):
-            return file_name, file_path
+        if default_oss().object_exist(kb, file_name):
+            return file_name, default_oss().object_url(kb, file_name)
     return "", ""
 
 
@@ -220,8 +219,6 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
             doc_details = doc_details[[
                 "No", "file_name", "document_loader", "text_splitter", "docs_count", "in_folder", "in_db",
             ]]
-            doc_details["in_folder"] = doc_details["in_folder"].replace(True, "✓").replace(False, "×")
-            doc_details["in_db"] = doc_details["in_db"].replace(True, "✓").replace(False, "×")
             gb = config_aggrid(
                 doc_details,
                 {
@@ -242,7 +239,7 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
             doc_grid = AgGrid(
                 doc_details,
                 gb.build(),
-                columns_auto_size_mode="FIT_CONTENTS",
+                columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
                 theme="alpine",
                 custom_css={
                     "#gridToolBar": {"display": "none"},
@@ -256,10 +253,10 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
             cols = st.columns(4)
             file_name, file_path = file_exists(kb, selected_rows)
             if file_path:
-                with open(file_path, "rb") as fp:
+                with default_oss().get_object(kb, file_name) as fp:
                     cols[0].download_button(
                         "下载选中文档",
-                        fp,
+                        fp.data if isinstance(fp, HTTPResponse) else fp,
                         file_name=file_name,
                         use_container_width=True, )
             else:
@@ -318,6 +315,10 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
                 empty = st.empty()
                 empty.progress(0.0, "")
                 for d in api.recreate_vector_store(kb,
+                                                   vs_type=kb_list[kb]['vs_type'] if kb_list[kb][
+                                                       'in_db'] else DEFAULT_VS_TYPE,
+                                                   embed_model=kb_list[kb]['embed_model'] if kb_list[kb][
+                                                       'in_db'] else EMBEDDING_MODEL,
                                                    chunk_size=chunk_size,
                                                    chunk_overlap=chunk_overlap,
                                                    zh_title_enhance=zh_title_enhance):
@@ -365,7 +366,7 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
             gb.configure_column("to_del", "删除", editable=True, width=50, wrapHeaderText=True,
                                 cellEditor="agCheckboxCellEditor", cellRender="agCheckboxCellRenderer")
             # 启用分页
-            gb.configure_pagination(enabled=True, paginationAutoPageSize=False, paginationPageSize=10) 
+            gb.configure_pagination(enabled=True, paginationAutoPageSize=False, paginationPageSize=10)
             gb.configure_selection()
             edit_docs = AgGrid(df, gb.build(), fit_columns_on_grid_load=True)
 

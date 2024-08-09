@@ -124,6 +124,20 @@ kbs_config = {
     "chromadb": {}
 }
 
+# oss对象存储配置
+oss_config = {
+    "default_type": "filesystem",  # [filesystem, minio] default filesystem
+    "delete_on_vs": False,  # delete file after vector store
+    "minio": {
+        "endpoint": os.environ.get('MINIO_ENDPOINT', 'http://127.0.0.1:9000/'),
+        "default_bucket_name": "knowledgebase",
+        "access_key": os.environ.get('MINIO_ACCESS_KEY', 'minioadmin'),
+        "secret_key": os.environ.get('MINIO_SECRET_KEY', 'minioadmin'),
+        "secure": False,
+        "enabled": os.environ.get('MINIO_ENABLED', False),
+    }
+}
+
 # TextSplitter配置项，如果你不明白其中的含义，就不要修改。
 text_splitter_dict = {
     "ChineseRecursiveTextSplitter": {

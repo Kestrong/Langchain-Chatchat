@@ -34,7 +34,7 @@ class RapidOCRDocLoader(UnstructuredFileLoader):
                     elif isinstance(child, CT_Tbl):
                         yield Table(child, parent)
 
-            b_unit = tqdm.tqdm(total=len(doc.paragraphs)+len(doc.tables),
+            b_unit = tqdm.tqdm(total=len(doc.paragraphs) + len(doc.tables),
                                desc="RapidOCRDocLoader block index: 0")
             for i, block in enumerate(iter_block_items(doc)):
                 b_unit.set_description(
@@ -77,7 +77,7 @@ class RapidOCRDocLoader(UnstructuredFileLoader):
                             if [rowId, colId] in index:
                                 for paragraph in block.rows[rowId].cells[colId].paragraphs:
                                     context = paragraph.text.strip()
-                                    if resp[-2].isdigit() and str(context[0]).isdigit():
+                                    if resp and resp[-2].isdigit() and str(context[0]).isdigit():
                                         resp = resp[0:-1] + " " + context + "\n"
                                     else:
                                         resp += context + "\n"

@@ -1,24 +1,25 @@
-import os
+import json
 import urllib
 from datetime import datetime
+from typing import List, Dict
+from urllib.parse import quote
 
 from fastapi import File, Form, Body, Query, UploadFile, HTTPException
+from langchain.docstore.document import Document
+from pydantic import Json
+from sse_starlette import EventSourceResponse
+from starlette.responses import StreamingResponse
+
 from configs import (DEFAULT_VS_TYPE, EMBEDDING_MODEL,
                      VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD,
                      CHUNK_SIZE, OVERLAP_SIZE, ZH_TITLE_ENHANCE,
                      logger, log_verbose, MAX_KNOWLEDGE_FILE_SIZE)
-from server.utils import BaseResponse, ListResponse, run_in_thread_pool, PageResponse, Page
-from server.knowledge_base.utils import (validate_kb_name, list_files_from_folder, get_file_path,
-                                         files2docs_in_thread, KnowledgeFile)
-from fastapi.responses import FileResponse
-from sse_starlette import EventSourceResponse
-from pydantic import Json
-import json
-from server.knowledge_base.kb_service.base import KBServiceFactory
 from server.db.repository.knowledge_file_repository import get_file_detail
-from langchain.docstore.document import Document
+from server.knowledge_base.kb_service.base import KBServiceFactory
 from server.knowledge_base.model.kb_document_model import DocumentWithVSId
-from typing import List, Dict
+from server.knowledge_base.oss import default_oss
+from server.knowledge_base.utils import (validate_kb_name, list_files_from_folder, files2docs_in_thread, KnowledgeFile)
+from server.utils import BaseResponse, run_in_thread_pool, PageResponse, Page
 
 
 def search_docs(
@@ -72,14 +73,14 @@ def list_files(
         create_time_end: datetime = Query(None, allow_inf_nan=True, description="创建时间结束"),
 ) -> PageResponse:
     if not validate_kb_name(knowledge_base_name):
-        return PageResponse(code=403, msg="Don't attack me", data=None)
+        return PageResponse(code=403, msg="Invalid knowledge base name", data=None)
 
     knowledge_base_name = urllib.parse.unquote(knowledge_base_name)
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:
         return PageResponse(code=404, msg=f"未找到知识库 {knowledge_base_name}", data=None)
     else:
-        data, total = kb.list_files(page_size=page_size, page_num=page_num, keyword=keyword,
+        data, total = kb.list_files(page_size=min(abs(page_size), 1000), page_num=page_num, keyword=keyword,
                                     create_time_begin=create_time_begin, create_time_end=create_time_end,
                                     only_name=False)
         return PageResponse(data=Page(records=data, total=total))
@@ -97,24 +98,16 @@ def _save_files_in_thread(files: List[UploadFile],
         '''
         保存单个文件。
         '''
+        filename = file.filename
+        data = {"knowledge_base_name": knowledge_base_name, "file_name": filename}
         try:
-            filename = file.filename
-            file_path = get_file_path(knowledge_base_name=knowledge_base_name, doc_name=filename)
-            data = {"knowledge_base_name": knowledge_base_name, "file_name": filename}
-
-            file_content = file.file.read()  # 读取上传文件的内容
-            if (os.path.isfile(file_path)
-                    and not override
-                    and os.path.getsize(file_path) == len(file_content)
-            ):
+            oss_api = default_oss()
+            if oss_api.object_exist(knowledge_base_name, filename) and not override:
                 file_status = f"文件 {filename} 已存在。"
                 logger.warn(file_status)
                 return dict(code=404, msg=file_status, data=data)
 
-            if not os.path.isdir(os.path.dirname(file_path)):
-                os.makedirs(os.path.dirname(file_path))
-            with open(file_path, "wb") as f:
-                f.write(file_content)
+            oss_api.put_object(data=file.file, bucket_name=knowledge_base_name, object_name=filename, override=override)
             return dict(code=200, msg=f"成功上传文件 {filename}", data=data)
         except Exception as e:
             msg = f"{filename} 文件上传失败，报错信息为: {e}"
@@ -156,7 +149,7 @@ def upload_docs(
     API接口：上传文件，并/或向量化
     """
     if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=403, msg="Don't attack me")
+        return BaseResponse(code=403, msg="Invalid knowledge base name")
 
     for file in files:
         if 0 < MAX_KNOWLEDGE_FILE_SIZE < file.size:
@@ -205,7 +198,7 @@ def delete_docs(
         not_refresh_vs_cache: bool = Body(False, description="暂不保存向量库（用于FAISS）"),
 ) -> BaseResponse:
     if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=403, msg="Don't attack me")
+        return BaseResponse(code=403, msg="Invalid knowledge base name")
 
     knowledge_base_name = urllib.parse.unquote(knowledge_base_name)
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
@@ -270,7 +263,7 @@ def update_docs(
     更新知识库文档
     """
     if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=403, msg="Don't attack me")
+        return BaseResponse(code=403, msg="Invalid knowledge base name")
 
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:
@@ -337,7 +330,7 @@ def download_doc(
     下载知识库文档
     """
     if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=403, msg="Don't attack me")
+        return BaseResponse(code=403, msg="Invalid knowledge base name")
 
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:
@@ -346,26 +339,19 @@ def download_doc(
     if preview:
         content_disposition_type = "inline"
     else:
-        content_disposition_type = None
+        content_disposition_type = "attachment"
 
     try:
-        kb_file = KnowledgeFile(filename=file_name,
-                                knowledge_base_name=knowledge_base_name)
-
-        if os.path.exists(kb_file.filepath):
-            return FileResponse(
-                path=kb_file.filepath,
-                filename=kb_file.filename,
-                media_type="multipart/form-data",
-                content_disposition_type=content_disposition_type,
-            )
+        data = default_oss().get_object(knowledge_base_name, file_name)
+        return StreamingResponse(content=data, media_type="application/octet-stream",
+                                 headers={'Content-Disposition': "{}; filename*=utf-8''{}".format(
+                                     content_disposition_type, quote(file_name)
+                                 )})
     except Exception as e:
-        msg = f"{kb_file.filename} 读取文件失败，错误信息是：{e}"
+        msg = f"{file_name} 读取文件失败，错误信息是：{e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
                      exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=msg)
-
-    return BaseResponse(code=500, msg=f"{kb_file.filename} 读取文件失败")
 
 
 def recreate_vector_store(
@@ -406,8 +392,8 @@ def recreate_vector_store(
                     kb_file.splited_docs = docs
                     yield json.dumps({
                         "code": 200,
-                        "msg": f"({i + 1} / {len(files)}): {file_name}",
-                        "total": len(files),
+                        "msg": f"({i + 1} / {len(kb_files)}): {file_name}",
+                        "total": len(kb_files),
                         "finished": i + 1,
                         "doc": file_name,
                     }, ensure_ascii=False)

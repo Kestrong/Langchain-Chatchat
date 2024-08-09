@@ -61,7 +61,7 @@ def recreate_summary_vector_store(
             summary = SummaryAdapter.form_summary(llm=llm,
                                                   reduce_llm=reduce_llm,
                                                   overlap_size=OVERLAP_SIZE)
-            files = list_files_from_folder(knowledge_base_name)
+            files = list(list_files_from_folder(knowledge_base_name))
 
             i = 0
             for i, file_name in enumerate(files):

@@ -21,6 +21,7 @@ from server.db.repository.knowledge_file_repository import (
 
 from configs import (kbs_config, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD,
                      EMBEDDING_MODEL, KB_INFO)
+from server.knowledge_base.oss import default_oss
 from server.knowledge_base.utils import (
     get_kb_path, get_doc_path, KnowledgeFile,
     list_kbs_from_folder, list_files_from_folder,
@@ -152,8 +153,8 @@ class KBService(ABC):
         """
         self.do_delete_doc(kb_file)
         status = delete_file_from_db(kb_file)
-        if delete_content and os.path.exists(kb_file.filepath):
-            os.remove(kb_file.filepath)
+        if delete_content:
+            default_oss().delete_object(kb_file.kb_name, kb_file.filename)
         return status
 
     def update_info(self, kb_name_cn: str, kb_info: str):
@@ -170,7 +171,7 @@ class KBService(ABC):
         使用content中的文件更新向量库
         如果指定了docs，则使用自定义docs，并将数据库对应条目标为custom_docs=True
         """
-        if os.path.exists(kb_file.filepath):
+        if default_oss().object_exist(kb_file.kb_name, kb_file.filename):
             self.delete_doc(kb_file, **kwargs)
             return self.add_doc(kb_file, docs=docs, **kwargs)
 
@@ -186,7 +187,8 @@ class KBService(ABC):
                    create_time_end: datetime = None,
                    only_name: bool = True):
         return list_files_from_db(self.kb_name, page_size=page_size, page_num=page_num, keyword=keyword,
-                                  create_time_begin=create_time_begin, create_time_end=create_time_end, only_name=only_name)
+                                  create_time_begin=create_time_begin, create_time_end=create_time_end,
+                                  only_name=only_name)
 
     def count_files(self):
         return count_files_from_db(self.kb_name)
@@ -241,19 +243,19 @@ class KBService(ABC):
                 pass
         return docs
 
-    def get_relative_source_path(self,filepath: str):
-      '''
-      将文件路径转化为相对路径，保证查询时一致
-      '''
-      relative_path = filepath
-      if os.path.isabs(relative_path):
-        try:
-          relative_path = Path(filepath).relative_to(self.doc_path)
-        except Exception as e:
-          print(f"cannot convert absolute path ({source}) to relative path. error is : {e}")
+    def get_relative_source_path(self, filepath: str):
+        '''
+        将文件路径转化为相对路径，保证查询时一致
+        '''
+        relative_path = filepath
+        if os.path.isabs(relative_path):
+            try:
+                relative_path = Path(filepath).relative_to(self.doc_path)
+            except Exception as e:
+                print(f"cannot convert absolute path ({filepath}) to relative path. error is : {e}")
 
-      relative_path = str(relative_path.as_posix().strip("/"))
-      return relative_path
+        relative_path = str(relative_path.as_posix().strip("/"))
+        return relative_path
 
     @abstractmethod
     def do_create_kb(self):
@@ -419,7 +421,7 @@ def get_kb_file_details(kb_name: str) -> List[Dict]:
         return []
 
     files_in_folder = list_files_from_folder(kb_name)
-    files_in_db, _ = kb.list_files(only_name=False)
+    files_in_db, _ = kb.list_files(page_size=5000, only_name=False)
     result = {}
 
     for doc in files_in_folder:

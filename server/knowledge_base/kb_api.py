@@ -52,7 +52,7 @@ def delete_kb(
 ) -> BaseResponse:
     # Delete selected knowledge base
     if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=403, msg="Don't attack me")
+        return BaseResponse(code=403, msg="Invalid knowledge base name")
     knowledge_base_name = urllib.parse.unquote(knowledge_base_name)
 
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
