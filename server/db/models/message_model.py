@@ -33,6 +33,7 @@ class MessageModel(Base):
             "chat_type": self.chat_type,
             "query": self.query,
             "response": self.response,
+            "meta_data": self.meta_data,
             "feedback_score": self.feedback_score,
             "feedback_reason": self.feedback_reason,
             "create_by": self.create_by,

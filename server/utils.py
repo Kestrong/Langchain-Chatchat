@@ -543,28 +543,31 @@ def set_httpx_config(
     urllib.request.getproxies = _get_proxies
 
 
-def detect_device() -> Literal["cuda", "mps", "cpu"]:
+def detect_device() -> Literal["cuda", "mps", "cpu", "npu"]:
     try:
         import torch
+        from transformers.utils import is_torch_npu_available
         if torch.cuda.is_available():
             return "cuda"
         if torch.backends.mps.is_available():
             return "mps"
+        if is_torch_npu_available(check_device=True):
+            return "npu"
     except:
         pass
     return "cpu"
 
 
-def llm_device(device: str = None) -> Literal["cuda", "mps", "cpu"]:
+def llm_device(device: str = None) -> Literal["cuda", "mps", "cpu", "npu"]:
     device = device or LLM_DEVICE
-    if device not in ["cuda", "mps", "cpu"]:
+    if device not in ["cuda", "mps", "cpu", "npu"]:
         device = detect_device()
     return device
 
 
-def embedding_device(device: str = None) -> Literal["cuda", "mps", "cpu"]:
+def embedding_device(device: str = None) -> Literal["cuda", "mps", "cpu", "npu"]:
     device = device or EMBEDDING_DEVICE
-    if device not in ["cuda", "mps", "cpu"]:
+    if device not in ["cuda", "mps", "cpu", "npu"]:
         device = detect_device()
     return device
 

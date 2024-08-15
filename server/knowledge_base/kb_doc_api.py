@@ -141,6 +141,7 @@ def upload_docs(
         chunk_size: int = Form(CHUNK_SIZE, description="知识库中单段文本最大长度"),
         chunk_overlap: int = Form(OVERLAP_SIZE, description="知识库中相邻文本重合长度"),
         zh_title_enhance: bool = Form(ZH_TITLE_ENHANCE, description="是否开启中文标题加强"),
+        separators: List[str] = Form([], description="文本切分符号"),
         docs: Json = Form({}, description="自定义的docs，需要转为json字符串",
                           examples=[{"test.txt": [Document(page_content="custom doc")]}]),
         not_refresh_vs_cache: bool = Form(False, description="暂不保存向量库（用于FAISS）"),
@@ -181,6 +182,7 @@ def upload_docs(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             zh_title_enhance=zh_title_enhance,
+            separators=separators,
             docs=docs,
             not_refresh_vs_cache=True,
         )
@@ -254,6 +256,7 @@ def update_docs(
         chunk_size: int = Body(CHUNK_SIZE, description="知识库中单段文本最大长度"),
         chunk_overlap: int = Body(OVERLAP_SIZE, description="知识库中相邻文本重合长度"),
         zh_title_enhance: bool = Body(ZH_TITLE_ENHANCE, description="是否开启中文标题加强"),
+        separators: List[str] = Body([], description="文本切分符号"),
         override_custom_docs: bool = Body(False, description="是否覆盖之前自定义的docs"),
         docs: Json = Body({}, description="自定义的docs，需要转为json字符串",
                           examples=[{"test.txt": [Document(page_content="custom doc")]}]),
@@ -280,7 +283,8 @@ def update_docs(
             continue
         if file_name not in docs:
             try:
-                kb_files.append(KnowledgeFile(filename=file_name, knowledge_base_name=knowledge_base_name))
+                kb_files.append(
+                    KnowledgeFile(filename=file_name, knowledge_base_name=knowledge_base_name, separators=separators))
             except Exception as e:
                 msg = f"加载文档 {file_name} 时出错：{e}"
                 logger.error(f'{e.__class__.__name__}: {msg}',
@@ -292,11 +296,12 @@ def update_docs(
     for status, result in files2docs_in_thread(kb_files,
                                                chunk_size=chunk_size,
                                                chunk_overlap=chunk_overlap,
-                                               zh_title_enhance=zh_title_enhance):
+                                               zh_title_enhance=zh_title_enhance,
+                                               separators=separators):
         if status:
             kb_name, file_name, new_docs = result
             kb_file = KnowledgeFile(filename=file_name,
-                                    knowledge_base_name=knowledge_base_name)
+                                    knowledge_base_name=knowledge_base_name, separators=separators)
             kb_file.splited_docs = new_docs
             kb.update_doc(kb_file, not_refresh_vs_cache=True)
         else:
@@ -307,7 +312,7 @@ def update_docs(
     for file_name, v in docs.items():
         try:
             v = [x if isinstance(x, Document) else Document(**x) for x in v]
-            kb_file = KnowledgeFile(filename=file_name, knowledge_base_name=knowledge_base_name)
+            kb_file = KnowledgeFile(filename=file_name, knowledge_base_name=knowledge_base_name, separators=separators)
             kb.update_doc(kb_file, docs=v, not_refresh_vs_cache=True)
         except Exception as e:
             msg = f"为 {file_name} 添加自定义docs时出错：{e}"
@@ -362,6 +367,7 @@ def recreate_vector_store(
         chunk_size: int = Body(CHUNK_SIZE, description="知识库中单段文本最大长度"),
         chunk_overlap: int = Body(OVERLAP_SIZE, description="知识库中相邻文本重合长度"),
         zh_title_enhance: bool = Body(ZH_TITLE_ENHANCE, description="是否开启中文标题加强"),
+        separators: List[str] = Body([], description="文本切分符号"),
         not_refresh_vs_cache: bool = Body(False, description="暂不保存向量库（用于FAISS）"),
 ):
     """
@@ -385,10 +391,11 @@ def recreate_vector_store(
             for status, result in files2docs_in_thread(kb_files,
                                                        chunk_size=chunk_size,
                                                        chunk_overlap=chunk_overlap,
-                                                       zh_title_enhance=zh_title_enhance):
+                                                       zh_title_enhance=zh_title_enhance,
+                                                       separators=separators):
                 if status:
                     kb_name, file_name, docs = result
-                    kb_file = KnowledgeFile(filename=file_name, knowledge_base_name=kb_name)
+                    kb_file = KnowledgeFile(filename=file_name, knowledge_base_name=kb_name, separators=separators)
                     kb_file.splited_docs = docs
                     yield json.dumps({
                         "code": 200,

@@ -630,6 +630,7 @@ class ApiRequest:
             chunk_size=CHUNK_SIZE,
             chunk_overlap=OVERLAP_SIZE,
             zh_title_enhance=ZH_TITLE_ENHANCE,
+            separators: Optional[List[str]] = None,
             docs: Dict = {},
             not_refresh_vs_cache: bool = False,
     ):
@@ -655,6 +656,7 @@ class ApiRequest:
             "chunk_size": chunk_size,
             "chunk_overlap": chunk_overlap,
             "zh_title_enhance": zh_title_enhance,
+            "separators": separators,
             "docs": docs,
             "not_refresh_vs_cache": not_refresh_vs_cache,
         }
@@ -715,6 +717,7 @@ class ApiRequest:
             chunk_size=CHUNK_SIZE,
             chunk_overlap=OVERLAP_SIZE,
             zh_title_enhance=ZH_TITLE_ENHANCE,
+            separators: Optional[List[str]] = None,
             docs: Dict = {},
             not_refresh_vs_cache: bool = False,
     ):
@@ -728,6 +731,7 @@ class ApiRequest:
             "chunk_size": chunk_size,
             "chunk_overlap": chunk_overlap,
             "zh_title_enhance": zh_title_enhance,
+            "separators": separators,
             "docs": docs,
             "not_refresh_vs_cache": not_refresh_vs_cache,
         }
@@ -750,6 +754,7 @@ class ApiRequest:
             chunk_size=CHUNK_SIZE,
             chunk_overlap=OVERLAP_SIZE,
             zh_title_enhance=ZH_TITLE_ENHANCE,
+            separators: Optional[List[str]] = None,
     ):
         '''
         对应api.py/knowledge_base/recreate_vector_store接口
@@ -762,6 +767,7 @@ class ApiRequest:
             "chunk_size": chunk_size,
             "chunk_overlap": chunk_overlap,
             "zh_title_enhance": zh_title_enhance,
+            "separators": separators
         }
 
         response = self.post(

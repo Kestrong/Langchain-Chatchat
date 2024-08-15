@@ -178,15 +178,16 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
 
         # with st.sidebar:
         with st.expander(
-                "文件处理配置",
+                "文件处理配置(不知道含义保持默认即可)",
                 expanded=True,
         ):
-            cols = st.columns(3)
-            chunk_size = cols[0].number_input("单段文本最大长度：", 1, 1000, CHUNK_SIZE)
-            chunk_overlap = cols[1].number_input("相邻文本重合长度：", 0, chunk_size, OVERLAP_SIZE)
-            cols[2].write("")
-            cols[2].write("")
-            zh_title_enhance = cols[2].checkbox("开启中文标题加强", ZH_TITLE_ENHANCE)
+            cols = st.columns(4)
+            separators = cols[0].text_input("文本切分符号：", placeholder="默认取系统设置")
+            chunk_size = cols[1].number_input("单段文本最大长度：", 1, 1000, CHUNK_SIZE)
+            chunk_overlap = cols[2].number_input("相邻文本重合长度：", 0, chunk_size, OVERLAP_SIZE)
+            cols[3].write("")
+            cols[3].write("")
+            zh_title_enhance = cols[3].checkbox("开启中文标题加强", ZH_TITLE_ENHANCE)
 
         if st.button(
                 "添加文件到知识库",
@@ -198,7 +199,8 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
                                      override=True,
                                      chunk_size=chunk_size,
                                      chunk_overlap=chunk_overlap,
-                                     zh_title_enhance=zh_title_enhance)
+                                     zh_title_enhance=zh_title_enhance,
+                                     separators=[separators] if separators and len(separators.strip()) > 0 else None,)
             if msg := check_success_msg(ret):
                 st.toast(msg, icon="✔")
             elif msg := check_error_msg(ret):
@@ -279,7 +281,8 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
                                    file_names=file_names,
                                    chunk_size=chunk_size,
                                    chunk_overlap=chunk_overlap,
-                                   zh_title_enhance=zh_title_enhance)
+                                   zh_title_enhance=zh_title_enhance,
+                                   separators=[separators] if separators and len(separators.strip()) > 0 else None, )
                 st.rerun()
 
             # 将文件从向量库中删除，但不删除文件本身。
@@ -321,7 +324,9 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
                                                        'in_db'] else EMBEDDING_MODEL,
                                                    chunk_size=chunk_size,
                                                    chunk_overlap=chunk_overlap,
-                                                   zh_title_enhance=zh_title_enhance):
+                                                   zh_title_enhance=zh_title_enhance,
+                                                   separators=[separators] if separators and len(
+                                                       separators.strip()) > 0 else None, ):
                     if msg := check_error_msg(d):
                         st.toast(msg)
                     else:
@@ -342,7 +347,7 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
 
         with st.sidebar:
             keyword = st.text_input("查询关键字")
-            top_k = st.slider("匹配条数", 1, 100, 3)
+            top_k = st.slider("匹配条数", 1, 100, VECTOR_SEARCH_TOP_K)
 
         st.write("文件内文档列表。双击进行修改，在删除列填入 Y 可删除对应行。")
         docs = []

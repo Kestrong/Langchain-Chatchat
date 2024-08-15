@@ -13,12 +13,14 @@ def create_assistant(avatar: str = Body(None, description="头像图标"),
                      model_name: str = Body(LLM_MODELS[0], description="LLM 模型名称。"),
                      prologue: str = Body(None, description="开场白"),
                      knowledge_base_ids: str = Body(None, description="关联的知识库id，例如:1,2,3"),
+                     force_feedback: str = Body('0BF', description="是否强制点赞后才能继续对话,0BT是/0BF否，默认0BF"),
                      sort_id: int = Body(0, description="排序顺序,值越小越靠前"),
                      model_config: dict = Body({}, description="模型附加配置"),
                      extra: dict = Body({}, description="附加属性")) -> BaseResponse:
     try:
         assistant_id = add_assistant_to_db(name=name, avatar=avatar, prompt=prompt, model_name=model_name,
-                                           prologue=prologue, knowledge_base_ids=knowledge_base_ids, extra=extra,
+                                           prologue=prologue, knowledge_base_ids=knowledge_base_ids,
+                                           force_feedback=force_feedback, extra=extra,
                                            model_config=model_config, sort_id=sort_id)
     except Exception as e:
         msg = f"创建助手出错： {e}"
@@ -35,13 +37,15 @@ def update_assistant(id: int = Body(description="助手id"),
                      model_name: str = Body(LLM_MODELS[0], description="LLM 模型名称。"),
                      prologue: str = Body(None, description="开场白"),
                      knowledge_base_ids: str = Body(None, description="关联的知识库id，例如:1,2,3"),
+                     force_feedback: str = Body('0BF', description="是否强制点赞后才能继续对话,0BT是/0BF否，默认0BF"),
                      sort_id: int = Body(0, description="排序顺序,值越小越靠前"),
                      model_config: dict = Body(None, description="模型附加配置"),
                      extra: dict = Body(None, description="附加属性")) -> BaseResponse:
     try:
         assistant_id = update_assistant_to_db(assistant_id=id, name=name, avatar=avatar, prompt=prompt,
                                               model_name=model_name, prologue=prologue, model_config=model_config,
-                                              knowledge_base_ids=knowledge_base_ids, extra=extra, sort_id=sort_id)
+                                              knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback,
+                                              extra=extra, sort_id=sort_id)
     except Exception as e:
         msg = f"修改助手出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',

@@ -31,24 +31,24 @@ def update_message(session, message_id, response: str = None, metadata: Dict = N
     """
     更新已有的聊天记录
     """
-    m = get_message_by_id(message_id)
+    m = session.query(MessageModel).filter_by(id=message_id).first()
     if m is not None:
         if response is not None:
             m.response = response
         if isinstance(metadata, dict):
             m.meta_data = metadata
-        session.add(m)
-        session.commit()
-        return m.id
+        return message_id
 
 
 @with_session
-def get_message_by_id(session, message_id) -> MessageModel:
+def get_message_by_id(session, message_id) -> dict:
     """
     查询聊天记录
     """
     m = session.query(MessageModel).filter_by(id=message_id).first()
-    return m
+    if m is not None:
+        return m.dict()
+    return {}
 
 
 @with_session

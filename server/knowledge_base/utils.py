@@ -2,12 +2,13 @@ import importlib
 import json
 import os
 import re
-from typing import List, Union, Dict, Tuple, Generator
+from typing import List, Union, Dict, Tuple, Generator, Optional
 
 import chardet
 import langchain.document_loaders
 from langchain.docstore.document import Document
 from langchain.text_splitter import TextSplitter
+from langchain_community.document_loaders import TextLoader
 from pathlib import Path
 
 from configs import (
@@ -68,7 +69,7 @@ def list_files_from_folder(kb_name: str):
 
 LOADER_DICT = {"UnstructuredHTMLLoader": ['.html', '.htm'],
                "MHTMLLoader": ['.mhtml'],
-               "UnstructuredMarkdownLoader": ['.md'],
+               "TextLoader": ['.md'],
                "JSONLoader": [".json"],
                "JSONLinesLoader": [".jsonl"],
                "CSVLoader": [".csv"],
@@ -175,6 +176,7 @@ def make_text_splitter(
         chunk_size: int = CHUNK_SIZE,
         chunk_overlap: int = OVERLAP_SIZE,
         llm_model: str = LLM_MODELS[0],
+        separators: Optional[List[str]] = None
 ):
     """
     根据参数获取特定的分词器
@@ -184,7 +186,7 @@ def make_text_splitter(
         if splitter_name == "MarkdownHeaderTextSplitter":  # MarkdownHeaderTextSplitter特殊判定
             headers_to_split_on = text_splitter_dict[splitter_name]['headers_to_split_on']
             text_splitter = langchain.text_splitter.MarkdownHeaderTextSplitter(
-                headers_to_split_on=headers_to_split_on)
+                headers_to_split_on=headers_to_split_on, strip_headers=False)
         else:
 
             try:  ## 优先使用用户自定义的text_splitter
@@ -245,7 +247,8 @@ def make_text_splitter(
         text_splitter_module = importlib.import_module('langchain.text_splitter')
         TextSplitter = getattr(text_splitter_module, "RecursiveCharacterTextSplitter")
         text_splitter = TextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-
+    if separators and len(separators) > 0 and hasattr(text_splitter, '_separators'):
+        setattr(text_splitter, '_separators', separators)
     # If you use SpacyTextSplitter you can use GPU to do split likes Issue #1287
     # text_splitter._tokenizer.max_length = 37016792
     # text_splitter._tokenizer.prefer_gpu()
@@ -257,6 +260,7 @@ class KnowledgeFile:
             self,
             filename: str,
             knowledge_base_name: str,
+            separators: Optional[List[str]] = None,
             loader_kwargs: Dict = {},
     ):
         '''
@@ -273,6 +277,7 @@ class KnowledgeFile:
         self.splited_docs = None
         self.document_loader_name = get_LoaderClass(self.ext)
         self.text_splitter_name = TEXT_SPLITTER_NAME
+        self.separators = separators
 
     def file2docs(self, refresh: bool = False):
         if self.docs is None or refresh:
@@ -283,7 +288,12 @@ class KnowledgeFile:
                 loader = get_loader(loader_name=self.document_loader_name,
                                     file_path=self.filepath,
                                     loader_kwargs=self.loader_kwargs)
-                self.docs = loader.load()
+                if isinstance(loader, TextLoader):
+                    loader.encoding = "utf8"
+                    loader.autodetect_encoding = True
+                    self.docs = loader.load()
+                else:
+                    self.docs = loader.load()
             finally:
                 if default_oss().type() == OssType.MINIO.value:
                     oss_factory[OssType.FILESYSTEM.value].delete_object(self.kb_name, self.filename)
@@ -306,7 +316,7 @@ class KnowledgeFile:
         if self.ext not in [".csv"]:
             if text_splitter is None:
                 text_splitter = make_text_splitter(splitter_name=self.text_splitter_name, chunk_size=chunk_size,
-                                                   chunk_overlap=chunk_overlap)
+                                                   chunk_overlap=chunk_overlap, separators=self.separators)
             if self.text_splitter_name == "MarkdownHeaderTextSplitter":
                 docs = text_splitter.split_text(docs[0].page_content)
             else:
@@ -358,6 +368,7 @@ def files2docs_in_thread(
         chunk_size: int = CHUNK_SIZE,
         chunk_overlap: int = OVERLAP_SIZE,
         zh_title_enhance: bool = ZH_TITLE_ENHANCE,
+        separators: List[str] = None,
 ) -> Generator:
     '''
     利用多线程批量将磁盘文件转化成langchain Document.
@@ -381,12 +392,12 @@ def files2docs_in_thread(
             if isinstance(file, tuple) and len(file) >= 2:
                 filename = file[0]
                 kb_name = file[1]
-                file = KnowledgeFile(filename=filename, knowledge_base_name=kb_name)
+                file = KnowledgeFile(filename=filename, knowledge_base_name=kb_name, separators=separators)
             elif isinstance(file, dict):
                 filename = file.pop("filename")
                 kb_name = file.pop("kb_name")
                 kwargs.update(file)
-                file = KnowledgeFile(filename=filename, knowledge_base_name=kb_name)
+                file = KnowledgeFile(filename=filename, knowledge_base_name=kb_name, separators=separators)
             kwargs["file"] = file
             kwargs["chunk_size"] = chunk_size
             kwargs["chunk_overlap"] = chunk_overlap

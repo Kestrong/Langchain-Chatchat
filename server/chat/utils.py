@@ -53,7 +53,8 @@ def parse_llm_token_inner_json(model_name: str, token: str):
         mark = f'###[{model_name}]###'
         if token.startswith(mark) and token.endswith(mark):
             inner_json = json.loads(token.lstrip(mark).rstrip(mark))
-            return {"answer": inner_json.get('answer'), 'extra': {"conversation_id": inner_json.get('conversation_id')}}
+            return {"answer": inner_json.get('answer'), 'extra': {"conversation_id": inner_json.get('conversation_id'),
+                                                                  "message_id": inner_json.get('message_id')}}
     return {"answer": token}
 
 
