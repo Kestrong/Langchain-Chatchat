@@ -30,14 +30,15 @@ def post_feedback_to_qiming(model_name: str, score: int, reason: str, extra: dic
                 raise Exception('调用启明赞踩接口失败！')
 
 
-def post_feedback_to_iotqwen(message_id: str, model_name: str, score: int):
+def post_feedback_to_iotqwen(message_id: str, model_name: str, score: int, reason: str):
     if model_name == 'iotqwen-api':
         params = ApiChatQimingParams(messages=[]).load_config(worker_name=model_name)
         headers = {"Authorization": f"Bearer {params.api_key}",
                    "Content-Type": "application/json"}
         data = {
             "rating": 'likes' if score >= 0 else 'dislikes',
-            "user": params.role_meta.get('user')
+            "user": params.role_meta.get('user'),
+            "content": reason
         }
         message = get_message_by_id(message_id=message_id)
         third_message_id = None
@@ -64,7 +65,7 @@ def chat_feedback(message_id: str = Body(..., max_length=32, description="聊天
                   ):
     try:
         post_feedback_to_qiming(model_name, score, reason, extra)
-        post_feedback_to_iotqwen(message_id, model_name, score)
+        post_feedback_to_iotqwen(message_id, model_name, score, reason)
         feedback_message_to_db(message_id, score, reason)
     except Exception as e:
         msg = f"反馈聊天记录出错： {e}"
