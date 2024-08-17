@@ -36,7 +36,7 @@ def post_feedback_to_iotqwen(message_id: str, model_name: str, score: int, reaso
         headers = {"Authorization": f"Bearer {params.api_key}",
                    "Content-Type": "application/json"}
         data = {
-            "rating": 'likes' if score >= 0 else 'dislikes',
+            "rating": 'like' if score >= 0 else 'dislike',
             "user": params.role_meta.get('user'),
             "content": reason
         }
