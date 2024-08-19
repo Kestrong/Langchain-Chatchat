@@ -146,6 +146,8 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
     mount_filename_summary_routes(app)
     # 助手相关接口
     mount_assistant_routes(app)
+    # 菜单相关接口
+    mount_menu_routes(app)
 
     # LLM模型相关接口
     app.post("/llm_model/list_running_models",
@@ -234,6 +236,34 @@ def mount_assistant_routes(app: FastAPI):
                tags=["Chat"],
                summary="删除助手",
                )(delete_assistant)
+
+def mount_menu_routes(app: FastAPI):
+    from server.chat.menu import create_menu, update_menu, delete_menu, get_menus, get_menu_detail
+
+    app.get("/chat/menus",
+            tags=["Menu"],
+            summary="获取菜单列表",
+            )(get_menus)
+
+    app.get("/chat/menu",
+            tags=["Menu"],
+            summary="获取菜单详情",
+            )(get_menu_detail)
+
+    app.post("/chat/menu",
+             tags=["Menu"],
+             summary="创建菜单",
+             )(create_menu)
+
+    app.put("/chat/menu",
+            tags=["Menu"],
+            summary="修改菜单",
+            )(update_menu)
+
+    app.delete("/chat/menu",
+               tags=["Menu"],
+               summary="删除菜单",
+               )(delete_menu)
 
 
 def mount_knowledge_routes(app: FastAPI):
