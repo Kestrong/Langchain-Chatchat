@@ -98,7 +98,7 @@ class QimingWorker(ApiModelWorker):
                 message['scene'] = parts[1]
                 message['param1'] = parts[2]
                 message['param2'] = parts[3] if len(parts) > 3 else ""
-            websocket = create_connection(url=uri, header=headers, timeout=30)
+            websocket = create_connection(url=uri, header=headers, timeout=params.role_meta.get("timeout", 30))
             websocket.send(json.dumps(message))
             while True:
                 response = websocket.recv()

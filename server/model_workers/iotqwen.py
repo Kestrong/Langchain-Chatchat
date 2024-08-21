@@ -56,7 +56,8 @@ class IotQwenWorker(ApiModelWorker):
         text = ""
         mark = f'###[{self.model_names[0]}]###'
         try:
-            with requests.post(url, stream=response_mode, headers=headers, timeout=30, json=data) as response:
+            with requests.post(url, stream=response_mode, headers=headers, timeout=role_meta.get("timeout", 30),
+                               json=data) as response:
                 response.raise_for_status()
                 if response_mode:
                     for chunk in response.iter_lines():

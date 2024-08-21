@@ -7,10 +7,10 @@ from server.memory.token_info_memory import get_token_info
 
 
 @with_session
-def add_assistant_to_db(session, name: str, avatar: str, prompt: str, model_name: str, prologue: str,
+def add_assistant_to_db(session, name: str, avatar: str, prompt: str, model_name: str, prologue: str, history_len: int,
                         knowledge_base_ids: str, force_feedback: str, extra: dict, model_config: dict, sort_id: int):
     c = AssistantModel(name=name, avatar=avatar, prompt=prompt, model_name=model_name, prologue=prologue,
-                       knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback,
+                       knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback, history_len=history_len,
                        create_by=get_token_info().get("userId"), extra=extra,
                        model_config=model_config, sort_id=sort_id)
     session.add(c)
@@ -20,8 +20,8 @@ def add_assistant_to_db(session, name: str, avatar: str, prompt: str, model_name
 
 @with_session
 def update_assistant_to_db(session, name: str, assistant_id: int, avatar: str, prompt: str, model_name: str,
-                           prologue: str, knowledge_base_ids: str, force_feedback: str, extra: dict, model_config: dict,
-                           sort_id: int):
+                           history_len: int, prologue: str, knowledge_base_ids: str, force_feedback: str, extra: dict,
+                           model_config: dict, sort_id: int):
     assistant: AssistantModel = session.query(AssistantModel).filter(AssistantModel.id == assistant_id).first()
     if assistant is not None:
         assistant.name = name
@@ -31,6 +31,7 @@ def update_assistant_to_db(session, name: str, assistant_id: int, avatar: str, p
         assistant.prologue = prologue
         assistant.knowledge_base_ids = knowledge_base_ids
         assistant.force_feedback = force_feedback
+        assistant.history_len = history_len
         assistant.extra = extra if extra is not None else assistant.extra
         assistant.model_config = model_config if model_config is not None else assistant.model_config
         assistant.sort_id = sort_id

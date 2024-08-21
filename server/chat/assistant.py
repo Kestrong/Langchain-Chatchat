@@ -1,6 +1,6 @@
 from fastapi import Body, Query
 
-from configs import LLM_MODELS
+from configs import LLM_MODELS, HISTORY_LEN
 from configs.basic_config import logger, log_verbose
 from server.db.repository.assistant_repository import add_assistant_to_db, update_assistant_to_db, \
     delete_assistant_from_db, get_assistant_from_db, get_assistant_detail_from_db
@@ -14,13 +14,14 @@ def create_assistant(avatar: str = Body(None, description="头像图标"),
                      prologue: str = Body(None, description="开场白"),
                      knowledge_base_ids: str = Body(None, description="关联的知识库id，例如:1,2,3"),
                      force_feedback: str = Body('0BF', description="是否强制点赞后才能继续对话,0BT是/0BF否，默认0BF"),
+                     history_len: int = Body(HISTORY_LEN, description="历史对话轮数，建议0-10"),
                      sort_id: int = Body(0, description="排序顺序,值越小越靠前"),
                      model_config: dict = Body({}, description="模型附加配置"),
                      extra: dict = Body({}, description="附加属性")) -> BaseResponse:
     try:
         assistant_id = add_assistant_to_db(name=name, avatar=avatar, prompt=prompt, model_name=model_name,
                                            prologue=prologue, knowledge_base_ids=knowledge_base_ids,
-                                           force_feedback=force_feedback, extra=extra,
+                                           force_feedback=force_feedback, history_len=history_len, extra=extra,
                                            model_config=model_config, sort_id=sort_id)
     except Exception as e:
         msg = f"创建助手出错： {e}"
@@ -38,6 +39,7 @@ def update_assistant(id: int = Body(description="助手id"),
                      prologue: str = Body(None, description="开场白"),
                      knowledge_base_ids: str = Body(None, description="关联的知识库id，例如:1,2,3"),
                      force_feedback: str = Body('0BF', description="是否强制点赞后才能继续对话,0BT是/0BF否，默认0BF"),
+                     history_len: int = Body(HISTORY_LEN, description="历史对话轮数，建议0-10"),
                      sort_id: int = Body(0, description="排序顺序,值越小越靠前"),
                      model_config: dict = Body(None, description="模型附加配置"),
                      extra: dict = Body(None, description="附加属性")) -> BaseResponse:
@@ -45,7 +47,7 @@ def update_assistant(id: int = Body(description="助手id"),
         assistant_id = update_assistant_to_db(assistant_id=id, name=name, avatar=avatar, prompt=prompt,
                                               model_name=model_name, prologue=prologue, model_config=model_config,
                                               knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback,
-                                              extra=extra, sort_id=sort_id)
+                                              history_len=history_len, extra=extra, sort_id=sort_id)
     except Exception as e:
         msg = f"修改助手出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
