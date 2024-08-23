@@ -43,13 +43,17 @@ def post_feedback_to_iotqwen(message_id: str, model_name: str, score: int, reaso
         message = get_message_by_id(message_id=message_id)
         third_message_id = None
         if message:
-            third_message_id = message.get('meta_data', {}).get("third_message_id")
+            meta_data = message.get('meta_data', {})
+            third_message_id = meta_data.get("third_message_id")
+            if 'user' in meta_data:
+                data['user'] = meta_data.get('user')
         if not third_message_id:
             logger.error('没有关联第三方消息id，无法点赞')
             return None
         with requests.post(url=params.feedbackUrl.format(message_id=third_message_id), json=data, headers=headers,
                            timeout=10) as response:
             if response.status_code != 200:
+                logger.error(response.text)
                 response.raise_for_status()
             json_data = response.json()
             if str(json_data.get('result')) != "success":

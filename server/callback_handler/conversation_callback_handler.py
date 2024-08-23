@@ -46,6 +46,8 @@ class ConversationCallbackHandler(BaseCallbackHandler):
                             metadata['third_message_id'] = json_obj.get('message_id')
                         if 'conversation_id' in json_obj:
                             metadata['third_conversation_id'] = json_obj.get('conversation_id')
+                        if 'user' in json_obj:
+                            metadata['user'] = json_obj.get('user')
                     else:
                         answer += part
         update_message(self.message_id, answer, metadata if len(metadata) > 0 else None)
