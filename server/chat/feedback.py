@@ -33,8 +33,7 @@ def post_feedback_to_qiming(model_name: str, score: int, reason: str, extra: dic
 def post_feedback_to_iotqwen(message_id: str, model_name: str, score: int, reason: str):
     if model_name == 'iotqwen-api':
         params = ApiChatQimingParams(messages=[]).load_config(worker_name=model_name)
-        headers = {"Authorization": f"Bearer {params.api_key}",
-                   "Content-Type": "application/json"}
+        api_key = params.api_key
         data = {
             "rating": 'like' if score >= 0 else 'dislike',
             "user": params.role_meta.get('user'),
@@ -47,9 +46,13 @@ def post_feedback_to_iotqwen(message_id: str, model_name: str, score: int, reaso
             third_message_id = meta_data.get("third_message_id")
             if 'user' in meta_data:
                 data['user'] = meta_data.get('user')
+            if 'api_key' in meta_data:
+                api_key = meta_data.get('api_key')
         if not third_message_id:
             logger.error('没有关联第三方消息id，无法点赞')
             return None
+        headers = {"Authorization": f"Bearer {api_key}",
+                   "Content-Type": "application/json"}
         with requests.post(url=params.feedbackUrl.format(message_id=third_message_id), json=data, headers=headers,
                            timeout=10) as response:
             if response.status_code != 200:

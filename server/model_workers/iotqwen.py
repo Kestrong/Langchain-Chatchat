@@ -79,7 +79,7 @@ class IotQwenWorker(ApiModelWorker):
                                     msg = json_data.get('answer', '')
                                     inner_json = json.dumps(
                                         {"conversation_id": conversation_id, "message_id": message_id,
-                                         "user": data.get('user'), "answer": msg})
+                                         "user": data.get('user'), "api_key": api_key, "answer": msg})
                                     text += mark + inner_json + mark
                                     yield {"error_code": 0, "text": text}
                             except json.JSONDecodeError:
@@ -89,7 +89,8 @@ class IotQwenWorker(ApiModelWorker):
                     conversation_id = json_data.get('conversation_id')
                     message_id = json_data.get('message_id')
                     inner_json = json.dumps({"conversation_id": conversation_id, "message_id": message_id,
-                                             "user": data.get('user'), "answer": json_data.get('answer', '')})
+                                             "user": data.get('user'), "api_key": api_key,
+                                             "answer": json_data.get('answer', '')})
                     yield {"error_code": 0, "text": mark + inner_json + mark}
         except Exception as e:
             logger.error(f"{e}")
