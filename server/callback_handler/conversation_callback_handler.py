@@ -42,9 +42,14 @@ class ConversationCallbackHandler(BaseCallbackHandler):
                     if part.startswith('{') and part.endswith('}'):
                         json_obj = json.loads(part)
                         answer += json_obj.get('answer')
-                        for key in ["third_message_id", "third_conversation_id", "user", "api_key"]:
-                            if key in json_obj:
-                                metadata[key] = json_obj.get(key)
+                        if 'message_id' in json_obj:
+                            metadata['third_message_id'] = json_obj.get('message_id')
+                        if 'conversation_id' in json_obj:
+                            metadata['third_conversation_id'] = json_obj.get('conversation_id')
+                        if 'user' in json_obj:
+                            metadata['user'] = json_obj.get('user')
+                        if 'api_key' in json_obj:
+                            metadata['api_key'] = json_obj.get('api_key')
                     else:
                         answer += part
         update_message(self.message_id, answer, metadata if len(metadata) > 0 else None)
