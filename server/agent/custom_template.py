@@ -64,7 +64,10 @@ def validate_json(json_data: str):
 def parse_json(json_string: str, fallback: bool = True) -> Union[str, dict]:
     json_input = None
     try:
-        json_input = json.loads(json_string)
+        try:
+            json_input = json.loads(json_string)
+        except:
+            json_input = json.loads(json.dumps(json_string))
     except:
         # ollama部署的qwen，返回的json键值可能为单引号，可能缺少最后的引号和括号
         if not json_string.endswith('"}'):

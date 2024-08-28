@@ -4,6 +4,7 @@ from langchain.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 
 from server.agent import model_container
+from server.agent.tools_select import register_tool
 
 _PROMPT_TEMPLATE = """
 将数学问题翻译成可以使用Python的numexpr库执行的表达式。使用运行此代码的输出来回答问题。
@@ -65,6 +66,9 @@ class CalculatorInput(BaseModel):
     query: str = Field()
 
 
+@register_tool(title='数学计算器',
+               description="Useful for when you need to answer questions about simple calculations or math problems",
+               args_schema=CalculatorInput)
 def calculate(query: str):
     model = model_container.MODEL
     llm_math = LLMMathChain.from_llm(model, verbose=True, prompt=PROMPT)

@@ -1,9 +1,11 @@
 """
 更简单的单参数输入工具实现，用于查询现在天气的情况
 """
-from pydantic import BaseModel, Field
 import requests
-from configs.kb_config import SENIVERSE_API_KEY
+from pydantic import BaseModel, Field
+
+from configs import SENIVERSE_API_KEY
+from server.agent.tools_select import register_tool
 
 
 def weather(location: str, api_key: str):
@@ -21,9 +23,11 @@ def weather(location: str, api_key: str):
             f"Failed to retrieve weather: {response.status_code}")
 
 
-def weathercheck(location: str):
-    return weather(location, SENIVERSE_API_KEY)
-
-
 class WeatherInput(BaseModel):
     location: str = Field(description="City name,include city and county")
+
+
+@register_tool(title='天气查询', description="use this tool to search weather of city ",
+               args_schema=WeatherInput)
+def weathercheck(location: str):
+    return weather(location, SENIVERSE_API_KEY)

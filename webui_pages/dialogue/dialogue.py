@@ -1,16 +1,19 @@
-import streamlit as st
-from webui_pages.utils import *
-from streamlit_chatbox import *
-from streamlit_modal import Modal
-from datetime import datetime
 import os
 import re
 import time
+import uuid
+from datetime import datetime
+from typing import List, Dict
+
+import streamlit as st
+from streamlit_chatbox import *
+from streamlit_modal import Modal
+
 from configs import (TEMPERATURE, HISTORY_LEN, PROMPT_TEMPLATES, LLM_MODELS,
                      DEFAULT_KNOWLEDGE_BASE, DEFAULT_SEARCH_ENGINE, SUPPORT_AGENT_MODEL)
+from server.agent.tools_select import get_tools
 from server.knowledge_base.utils import LOADER_DICT
-import uuid
-from typing import List, Dict
+from webui_pages.utils import *
 
 chat_box = ChatBox(
     assistant_avatar=os.path.join(
@@ -270,6 +273,16 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                     index=index,
                 )
                 se_top_k = st.number_input("匹配搜索结果条数：", 1, 20, SEARCH_ENGINE_TOP_K)
+        elif dialogue_mode == "自定义Agent问答":
+            with st.expander("Agent问答配置", True):
+                tool_name_map = {t.name: t.title for t in get_tools()}
+                tool_selected = st.selectbox(
+                    label="请选择工具",
+                    options=tool_name_map.keys(),
+                    format_func=lambda x: tool_name_map[x],
+                    index=None,
+                    placeholder="无"
+                )
 
     # Display chat messages from history on app rerun
     chat_box.output_messages()
@@ -348,6 +361,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                                         model=llm_model,
                                         prompt_name=prompt_template_name,
                                         temperature=temperature,
+                                        tool_name=tool_selected
                                         ):
                     try:
                         d = json.loads(d)

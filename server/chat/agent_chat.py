@@ -1,23 +1,22 @@
-import json
 import asyncio
-
-from fastapi import Body
-from sse_starlette.sse import EventSourceResponse
-from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, Agent_MODEL
-
-from langchain.chains import LLMChain
-from langchain.memory import ConversationBufferWindowMemory
-from langchain.agents import LLMSingleActionAgent, AgentExecutor
+import json
 from typing import AsyncIterable, Optional, List
 
-from server.utils import wrap_done, get_ChatOpenAI, get_prompt_template, BaseResponse
-from server.knowledge_base.kb_service.base import get_kb_details
-from server.agent.custom_agent.ChatGLM3Agent import initialize_glm3_agent
-from server.agent.tools_select import tools, tool_names
-from server.agent.callbacks import CustomAsyncIteratorCallbackHandler, Status
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS
+from fastapi import Body
+from langchain.agents import LLMSingleActionAgent, AgentExecutor
+from langchain.chains import LLMChain
+from langchain.memory import ConversationBufferWindowMemory
+from sse_starlette.sse import EventSourceResponse
+
+from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, Agent_MODEL
 from server.agent import model_container
+from server.agent.callbacks import CustomAsyncIteratorCallbackHandler, Status
+from server.agent.custom_agent.ChatGLM3Agent import initialize_glm3_agent
 from server.agent.custom_template import CustomOutputParser, CustomPromptTemplate
+from server.agent.tools_select import get_tools, get_tool_names
+from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS
+from server.knowledge_base.kb_service.base import get_kb_details
+from server.utils import wrap_done, get_ChatOpenAI, get_prompt_template, BaseResponse
 
 
 async def agent_chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
@@ -34,11 +33,15 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                      max_tokens: Optional[int] = Body(None, description="限制LLM生成Token数量，默认None代表模型最大值"),
                      prompt_name: str = Body("default",
                                              description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
+                     tool_name: str = Body("", description="工具的名称"),
                      ):
     if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
         return BaseResponse(code=500, msg=f"对不起，agent对话不支持该模型:{model_name}")
 
     history = [History.from_data(h) for h in history]
+    tools, tool_names = get_tools(tool_name=tool_name), get_tool_names(tool_name=tool_name)
+    if not tools:
+        return BaseResponse(code=500, msg="对不起，没有工具可以调用。")
 
     async def agent_chat_iterator(
             query: str,
@@ -58,7 +61,6 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         langfuse_public_key = os.environ.get('LANGFUSE_PUBLIC_KEY')
         langfuse_host = os.environ.get('LANGFUSE_HOST')
         if langfuse_secret_key and langfuse_public_key and langfuse_host:
-            from langfuse import Langfuse
             from langfuse.callback import CallbackHandler
             langfuse_handler = CallbackHandler()
             callbacks.append(langfuse_handler)
@@ -70,7 +72,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         )
 
         for t in tool_names:
-            if t.__contains__("knowledgebase"):
+            if t.lower().__contains__("knowledgebase"):
                 kb_list = {x["kb_name"]: x for x in get_kb_details()}
                 model_container.DATABASE = {name: details['kb_info'] for name, details in kb_list.items()}
                 break
@@ -140,16 +142,20 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                 if data["status"] == Status.start or data["status"] == Status.complete:
                     continue
                 elif data["status"] == Status.error:
+                    use_tool_name = data["tool_name"]
+                    fm_use_tool_name = [f"{t.title}({t.name})" for t in get_tools(use_tool_name)]
                     tools_use.append("\n```\n")
-                    tools_use.append("工具名称: " + data["tool_name"])
+                    tools_use.append("工具名称: " + f"{fm_use_tool_name[0]}" if fm_use_tool_name else use_tool_name)
                     tools_use.append("工具状态: " + "调用失败")
                     tools_use.append("错误信息: " + data["error"])
                     tools_use.append("重新开始尝试")
                     tools_use.append("\n```\n")
                     yield json.dumps({"tools": tools_use}, ensure_ascii=False)
                 elif data["status"] == Status.tool_finish:
+                    use_tool_name = data["tool_name"]
+                    fm_use_tool_name = [f"{t.title}({t.name})" for t in get_tools(use_tool_name)]
                     tools_use.append("\n```\n")
-                    tools_use.append("工具名称: " + data["tool_name"])
+                    tools_use.append("工具名称: " + f"{fm_use_tool_name[0]}" if fm_use_tool_name else use_tool_name)
                     tools_use.append("工具状态: " + "调用成功")
                     tools_use.append("工具输入: " + data["input_str"])
                     tools_use.append("工具输出: " + data["output_str"])

@@ -1,0 +1,47 @@
+# 默认搜索引擎。可选：bing, duckduckgo, metaphor
+import os
+
+from configs import SQLALCHEMY_DATABASE_URI, DATABASE_SCHEMA
+
+DEFAULT_SEARCH_ENGINE = "metaphor"
+
+# 搜索引擎匹配结题数量
+SEARCH_ENGINE_TOP_K = 3
+
+# Bing 搜索必备变量
+# 使用 Bing 搜索需要使用 Bing Subscription Key,需要在azure port中申请试用bing search
+# 具体申请方式请见
+# https://learn.microsoft.com/en-us/bing/search-apis/bing-web-search/create-bing-search-service-resource
+# 使用python创建bing api 搜索实例详见:
+# https://learn.microsoft.com/en-us/bing/search-apis/bing-web-search/quickstarts/rest/python
+BING_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
+# 注意不是bing Webmaster Tools的api key，
+
+# 此外，如果是在服务器上，报Failed to establish a new connection: [Errno 110] Connection timed out
+# 是因为服务器加了防火墙，需要联系管理员加白名单，如果公司的服务器的话，就别想了GG
+BING_SUBSCRIPTION_KEY = ""
+
+# metaphor搜索需要KEY
+METAPHOR_API_KEY = ""
+
+# 心知天气 API KEY，用于天气Agent。申请：https://www.seniverse.com/
+SENIVERSE_API_KEY = ""
+
+WOLFRAM_ALPHA_API_KEY = ""
+
+text2sql: dict = {
+    # SQLAlchemy连接字符串，支持的数据库有：
+    # crate、duckdb、googlesql、mssql、mysql、mariadb、oracle、postgresql、sqlite、clickhouse、prestodb
+    # 不同的数据库请查阅SQLAlchemy用法，修改sqlalchemy_connect_str，配置对应的数据库连接，如sqlite为sqlite:///数据库文件路径，下面示例为mysql
+    # 如提示缺少对应数据库的驱动，请自行通过poetry安装
+    "sqlalchemy_schema": os.environ.get('TEXT2SQL_DATABASE_SCHEMA', DATABASE_SCHEMA),
+    "sqlalchemy_connect_str": os.environ.get('TEXT2SQL_DATABASE_URL', SQLALCHEMY_DATABASE_URI),
+    # 如果想指定特定表，请填写表名称，如["sys_user","sys_dept"]，不填写走智能判断应该使用哪些表
+    "table_names": [],
+    # 对表名进行额外说明，辅助大模型更好的判断应该使用哪些表，尤其是SQLDatabaseSequentialChain模式下,是根据表名做的预测，很容易误判。
+    "table_comments": {
+        # 如果出现大模型选错表的情况，可尝试根据实际情况填写表名和说明
+        # "tableA":"这是一个用户表，存储了用户的基本信息",
+        # "tableB":"角色表",
+    },
+}

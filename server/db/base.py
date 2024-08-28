@@ -10,11 +10,19 @@ except ImportError:
     DATABASE_SCHEMA = None
 import json
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URI,
-    json_serializer=lambda obj: json.dumps(obj, ensure_ascii=False),
-    pool_size=30, pool_recycle=1800, pool_pre_ping=True, pool_timeout=30, echo=ECHO_SQL
-)
+
+def create_engine_wrapper(
+        uri=SQLALCHEMY_DATABASE_URI,
+        json_serializer=lambda obj: json.dumps(obj, ensure_ascii=False),
+        pool_size=30, pool_recycle=1800, pool_pre_ping=True, pool_timeout=30, echo=ECHO_SQL
+):
+    return create_engine(
+        url=uri, json_serializer=json_serializer, pool_size=pool_size, pool_recycle=pool_recycle,
+        pool_pre_ping=pool_pre_ping, pool_timeout=pool_timeout, echo=echo
+    )
+
+
+engine = create_engine_wrapper()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

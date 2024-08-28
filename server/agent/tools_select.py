@@ -1,57 +1,43 @@
-from langchain.tools import Tool
+from typing import Optional, Type
+
 from langchain_core.tools import StructuredTool
+from pydantic import BaseModel, Extra
 
-from server.agent.tools import *
+_TOOLS_REGISTRY = {}
 
-tools = [
-    StructuredTool.from_function(
-        func=calculate,
-        name="calculate",
-        description="Useful for when you need to answer questions about simple calculations or math problems",
-        args_schema=CalculatorInput,
-    ),
-    StructuredTool.from_function(
-        func=arxiv,
-        name="arxiv",
-        description="A wrapper around Arxiv.org for searching and retrieving scientific articles in various fields.",
-        args_schema=ArxivInput,
-    ),
-    StructuredTool.from_function(
-        func=weathercheck,
-        name="weather_check",
-        description="use this tool to search weather of city ",
-        args_schema=WeatherInput,
-    ),
-    StructuredTool.from_function(
-        func=shell,
-        name="shell",
-        description="Use Shell to execute Linux commands, such as curl/pwd/ping/find/ls and etc.",
-        args_schema=ShellInput,
-    ),
-    StructuredTool.from_function(
-        func=search_knowledgebase_complex,
-        name="search_knowledgebase_complex",
-        description="Use this tool to search local knowledgebase and get information",
-        args_schema=KnowledgeSearchInput,
-    ),
-    StructuredTool.from_function(
-        func=search_internet,
-        name="search_internet",
-        description="Use this tool to use bing search engine to search the internet",
-        args_schema=SearchInternetInput,
-    ),
-    StructuredTool.from_function(
-        func=wolfram,
-        name="Wolfram",
-        description="Useful for when you need to calculate difficult formulas",
-        args_schema=WolframInput,
-    ),
-    StructuredTool.from_function(
-        func=search_youtube,
-        name="search_youtube",
-        description="use this tools to search youtube videos",
-        args_schema=YoutubeInput,
-    ),
-]
 
-tool_names = [tool.name for tool in tools]
+def get_tools(tool_name: str = None):
+    if tool_name:
+        return [_TOOLS_REGISTRY[tool_name]] if tool_name in _TOOLS_REGISTRY else []
+    return [t for t in _TOOLS_REGISTRY.values()]
+
+
+def get_tool_names(tool_name: str = None):
+    if tool_name:
+        return [tool_name] if tool_name in _TOOLS_REGISTRY else []
+    return [t for t in _TOOLS_REGISTRY.keys()]
+
+
+StructuredTool.Config.extra = Extra.allow
+
+
+def register_tool(
+        title: str = "",
+        description: str = "",
+        return_direct: bool = False,
+        args_schema: Optional[Type[BaseModel]] = None,
+        infer_schema: bool = True,
+):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        t = StructuredTool.from_function(func=func, name=func.__name__,
+                                         description=description,
+                                         args_schema=args_schema, return_direct=return_direct,
+                                         infer_schema=infer_schema)
+        t.title = title
+        _TOOLS_REGISTRY[t.name] = t
+        return wrapper
+
+    return decorator

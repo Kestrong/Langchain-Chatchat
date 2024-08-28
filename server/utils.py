@@ -656,16 +656,18 @@ def get_server_configs() -> Dict:
     '''
     from configs.kb_config import (
         DEFAULT_KNOWLEDGE_BASE,
-        DEFAULT_SEARCH_ENGINE,
         DEFAULT_VS_TYPE,
         CHUNK_SIZE,
         OVERLAP_SIZE,
         SCORE_THRESHOLD,
         VECTOR_SEARCH_TOP_K,
-        SEARCH_ENGINE_TOP_K,
         ZH_TITLE_ENHANCE,
         text_splitter_dict,
         TEXT_SPLITTER_NAME,
+    )
+    from configs.tool_config import (
+        DEFAULT_SEARCH_ENGINE,
+        SEARCH_ENGINE_TOP_K,
     )
     from configs.model_config import (
         LLM_MODELS,

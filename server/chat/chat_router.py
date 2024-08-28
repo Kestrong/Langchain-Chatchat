@@ -46,6 +46,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                       store_message: bool = Body(True, description="是否保存消息到数据库"),
                       split_result: bool = Body(False,
                                                 description="是否对搜索结果进行拆分（主要用于metaphor搜索引擎）"),
+                      tool_name: str = Body("", description="工具的名称"),
                       request: Request = None,
                       ):
     if assistant_id >= 0:
@@ -76,7 +77,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
     elif chat_type == ChatType.AGENT_CHAT.value:
 
         return await agent_chat(query=query, history=history, stream=stream, model_name=model_name,
-                                temperature=temperature,
+                                temperature=temperature, tool_name=tool_name,
                                 max_tokens=max_tokens, prompt_name=prompt_name)
 
     elif chat_type == ChatType.FILE_CHAT.value or (knowledge_base_name is not None and knowledge_base_name != ''):
