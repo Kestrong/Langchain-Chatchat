@@ -1,4 +1,5 @@
 import json
+import mimetypes
 import urllib
 from datetime import datetime
 from typing import List, Dict
@@ -348,7 +349,8 @@ def download_doc(
 
     try:
         data = default_oss().get_object(knowledge_base_name, file_name)
-        return StreamingResponse(content=data, media_type="application/octet-stream",
+        media_types = mimetypes.guess_type(file_name)
+        return StreamingResponse(content=data, media_type=media_types[0] if media_types else "application/octet-stream",
                                  headers={'Content-Disposition': "{}; filename*=utf-8''{}".format(
                                      content_disposition_type, quote(file_name)
                                  )})

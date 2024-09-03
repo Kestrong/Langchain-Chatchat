@@ -11,7 +11,7 @@ from server.chat.file_chat import file_chat
 from server.chat.knowledge_base_chat import knowledge_base_chat
 from server.chat.search_engine_chat import search_engine_chat
 from server.chat.utils import History
-from server.db.repository import get_kb_detail, get_assistant_simple_from_db
+from server.db.repository import get_kb_detail, get_assistant_detail_from_db
 
 
 async def chat_router(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
@@ -19,7 +19,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                       extra: dict = Body({}, description="额外的属性"),
                       conversation_id: str = Body("", description="对话框ID"),
                       assistant_id: int = Body(-1, description="助手ID"),
-                      knowledge_base_name: str = Body(None, description="知识库名称", examples=["samples"]),
+                      knowledge_base_names: List[str] = Body([], description="知识库名称", examples=[["samples"]]),
                       search_engine_name: str = Body(None, description="搜索引擎名称", examples=["duckduckgo"]),
                       top_k: int = Body(VECTOR_SEARCH_TOP_K, description="匹配向量数"),
                       score_threshold: float = Body(
@@ -50,7 +50,10 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                       request: Request = None,
                       ):
     if assistant_id >= 0:
-        assistant = get_assistant_simple_from_db(assistant_id=assistant_id)
+        assistant = get_assistant_detail_from_db(assistant_id=assistant_id)
+        kbs = assistant.get("knowledge_bases", [])
+        if kbs:
+            knowledge_base_names = [kb["kb_name"] for kb in kbs]
         prompt = assistant.get('prompt')
         if prompt is not None and prompt.strip() != '':
             prompt_name = '[*safe_prompt*]' + prompt + '[*safe_prompt*]'
@@ -58,11 +61,10 @@ async def chat_router(query: str = Body(..., description="用户输入", example
             extra.update(assistant.get('extra'))
         extra['assistant_id'] = assistant_id
 
-    if chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or (
-            knowledge_base_name is not None and knowledge_base_name != ''):
+    if chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or knowledge_base_names:
 
-        return await knowledge_base_chat(query=query, extra=extra, conversation_id=conversation_id,
-                                         knowledge_base_name=knowledge_base_name, top_k=top_k,
+        return await knowledge_base_chat(query=query, conversation_id=conversation_id,
+                                         knowledge_base_names=knowledge_base_names, top_k=top_k,
                                          score_threshold=score_threshold, history=history, stream=stream,
                                          model_name=model_name, temperature=temperature, max_tokens=max_tokens,
                                          prompt_name=prompt_name, store_message=store_message, request=request)
@@ -80,8 +82,8 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                 temperature=temperature, tool_name=tool_name,
                                 max_tokens=max_tokens, prompt_name=prompt_name)
 
-    elif chat_type == ChatType.FILE_CHAT.value or (knowledge_base_name is not None and knowledge_base_name != ''):
-        kb = get_kb_detail(kb_name=knowledge_base_name)
+    elif chat_type == ChatType.FILE_CHAT.value or knowledge_base_names:
+        kb = get_kb_detail(kb_name=knowledge_base_names[0])
         return await file_chat(query=query, knowledge_id=kb.get('id'), top_k=top_k,
                                score_threshold=score_threshold, history=history, stream=stream,
                                model_name=model_name, temperature=temperature, max_tokens=max_tokens,

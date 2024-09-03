@@ -388,7 +388,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                 text = ""
                 d = {}
                 for d in api.knowledge_base_chat(prompt,
-                                                 knowledge_base_name=selected_kb,
+                                                 knowledge_base_names=[selected_kb],
                                                  conversation_id=conversation_id,
                                                  top_k=kb_top_k,
                                                  score_threshold=score_threshold,

@@ -27,10 +27,11 @@ from urllib.parse import urlencode
 from server.knowledge_base.kb_doc_api import search_docs
 from server.reranker.reranker import LangchainReranker
 from server.utils import embedding_device
+
+
 async def knowledge_base_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
-                              extra: dict = Body({}, description="额外的属性"),
                               conversation_id: str = Body("", description="对话框ID"),
-                              knowledge_base_name: str = Body(..., description="知识库名称", examples=["samples"]),
+                              knowledge_base_names: List[str] = Body([], description="知识库名称", examples=[["samples"]]),
                               top_k: int = Body(VECTOR_SEARCH_TOP_K, description="匹配向量数"),
                               score_threshold: float = Body(
                                   SCORE_THRESHOLD,
@@ -61,9 +62,12 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                               store_message: bool = Body(True, description="是否保存消息到数据库"),
                               request: Request = None,
                               ):
-    kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
-    if kb is None:
-        return BaseResponse(code=404, msg=f"未找到知识库 {knowledge_base_name}")
+    if not knowledge_base_names:
+        return BaseResponse(code=500, msg="知识库不能为空")
+    for k in knowledge_base_names:
+        kb = KBServiceFactory.get_service_by_name(k)
+        if kb is None:
+            return BaseResponse(code=500, msg=f"未找到知识库 {knowledge_base_names}")
 
     history = [History.from_data(h) for h in history]
 
@@ -107,11 +111,19 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             max_tokens=max_tokens,
             callbacks=callbacks,
         )
-        docs = await run_in_threadpool(search_docs,
-                                       query=query,
-                                       knowledge_base_name=knowledge_base_name,
-                                       top_k=top_k,
-                                       score_threshold=score_threshold)
+        docs = []
+        for knowledge_base_name in knowledge_base_names:
+            docs_part = await run_in_threadpool(search_docs,
+                                                query=query,
+                                                knowledge_base_name=knowledge_base_name,
+                                                top_k=top_k,
+                                                score_threshold=score_threshold)
+            for d in docs_part:
+                d.metadata['kb_name'] = knowledge_base_name
+                docs.append(d)
+        docs.sort(key=lambda x: x.score)
+        if len(docs) > top_k:
+            docs = docs[:top_k]
 
         # 加入reranker
         if USE_RERANKER:
@@ -161,10 +173,12 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         source_documents = []
         for inum, doc in enumerate(docs):
             filename = doc.metadata.get("source")
-            parameters = urlencode({"knowledge_base_name": knowledge_base_name, "file_name": filename})
+            parameters = urlencode({"knowledge_base_name": doc.metadata.get("kb_name"), "file_name": filename,
+                                    "preview": True})
             base_url = request.base_url
             url = f"{base_url}knowledge_base/download_doc?" + parameters
-            text = f"""出处 [{inum + 1}] [{filename}]({url}) \n\n{doc.page_content}\n\n"""
+            page_content = doc.page_content if len(doc.page_content) <= 100 else doc.page_content[:100] + "..."
+            text = f"""[{inum + 1}] [{filename}]({url}) \n\n{page_content}\n\n"""
             source_documents.append(text)
 
         if len(source_documents) == 0:  # 没有找到相关文档

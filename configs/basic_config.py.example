@@ -10,7 +10,7 @@ from fastchat.utils import build_logger
 log_verbose = os.environ.get('LOG_VERBOSE', 'False') == 'True'
 langchain.verbose = False
 log_level = int(os.environ.get('LOG_LEVEL', logging.INFO))
-log_back_count = 14
+log_back_count = 30
 
 # 通常情况下不需要更改以下内容
 

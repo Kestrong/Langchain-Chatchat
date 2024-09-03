@@ -40,7 +40,7 @@ class IotQwenWorker(ApiModelWorker):
             role_meta.update(model_config)
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key', params.api_key)
-        response_mode = contentObj.get('stream', True)
+        response_mode = model_config.get('stream', contentObj.get('stream', True))
         headers = {"Authorization": f"Bearer {api_key}",
                    "Content-Type": "text/event-stream" if response_mode else "application/json"}
         inputs = {"userId": role_meta.get('user_id'), "kb_name": role_meta.get('kb_name'),

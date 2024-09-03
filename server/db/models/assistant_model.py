@@ -10,7 +10,8 @@ class AssistantModel(Base):
     """
     __tablename__ = 'assistant'
     id = Column(Integer, primary_key=True, autoincrement=True, comment='助手ID')
-    name = Column(Text, default=None, comment='助手名称')
+    name = Column(String(32), default=None, comment='助手名称')
+    code = Column(String(32), default=None, comment='助手编码', unique=True)
     avatar = Column(Text, default=None, comment='头像图标')
     prompt = Column(String(4096), default=None, comment='提示词')
     model_name = Column(String(64), comment='模型名称')
@@ -25,12 +26,13 @@ class AssistantModel(Base):
     sort_id = Column(Integer, default=0, comment='排序顺序,值越小越靠前')
 
     def __repr__(self):
-        return f"<assistant(id='{self.id}', name='{self.name}', avatar='{self.avatar}', prompt='{self.prompt}', model_name='{self.model_name}', prologue='{self.prologue}', knowledge_base_ids='{self.knowledge_base_ids}', force_feedback='{self.force_feedback}', history_len='{self.history_len}', extra='{self.extra}', model_config='{self.model_config}', create_time='{self.create_time}', create_by='{self.create_by}', sort_id='{self.sort_id}')>"
+        return f"<assistant(id='{self.id}', name='{self.name}', code='{self.code}', avatar='{self.avatar}', prompt='{self.prompt}', model_name='{self.model_name}', prologue='{self.prologue}', knowledge_base_ids='{self.knowledge_base_ids}', force_feedback='{self.force_feedback}', history_len='{self.history_len}', extra='{self.extra}', model_config='{self.model_config}', create_time='{self.create_time}', create_by='{self.create_by}', sort_id='{self.sort_id}')>"
 
     def dict(self):
         return {
             "id": self.id,
             "name": self.name,
+            "code": self.code,
             "avatar": self.avatar,
             "prompt": self.prompt,
             "model_name": self.model_name,

@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import func
 
 from server.db.models.assistant_model import AssistantModel
@@ -7,9 +9,12 @@ from server.memory.token_info_memory import get_token_info
 
 
 @with_session
-def add_assistant_to_db(session, name: str, avatar: str, prompt: str, model_name: str, prologue: str, history_len: int,
-                        knowledge_base_ids: str, force_feedback: str, extra: dict, model_config: dict, sort_id: int):
-    c = AssistantModel(name=name, avatar=avatar, prompt=prompt, model_name=model_name, prologue=prologue,
+def add_assistant_to_db(session, name: str, code: str, avatar: str, prompt: str, model_name: str, prologue: str,
+                        history_len: int, knowledge_base_ids: str, force_feedback: str, extra: dict, model_config: dict,
+                        sort_id: int):
+    if not code:
+        code = str(uuid.uuid4()).upper()[:8]
+    c = AssistantModel(name=name, code=code, avatar=avatar, prompt=prompt, model_name=model_name, prologue=prologue,
                        knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback, history_len=history_len,
                        create_by=get_token_info().get("userId"), extra=extra,
                        model_config=model_config, sort_id=sort_id)
@@ -19,12 +24,16 @@ def add_assistant_to_db(session, name: str, avatar: str, prompt: str, model_name
 
 
 @with_session
-def update_assistant_to_db(session, name: str, assistant_id: int, avatar: str, prompt: str, model_name: str,
+def update_assistant_to_db(session, name: str, code: str, assistant_id: int, avatar: str, prompt: str, model_name: str,
                            history_len: int, prologue: str, knowledge_base_ids: str, force_feedback: str, extra: dict,
                            model_config: dict, sort_id: int):
     assistant: AssistantModel = session.query(AssistantModel).filter(AssistantModel.id == assistant_id).first()
     if assistant is not None:
         assistant.name = name
+        if code and assistant.code != code:
+            assistant.code = code
+        if not assistant.code:
+            assistant.code = str(uuid.uuid4()).upper()[:8]
         assistant.avatar = avatar
         assistant.prompt = prompt
         assistant.model_name = model_name
@@ -47,7 +56,7 @@ def delete_assistant_from_db(session, assistant_id: int):
 
 
 @with_session
-def get_assistant_from_db(session, page: int = 1, size: int = 10, keyword: str = None):
+def get_assistant_from_db(session, page: int = 1, size: int = 100, keyword: str = None):
     page_size = abs(size)
     page_num = max(page, 1)
     offset = (page_num - 1) * page_size

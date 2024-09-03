@@ -38,6 +38,34 @@ MAX_TOKENS = 4*1024
 
 TEMPERATURE = 0.7
 
+MODEL_ICON = {
+    "telecom": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABkAAAAYCAYAAAAPtVbGAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAJmSURBVHgBzVVdctJQFP4uoe8R++BjugJxBU1XYF1BwfbBN+IKwBUIb84ogisoroB0BeIKim/OOO1kxrfW5PidkJSbAIEpPvjNXEJyb853fr5zAvwDuG/EcwNxN+0b7GqIRpzf6PHvGVfE9fZmaCa69/Rcprz4XHOu8OAA735+MPP83VqV4cML8RuvJdD/JLjkpaN8XB7XJY2f6l4c4xUE7WyvdX+P68aF9CojUeMi6HK5iSBwDI54crTmaESCo2hsNDI0zqVDg/18MzY4iT6ZcCUSeten8akAk9vP5kU0Mlck6NpnuN+n8SdxghYqUEtwrNd6iSDNLQmC26EZWFF5FsE8STDIvP+aP3/G4jNNgW3PmLRGy5poBFgUL8wJFDT4suRgSIK5/UAdIYE66NnOUBhfHiLJvOhgDehNs3Bfw8Q2ntXOL7/nJBRDhpTk7g5nZikBn1GNajUMfn00M94XSCRBk8rxjaC5zjhVFsWC05tx+u7CMf0pq2IPhBREu5zOlMRtiUvPvzEaD49DSKX1UiWuwUOSSOSRaLozEdNCFY7ZR5NNxldIchy25Tgx8LOCawf7hQPsjbhGhQ3ND+yIytml0TkOru1nlOXO824nEgWVJvZ9zF7Io0hrWUeXSpvlPbEOlQMyhSy6Nodj9U29jiYJAhZ9XmViO4lBWOBMljVi0Z9njnzHXiSCgnJYkdaSHwGTOcun8CbUsQVMxYTFf4+F0hSufiuYpvS7YpNuwtZI1EsaLEwD3uvo7+gQZIdf7U2i+MPRLrJaXEbRK4+QR5NoNBz5JzaRfnOqZLsXdCJof+B/w1/fIAtoB5EsGAAAAABJRU5ErkJggg==",
+    "qwen": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABkAAAAYCAYAAAAPtVbGAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAANuSURBVHgBnVVNTBNBFH7blr8WEKQIRPnxZI3GoB40MRJMRD0Bcsa4BCMHQQoGSIym5WBUTESvJkoRRE4CXkQ0sUFJvEAaPFASDQ1H2waKtrS023HeltkfaEvrl2x33nTefPPe++YtB3uA59eq8nNg4s9fUiBNcpx16HXhMKQIzZ4LIlH+Tl9utT4HqoAQ9lgpeQGkiKQkGEV9U46lolIH9C3/gUSRaCekCC7Zn9b7vqFbt3N5ozF2lva2NQgECOy5KQfPXo0UdTE7YSR8s6fxYl2WRPBtNpQSAYIQMPPN7lpm66RNMceRSDWzS0t0g+fOZ0mOUxObkA440Froy64i0QjRwfomA28sip18dVUQT67Xc+K78WpOOhwwMxOsxYPbbIXrsShoalqaveTRgw3C4PdHydiIn/wP3L8jxNyxNiQFIIbGaQbxvbwUBudSRPwDI9DrQbLTiuJDyLXuDvYzm8OQuEh0hY5F3WOhBwblK2C554OAP3nBKyq19ECyhn79DDsePik8yWytw/E4WH2iL5tquRYnRAVRw3Q0Q1xQVqaFzx9DsEnn4z0GAwfdPflw5mwmnDodew4e0pb6180+x4+B71K6QKd5DgRcjPnTdFCSK5IdMekSRtFABYGpVQJ9jh3PsLCuIJKgAggXbWGLkGDqXUByam3LjUtgLNYAkzn6vB2VffgbhoL9+8AikYhEo8V2mie7FA1NESs61qnucvYukt67+dJ4ZnqT+gRVPjU1mWZsTaobT0DoV9rKC9jQpE4LRsC6gcctwPuJoOSDRPiU055He9x1dbI5jnZY2URJL8xvicVEAmyS4zQlOG5QNEzlYdBngD7SloS4pEhEKYPGAjuAmzIRXKIpK6dyrbuSLUXhpBvOfd2CuKBiGnpjHJYjEYRGIDSSbbDTI7DFmLYVZjJliIpiePnCD4lBrPgrk4TDdtBlYp8pQNW0m3crCjsxXjyl7fVE5S1pi6fZmBTHQthnGzvgUJHYxstcfLOXLgJrR2de3HMtOyPQetMgjrHYqs5MU2Mblb8hSqgLTy9lSRHH02JXLcyrF3o8gphChhkqV2UULDXxkPTLuBNPBzZWunryqjCK3m6fYn8scNHhRH6J+0UcLC6GWuZmM784nWHVPBG2LiTzSysSBH/Ni9+JWsXUpG0kfi0Y/gH1/LNiZIFL8gAAAABJRU5ErkJggg=="
+}
+
+MODEL_METADATA = {
+    "qiming-api": {
+        "label": "启明大模型",
+        "icon": MODEL_ICON.get("telecom")
+    },
+    "iotqwen-api": {
+        "label": "物联网大模型",
+        "icon": MODEL_ICON.get("qwen")
+    },
+    "lingxi-fault-api": {
+        "label": "灵晞故障处置大模型",
+        "icon": MODEL_ICON.get("qwen")
+    },
+    "Qwen2-7B-Instruct": {
+        "label": "通义千问大模型",
+        "icon": MODEL_ICON.get("qwen")
+    },
+    "telechat-7B": {
+        "label": "星辰大模型",
+        "icon": MODEL_ICON.get("telecom")
+    },
+}
+
 ONLINE_LLM_MODEL = {
     "openai-api": {
         "model_name": "gpt-4",
@@ -235,6 +263,13 @@ ONLINE_LLM_MODEL = {
                 }
             ]
         }
+    },
+    "lingxi-fault-api": {
+        "api_proxy": "http://10.10.40.102:8555/openapi/Analysis",
+        "version": "lingxi-fault-v1",
+        "api_key": "123",
+        "secret_key": "123",
+        "provider": "LingxiFaultWorker",
     }
 }
 
