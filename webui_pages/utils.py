@@ -400,10 +400,8 @@ class ApiRequest:
     def upload_temp_docs(
             self,
             files: List[Union[str, Path, bytes]],
-            knowledge_id: str = None,
-            chunk_size=CHUNK_SIZE,
-            chunk_overlap=OVERLAP_SIZE,
-            zh_title_enhance=ZH_TITLE_ENHANCE,
+            prev_id: str = None,
+            delete: bool = True,
     ):
         '''
         对应api.py/knowledge_base/upload_tmep_docs接口
@@ -421,10 +419,8 @@ class ApiRequest:
 
         files = [convert_file(file) for file in files]
         data = {
-            "knowledge_id": knowledge_id,
-            "chunk_size": chunk_size,
-            "chunk_overlap": chunk_overlap,
-            "zh_title_enhance": zh_title_enhance,
+            "prev_id": prev_id,
+            "delete": delete,
         }
 
         response = self.post(
@@ -438,8 +434,6 @@ class ApiRequest:
             self,
             query: str,
             knowledge_id: str,
-            top_k: int = VECTOR_SEARCH_TOP_K,
-            score_threshold: float = SCORE_THRESHOLD,
             history: List[Dict] = [],
             stream: bool = True,
             model: str = LLM_MODELS[0],
@@ -453,8 +447,6 @@ class ApiRequest:
         data = {
             "query": query,
             "knowledge_id": knowledge_id,
-            "top_k": top_k,
-            "score_threshold": score_threshold,
             "history": history,
             "stream": stream,
             "model_name": model,

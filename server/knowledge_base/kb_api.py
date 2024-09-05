@@ -25,7 +25,7 @@ def create_kb(knowledge_base_name: str = Body(max_length=50, examples=["samples"
     # Create selected knowledge base
     if knowledge_base_name is None or knowledge_base_name.strip() == "" or knowledge_base_name_cn is None or knowledge_base_name_cn.strip() == "":
         return BaseResponse(code=404, msg="知识库名称不能为空，请重新填写知识库名称")
-    if not validate_kb_name(knowledge_base_name):
+    if not validate_kb_name(knowledge_base_name) or knowledge_base_name.lower() == 'temp':
         return BaseResponse(code=403, msg="Invalid Knowledge Base Name")
 
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)

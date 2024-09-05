@@ -11,7 +11,7 @@ from server.chat.file_chat import file_chat
 from server.chat.knowledge_base_chat import knowledge_base_chat
 from server.chat.search_engine_chat import search_engine_chat
 from server.chat.utils import History
-from server.db.repository import get_kb_detail, get_assistant_detail_from_db
+from server.db.repository import get_assistant_detail_from_db
 
 
 async def chat_router(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
@@ -19,6 +19,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                       extra: dict = Body({}, description="额外的属性"),
                       conversation_id: str = Body("", description="对话框ID"),
                       assistant_id: int = Body(-1, description="助手ID"),
+                      knowledge_id: str = Body("", description="临时知识库ID"),
                       knowledge_base_names: List[str] = Body([], description="知识库名称", examples=[["samples"]]),
                       search_engine_name: str = Body(None, description="搜索引擎名称", examples=["duckduckgo"]),
                       top_k: int = Body(VECTOR_SEARCH_TOP_K, description="匹配向量数"),
@@ -76,16 +77,14 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                         history=history, stream=stream, model_name=model_name, temperature=temperature,
                                         max_tokens=max_tokens, prompt_name=prompt_name, split_result=split_result)
 
-    elif chat_type == ChatType.AGENT_CHAT.value:
+    elif chat_type == ChatType.AGENT_CHAT.value or (tool_name is not None and tool_name != ''):
 
         return await agent_chat(query=query, history=history, stream=stream, model_name=model_name,
                                 temperature=temperature, tool_name=tool_name,
                                 max_tokens=max_tokens, prompt_name=prompt_name)
 
-    elif chat_type == ChatType.FILE_CHAT.value or knowledge_base_names:
-        kb = get_kb_detail(kb_name=knowledge_base_names[0])
-        return await file_chat(query=query, knowledge_id=kb.get('id'), top_k=top_k,
-                               score_threshold=score_threshold, history=history, stream=stream,
+    elif chat_type == ChatType.FILE_CHAT.value or knowledge_id:
+        return await file_chat(query=query, knowledge_id=knowledge_id, history=history, stream=stream,
                                model_name=model_name, temperature=temperature, max_tokens=max_tokens,
                                prompt_name=prompt_name)
 

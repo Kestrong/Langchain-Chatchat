@@ -2,6 +2,7 @@ import os
 from typing import BinaryIO, Iterable
 
 from minio import Minio
+from minio.deleteobjects import DeleteObject
 
 from configs.basic_config import logger
 from server.knowledge_base.oss import OssType
@@ -70,14 +71,31 @@ class MinioOss(Base):
 
     def delete_object(self, bucket_name: str, object_name: str):
         try:
-            bucket_name, object_name = self.get_bucket_and_object(bucket_name, object_name)
-            self.minio.remove_object(bucket_name, object_name)
+            new_bucket_name, new_object_name = self.get_bucket_and_object(bucket_name, object_name)
+            delete_object_list = list(
+                map(
+                    lambda x: DeleteObject(str(os.path.join(new_object_name, x)).replace("\\", "/")),
+                    self.list_objects(
+                        bucket_name,
+                        object_name,
+                    ),
+                )
+            )
+            delete_object_list.append(DeleteObject(new_object_name))
+            errors = self.minio.remove_objects(new_bucket_name, delete_object_list)
+            for error in errors:
+                logger.error("error occurred when deleting object", error)
             return True
         except Exception as e:
             logger.error(f'{e}')
             return False
 
-    def list_objects(self, bucket_name: str) -> Iterable:
-        bucket_name, object_name = self.get_bucket_and_object(bucket_name, "")
-        for o in self.minio.list_objects(bucket_name=bucket_name, prefix=object_name, recursive=True):
-            yield o.object_name.replace(object_name, "")
+    def list_objects(self, bucket_name: str, object_name: str) -> Iterable:
+        bucket_name, object_name = self.get_bucket_and_object(bucket_name, object_name)
+        prefix = None
+        if object_name:
+            prefix = object_name if object_name.endswith("/") else f"{object_name}/"
+        for o in self.minio.list_objects(bucket_name=bucket_name,
+                                         prefix=prefix,
+                                         recursive=True):
+            yield o.object_name.replace(prefix, "")

@@ -62,8 +62,7 @@ def list_kbs_from_folder():
 
 
 def list_files_from_folder(kb_name: str):
-    doc_path = get_doc_path(kb_name)
-    result = default_oss().list_objects(doc_path if default_oss().type() == OssType.FILESYSTEM.value else kb_name)
+    result = default_oss().list_objects(bucket_name=kb_name, object_name="")
     return result
 
 
@@ -168,6 +167,9 @@ def get_loader(loader_name: str, file_path: str, loader_kwargs: Dict = None):
         loader_kwargs.setdefault("text_content", False)
 
     loader = DocumentLoader(file_path, **loader_kwargs)
+    if isinstance(loader, TextLoader):
+        loader.encoding = "utf8"
+        loader.autodetect_encoding = True
     return loader
 
 
@@ -282,20 +284,15 @@ class KnowledgeFile:
     def file2docs(self, refresh: bool = False):
         if self.docs is None or refresh:
             logger.info(f"{self.document_loader_name} used for {self.filepath}")
-            if default_oss().type() == OssType.MINIO.value:
+            if default_oss().type() != OssType.FILESYSTEM.value:
                 default_oss().fget_object(self.kb_name, self.filename, self.filepath)
             try:
                 loader = get_loader(loader_name=self.document_loader_name,
                                     file_path=self.filepath,
                                     loader_kwargs=self.loader_kwargs)
-                if isinstance(loader, TextLoader):
-                    loader.encoding = "utf8"
-                    loader.autodetect_encoding = True
-                    self.docs = loader.load()
-                else:
-                    self.docs = loader.load()
+                self.docs = loader.load()
             finally:
-                if default_oss().type() == OssType.MINIO.value:
+                if default_oss().type() != OssType.FILESYSTEM.value:
                     oss_factory[OssType.FILESYSTEM.value].delete_object(self.kb_name, self.filename)
                 if default_oss().oss_config.get("delete_on_vs", False):
                     default_oss().delete_object(self.kb_name, self.filename)

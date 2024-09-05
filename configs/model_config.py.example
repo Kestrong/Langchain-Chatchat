@@ -217,6 +217,10 @@ ONLINE_LLM_MODEL = {
                 {
                     "name": "IT运维知识助手",
                     "value": "9"
+                },
+                {
+                    "name": "天翼云知识助手",
+                    "value": "13"
                 }
             ],
             "role": [

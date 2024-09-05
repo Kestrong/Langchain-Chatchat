@@ -68,13 +68,17 @@ class Base:
         try:
             file_path = __get_file_path__(bucket_name=bucket_name, object_name=object_name)
             if os.path.exists(file_path):
-                os.remove(file_path)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                else:
+                    shutil.rmtree(file_path)
             return True
         except Exception as e:
             logger.error(f'{e}')
             return False
 
-    def list_objects(self, bucket_name: str) -> Iterable:
+    def list_objects(self, bucket_name: str, object_name: str) -> Iterable:
+        bucket_name = __get_file_path__(bucket_name=bucket_name, object_name=object_name)
 
         def is_skiped_path(path: str):
             tail = os.path.basename(path).lower()

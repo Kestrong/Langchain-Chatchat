@@ -43,6 +43,7 @@ class QimingWorker(ApiModelWorker):
             5、故障复盘:param1固定为1，代表事故复盘,param2用户问题,scene固定值6;\n
             6、传输故障处置:param1故障现象,param2故障描述,scene固定值1;\n
             7、运维助手：param1用户问题,param2细分场景标识符，可填写：变更操作管控bgczgk、故障诊断gzzd、安全漏洞修复aqldxf、故障自愈gzzy、运维规范问答ywgfwd、服务台/翼问赋能fwt，scene固定值9;\n
+            8、天翼云知识助手：param1用户问题,param2固定statecolud,scene固定值13;\n
         """
         message = {
             "uid": xappid,
@@ -87,9 +88,11 @@ class QimingWorker(ApiModelWorker):
                         message['param1'] = '1'
                         message['param2'] = contentObj.get('question', '')
                     elif scene == '9':
-                        message['scene'] = '9'
                         message['param1'] = contentObj.get('question', '')
                         message['param2'] = contentObj.get('iTSubScene', contentObj.get('role', ''))
+                    elif scene == '13':
+                        message['param1'] = contentObj.get('question', '')
+                        message['param2'] = 'statecolud'
                     else:
                         message['param1'] = contentObj.get('question', '')
                         message['param2'] = contentObj.get('description', '')

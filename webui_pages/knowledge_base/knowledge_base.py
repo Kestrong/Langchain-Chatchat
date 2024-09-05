@@ -217,7 +217,7 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
         else:
             st.write(f"知识库 `{kb}` 中已有文件:")
             st.info("知识库中包含源文件与向量库，请从下表中选择文件后操作")
-            doc_details.drop(columns=["kb_name"], inplace=True)
+            # doc_details.drop(columns=["kb_name"], inplace=True)
             doc_details = doc_details[[
                 "No", "file_name", "document_loader", "text_splitter", "docs_count", "in_folder", "in_db",
             ]]

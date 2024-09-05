@@ -1,16 +1,13 @@
-import os
 import re
 import time
 import uuid
 from datetime import datetime
-from typing import List, Dict
 
 import streamlit as st
 from streamlit_chatbox import *
 from streamlit_modal import Modal
 
-from configs import (TEMPERATURE, HISTORY_LEN, PROMPT_TEMPLATES, LLM_MODELS,
-                     DEFAULT_KNOWLEDGE_BASE, DEFAULT_SEARCH_ENGINE, SUPPORT_AGENT_MODEL)
+from configs import (HISTORY_LEN, PROMPT_TEMPLATES, DEFAULT_KNOWLEDGE_BASE, DEFAULT_SEARCH_ENGINE, SUPPORT_AGENT_MODEL)
 from server.agent.tools_select import get_tools
 from server.knowledge_base.utils import LOADER_DICT
 from webui_pages.utils import *
@@ -43,13 +40,13 @@ def get_messages_history(history_len: int, content_in_expander: bool = False) ->
     return chat_box.filter_history(history_len=history_len, filter=filter)
 
 
-@st.cache_data
-def upload_temp_docs(files, _api: ApiRequest) -> str:
+def upload_temp_docs(files, prev_id, _api: ApiRequest) -> str:
     '''
     将文件上传到临时目录，用于文件对话
     返回临时向量库ID
     '''
-    return _api.upload_temp_docs(files).get("data", {}).get("id")
+    id = _api.upload_temp_docs(files=files, prev_id=prev_id).get("data", {}).get("id")
+    return id
 
 
 def parse_command(text: str, modal: Modal) -> bool:
@@ -254,12 +251,14 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                                          [i for ls in LOADER_DICT.values() for i in ls],
                                          accept_multiple_files=True,
                                          )
-                kb_top_k = st.number_input("匹配知识条数：", 1, 20, VECTOR_SEARCH_TOP_K)
-
-                ## Bge 模型会超过1
-                score_threshold = st.slider("知识匹配分数阈值：", 0.0, 2.0, float(SCORE_THRESHOLD), 0.01)
-                if st.button("开始上传", disabled=len(files) == 0):
-                    st.session_state["file_chat_id"] = upload_temp_docs(files, api)
+                cur_id = st.session_state.get('file_chat_id')
+                cols = st.columns(2)
+                if cols[0].button("开始上传", disabled=len(files) == 0):
+                    cur_id = st.session_state["file_chat_id"] = upload_temp_docs(files, cur_id, api)
+                    st.toast(f"文件{[f.name for f in files]}已上传")
+                if cols[1].button("删除文件", disabled=cur_id is None):
+                    upload_temp_docs([], cur_id, api)
+                    st.toast(f"远端文件{[f.name for f in files]}已删除")
         elif dialogue_mode == "搜索引擎问答":
             search_engine_list = api.list_search_engines()
             if DEFAULT_SEARCH_ENGINE in search_engine_list:
@@ -415,8 +414,6 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                 d = {}
                 for d in api.file_chat(prompt,
                                        knowledge_id=st.session_state["file_chat_id"],
-                                       top_k=kb_top_k,
-                                       score_threshold=score_threshold,
                                        history=history,
                                        model=llm_model,
                                        prompt_name=prompt_template_name,
