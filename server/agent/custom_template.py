@@ -108,8 +108,7 @@ class CustomOutputParser(StructuredChatOutputParser):
 
     def parse(self, text: str) -> Union[AgentAction, AgentFinish]:
         logger.debug(f"原始输入:{text},结束")
-        if s := (re.findall(r"\n*Action\s*:\s*```(json)?\s*({.+})\s*```", text, flags=re.DOTALL) or
-                 re.findall(r"\n*Action\s*:\s*({.+})", text, flags=re.DOTALL)):
+        if s := re.findall(r"\s*({\s*\"action\"\s*:.+?\s*,\s*\"action_input\"\s*:.+\s*})\s*", text, flags=re.DOTALL):
             action = parse_json(json_string=s[0][1] if isinstance(s[0], tuple) else s[0], fallback=False)
             tool = action.get("action")
             if tool == "Final Answer":
@@ -132,3 +131,16 @@ class CustomOutputParser(StructuredChatOutputParser):
         else:
             return AgentFinish({"output": text}, log=text)
             # raise OutputParserException(f"Could not parse LLM output: {text}")
+
+
+if __name__ == "__main__":
+    text = """
+    Action: ```json
+    {
+      "action": "Final Answer",
+      "action_input": "光学晶格是光学领域中一个非常重要的研究领域，研究者们正在努力开发出更加高效的光学晶格，以便更好地控制光的传播、衍射和聚焦。","a":""
+    }
+    ```
+    """
+    s = re.findall(r"\s*({\s*\"action\"\s*:.+?\s*,\s*\"action_input\"\s*:.+?\s*})\s*", text, flags=re.DOTALL)
+    print(s)

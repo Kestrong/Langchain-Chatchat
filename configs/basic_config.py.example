@@ -43,3 +43,9 @@ try:
 except Exception:
     pass
 os.makedirs(BASE_TEMP_DIR, exist_ok=True)
+
+MAX_TEMP_FILE_SIZE = 1024 * 1024
+
+MAX_TEMP_FILE_NUM = 10
+
+MAX_TOKENS_INPUT = 32 * 1024

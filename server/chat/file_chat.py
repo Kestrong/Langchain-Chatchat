@@ -9,8 +9,13 @@ from langchain.chains import LLMChain
 from langchain.prompts.chat import ChatPromptTemplate
 from sse_starlette.sse import EventSourceResponse
 
-from configs import (LLM_MODELS, TEMPERATURE)
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS
+from configs import (LLM_MODELS, TEMPERATURE, MAX_TEMP_FILE_SIZE, MAX_TEMP_FILE_NUM)
+from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
+from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.chat.task_manager import task_manager
+from server.chat.chat_type import ChatType
+from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
+from server.db.repository import add_message_to_db
 from server.knowledge_base.oss import default_oss, OssType, oss_factory
 from server.knowledge_base.utils import KnowledgeFile, get_file_path
 from server.utils import (wrap_done, get_ChatOpenAI,
@@ -55,16 +60,25 @@ def _parse_files_in_thread(
 def upload_temp_docs(
         files: List[UploadFile] = File([], description="上传文件，支持多文件"),
         prev_id: str = Form("", description="前知识库ID"),
-        delete: bool = Form(False, description="如果目录存在是否删除"),
 ) -> BaseResponse:
     '''
     将文件保存到临时目录，并返回切片文档。
     '''
-    if prev_id and delete:
+    if prev_id:
         default_oss().delete_object(bucket_name="temp", object_name=prev_id)
 
     if not files:
         return BaseResponse(data={"id": None, "failed_files": []})
+
+    if len(files) > MAX_TEMP_FILE_NUM:
+        return BaseResponse(code=413, msg=f"max file num is {MAX_TEMP_FILE_NUM}")
+
+    total_file_size = 0
+    for file in files:
+        total_file_size += file.size
+        if 0 < MAX_TEMP_FILE_SIZE < total_file_size:
+            return BaseResponse(code=413,
+                                msg=f"total file size is too large, max total size is {MAX_TEMP_FILE_SIZE} bytes")
 
     failed_files = []
     id = prev_id or str(uuid.uuid4())
@@ -76,6 +90,7 @@ def upload_temp_docs(
 
 
 async def file_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
+                    conversation_id: str = Body("", description="对话框ID"),
                     knowledge_id: str = Body("", description="临时知识库ID"),
                     history: List[History] = Body([],
                                                   description="历史对话",
@@ -91,6 +106,7 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
                     max_tokens: Optional[int] = Body(None, description="限制LLM生成Token数量，默认None代表模型最大值"),
                     prompt_name: str = Body("default",
                                             description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
+                    store_message: bool = Body(True, description="是否保存消息到数据库"),
                     ):
     if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
         return BaseResponse(code=500, msg=f"对不起，文件对话不支持该模型:{model_name}")
@@ -108,6 +124,13 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
             max_tokens = None
 
         callbacks = [callback]
+        message_id = add_message_to_db(chat_type=ChatType.FILE_CHAT.value, query=query,
+                                       conversation_id=conversation_id, store=store_message)
+        conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
+                                                            message_id=message_id, chat_type=ChatType.FILE_CHAT.value,
+                                                            query=query)
+        task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
+        callbacks.extend([conversation_callback, task_callback])
         # Enable langchain-chatchat to support langfuse
         import os
         langfuse_secret_key = os.environ.get('LANGFUSE_SECRET_KEY')
@@ -118,13 +141,15 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
             langfuse_handler = CallbackHandler()
             callbacks.append(langfuse_handler)
 
+        if isinstance(max_tokens, int) and max_tokens <= 0:
+            max_tokens = None
+
         model = get_ChatOpenAI(
             model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
-            callbacks=callbacks,
+            callbacks=[callback],
         )
-        docs = []
         source_documents = []
         inum = 0
         context = ""
@@ -132,10 +157,9 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
             for success, file, msg, part_docs in _parse_files_in_thread(files=files, dir=knowledge_id, doc=True):
                 inum += 1
                 if success:
-                    text = f"""[{inum}] {file} \n"""
-                    docs.extend(part_docs)
                     context += f"文章名称：{file}\n"
                     context += "\n".join([doc.page_content for doc in part_docs])
+                    text = f"""[{inum}] {file} \n"""
                 else:
                     text = f"""[{inum}] {file}(解析失败) \n"""
                 source_documents.append(text)
@@ -143,7 +167,7 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
             if default_oss().type() != OssType.FILESYSTEM.value:
                 oss_factory[OssType.FILESYSTEM.value].delete_object("temp", knowledge_id)
 
-        if len(docs) == 0:  ## 如果没有找到相关文档，使用Empty模板
+        if len(context) == 0:  ## 如果没有找到相关文档，使用Empty模板
             prompt_template = get_prompt_template("knowledge_base_chat", "empty")
         else:
             prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
@@ -155,22 +179,28 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
 
         # Begin a task that runs in the background.
         task = asyncio.create_task(wrap_done(
-            chain.acall({"context": context, "question": query}),
+            chain.acall({"context": context, "question": query}, callbacks=callbacks),
             callback.done),
         )
+
+        task_manager.put(message_id, task)
+
+        d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
+        yield json.dumps(d, ensure_ascii=False)
 
         if stream:
             async for token in callback.aiter():
                 # Use server-sent-events to stream the response
-                yield json.dumps({"answer": token}, ensure_ascii=False)
-            yield json.dumps({"docs": source_documents}, ensure_ascii=False)
+                yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": token},
+                                 ensure_ascii=False)
+            yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "docs": source_documents},
+                             ensure_ascii=False)
         else:
             answer = ""
             async for token in callback.aiter():
                 answer += str(token)
-            yield json.dumps({"answer": answer,
-                              "docs": source_documents},
-                             ensure_ascii=False)
+            yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": answer,
+                              "docs": source_documents}, ensure_ascii=False)
         await task
 
-    return EventSourceResponse(knowledge_base_chat_iterator())
+    return EventSourceResponse(wrap_event_response(knowledge_base_chat_iterator()))

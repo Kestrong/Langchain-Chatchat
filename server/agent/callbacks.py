@@ -1,11 +1,12 @@
 from __future__ import annotations
-from uuid import UUID
-from langchain.callbacks import AsyncIteratorCallbackHandler
-import json
-import asyncio
-from typing import Any, Dict, List, Optional
 
-from langchain.schema import AgentFinish, AgentAction
+import asyncio
+import json
+from typing import Any, Dict, List, Optional
+from uuid import UUID
+
+from langchain.callbacks import AsyncIteratorCallbackHandler
+from langchain.schema import AgentFinish
 from langchain.schema.output import LLMResult
 
 
@@ -13,17 +14,18 @@ def dumps(obj: Dict) -> str:
     return json.dumps(obj, ensure_ascii=False)
 
 
-class Status:
-    start: int = 1
-    running: int = 2
-    complete: int = 3
+class AgentStatus:
+    llm_start: int = 1
+    llm_new_token: int = 2
+    llm_end: int = 3
     agent_action: int = 4
     agent_finish: int = 5
-    error: int = 6
-    tool_finish: int = 7
+    tool_start: int = 6
+    tool_end: int = 7
+    error: int = 8
 
 
-class CustomAsyncIteratorCallbackHandler(AsyncIteratorCallbackHandler):
+class AgentExecutorAsyncIteratorCallbackHandler(AsyncIteratorCallbackHandler):
     def __init__(self):
         super().__init__()
         self.queue = asyncio.Queue()
@@ -31,23 +33,75 @@ class CustomAsyncIteratorCallbackHandler(AsyncIteratorCallbackHandler):
         self.cur_tool = {}
         self.out = True
 
+    async def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any) -> None:
+        self.cur_tool.update(
+            status=AgentStatus.llm_start,
+            llm_token="",
+        )
+        self.done.clear()
+        self.queue.put_nowait(dumps(self.cur_tool))
+
+    async def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+        special_tokens = ["\nAction:", "Action:", "\nObservation:", "Observation:", "<|observation|>"]
+        for stoken in special_tokens:
+            if stoken in token:
+                before_action = token.split(stoken)[0]
+                self.cur_tool.update(
+                    status=AgentStatus.llm_new_token,
+                    llm_token=before_action + "\n",
+                )
+                self.queue.put_nowait(dumps(self.cur_tool))
+                self.out = False
+                break
+
+        if token and self.out:
+            self.cur_tool.update(
+                status=AgentStatus.llm_new_token,
+                llm_token=token,
+            )
+            self.queue.put_nowait(dumps(self.cur_tool))
+
+    async def on_chat_model_start(
+            self,
+            serialized: Dict[str, Any],
+            messages: List[List],
+            *,
+            run_id: UUID,
+            parent_run_id: Optional[UUID] = None,
+            tags: Optional[List[str]] = None,
+            metadata: Optional[Dict[str, Any]] = None,
+            **kwargs: Any,
+    ) -> None:
+        self.cur_tool.update(
+            status=AgentStatus.llm_start,
+            llm_token="",
+        )
+        self.done.clear()
+        self.queue.put_nowait(dumps(self.cur_tool))
+
+    async def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
+        self.cur_tool.update(
+            status=AgentStatus.llm_end,
+            llm_token=response.generations[0][0].text,
+        )
+        self.queue.put_nowait(dumps(self.cur_tool))
+
+    async def on_llm_error(self, error: Exception | KeyboardInterrupt, **kwargs: Any) -> None:
+        self.cur_tool.update(
+            status=AgentStatus.error,
+            error=str(error),
+        )
+        self.queue.put_nowait(dumps(self.cur_tool))
+
     async def on_tool_start(self, serialized: Dict[str, Any], input_str: str, *, run_id: UUID,
                             parent_run_id: UUID | None = None, tags: List[str] | None = None,
                             metadata: Dict[str, Any] | None = None, **kwargs: Any) -> None:
-
-        # 对于截断不能自理的大模型，我来帮他截断
-        stop_words = ["Observation:", "Thought","\"","（", "\n","\t"]
-        for stop_word in stop_words:
-            index = input_str.find(stop_word)
-            if index != -1:
-                input_str = input_str[:index]
-                break
 
         self.cur_tool = {
             "tool_name": serialized["name"],
             "input_str": input_str,
             "output_str": "",
-            "status": Status.agent_action,
+            "status": AgentStatus.tool_start,
             "run_id": run_id.hex,
             "llm_token": "",
             "final_answer": "",
@@ -58,91 +112,16 @@ class CustomAsyncIteratorCallbackHandler(AsyncIteratorCallbackHandler):
 
     async def on_tool_end(self, output: str, *, run_id: UUID, parent_run_id: UUID | None = None,
                           tags: List[str] | None = None, **kwargs: Any) -> None:
-        self.out = True ## 重置输出
         self.cur_tool.update(
-            status=Status.tool_finish,
-            output_str=output.replace("Answer:", ""),
+            status=AgentStatus.tool_end,
+            output_str=output,
         )
         self.queue.put_nowait(dumps(self.cur_tool))
 
     async def on_tool_error(self, error: Exception | KeyboardInterrupt, *, run_id: UUID,
                             parent_run_id: UUID | None = None, tags: List[str] | None = None, **kwargs: Any) -> None:
         self.cur_tool.update(
-            status=Status.error,
-            error=str(error),
-        )
-        self.queue.put_nowait(dumps(self.cur_tool))
-
-    # async def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
-    #     if "Action" in token: ## 减少重复输出
-    #         before_action = token.split("Action")[0]
-    #         self.cur_tool.update(
-    #             status=Status.running,
-    #             llm_token=before_action + "\n",
-    #         )
-    #         self.queue.put_nowait(dumps(self.cur_tool))
-    #
-    #         self.out = False
-    #
-    #     if token and self.out:
-    #         self.cur_tool.update(
-    #                 status=Status.running,
-    #                 llm_token=token,
-    #         )
-    #         self.queue.put_nowait(dumps(self.cur_tool))
-    async def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
-        special_tokens = ["Action", "<|observation|>"]
-        for stoken in special_tokens:
-            if stoken in token:
-                before_action = token.split(stoken)[0]
-                self.cur_tool.update(
-                    status=Status.running,
-                    llm_token=before_action + "\n",
-                )
-                self.queue.put_nowait(dumps(self.cur_tool))
-                self.out = False
-                break
-
-        if token and self.out:
-            self.cur_tool.update(
-                status=Status.running,
-                llm_token=token,
-            )
-            self.queue.put_nowait(dumps(self.cur_tool))
-
-    async def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any) -> None:
-        self.cur_tool.update(
-            status=Status.start,
-            llm_token="",
-        )
-        self.queue.put_nowait(dumps(self.cur_tool))
-    async def on_chat_model_start(
-        self,
-        serialized: Dict[str, Any],
-        messages: List[List],
-        *,
-        run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
-        tags: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        **kwargs: Any,
-    ) -> None:
-        self.cur_tool.update(
-            status=Status.start,
-            llm_token="",
-        )
-        self.queue.put_nowait(dumps(self.cur_tool))
-
-    async def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
-        self.cur_tool.update(
-            status=Status.complete,
-            llm_token="\n",
-        )
-        self.queue.put_nowait(dumps(self.cur_tool))
-
-    async def on_llm_error(self, error: Exception | KeyboardInterrupt, **kwargs: Any) -> None:
-        self.cur_tool.update(
-            status=Status.error,
+            status=AgentStatus.error,
             error=str(error),
         )
         self.queue.put_nowait(dumps(self.cur_tool))
@@ -152,10 +131,40 @@ class CustomAsyncIteratorCallbackHandler(AsyncIteratorCallbackHandler):
             tags: Optional[List[str]] = None,
             **kwargs: Any,
     ) -> None:
+        if "Thought:" in finish.return_values["output"]:
+            finish.return_values["output"] = finish.return_values["output"].replace(
+                "Thought:", ""
+            )
         # 返回最终答案
         self.cur_tool.update(
-            status=Status.agent_finish,
+            status=AgentStatus.agent_finish,
             final_answer=finish.return_values["output"],
         )
         self.queue.put_nowait(dumps(self.cur_tool))
         self.cur_tool = {}
+
+    async def on_chain_end(
+            self,
+            outputs: Dict[str, Any],
+            *,
+            run_id: UUID,
+            parent_run_id: UUID | None = None,
+            tags: List[str] | None = None,
+            **kwargs: Any,
+    ) -> None:
+        self.out = True
+
+    async def on_chain_error(
+            self,
+            error: BaseException,
+            *,
+            run_id: UUID,
+            parent_run_id: Optional[UUID] = None,
+            tags: Optional[List[str]] = None,
+            **kwargs: Any,
+    ) -> None:
+        self.cur_tool.update(
+            status=AgentStatus.error,
+            error=str(error),
+        )
+        self.queue.put_nowait(dumps(self.cur_tool))

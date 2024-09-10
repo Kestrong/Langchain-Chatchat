@@ -1,37 +1,57 @@
+import threading
 from asyncio import Task
+from typing import Dict
 
 from fastapi import Query
 
 from configs.basic_config import logger
 from server.utils import BaseResponse
 
-task_map = dict({})
+
+class TaskManager:
+    lock = threading.Lock()
+
+    def __init__(self):
+        self.task_map: Dict[str, Task] = dict({})
+        self.count_down = 10000
+        self.count_up = 0
+
+    def put(self, task_id: str, task: Task):
+        if task is not None:
+            self.task_map[task_id] = task
+            self.count_up += 1
+            if self.count_up > self.count_down:
+                with self.lock:
+                    if self.count_up > self.count_down:
+                        keys = []
+                        for k, v in self.task_map.items():
+                            if v.done():
+                                keys.append(k)
+                        for key in keys:
+                            self.remove(key)
+                        self.count_up = 0
+
+    def get(self, task_id: str) -> [Task, None]:
+        if task_id in self.task_map:
+            return self.task_map[task_id]
+        return None
+
+    def remove(self, task_id: str):
+        if task_id in self.task_map:
+            del self.task_map[task_id]
 
 
-def put(task_id: str, task: Task):
-    if task is not None:
-        task_map[task_id] = task
-
-
-def get(task_id: str) -> [Task, None]:
-    if task_id in task_map:
-        return task_map[task_id]
-    return None
-
-
-def remove(task_id: str):
-    if task_id in task_map:
-        del task_map[task_id]
+task_manager = TaskManager()
 
 
 def stop(task_id: str = Query(description="任务id")) -> BaseResponse:
-    task = get(task_id)
+    task = task_manager.get(task_id)
     if task is not None:
         try:
             task.cancel()
         except Exception as e:
             logger.error(e)
         finally:
-            remove(task_id)
+            task_manager.remove(task_id)
         return BaseResponse(code=200, data={'task_id': task_id})
     return BaseResponse(code=500, msg=f'task[{task_id}] is not exist')

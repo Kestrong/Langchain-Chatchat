@@ -328,6 +328,7 @@ class ApiRequest:
     def agent_chat(
             self,
             query: str,
+            conversation_id: str = None,
             history: List[Dict] = [],
             stream: bool = True,
             model: str = LLM_MODELS[0],
@@ -341,6 +342,7 @@ class ApiRequest:
         '''
         data = {
             "query": query,
+            "conversation_id": conversation_id,
             "history": history,
             "stream": stream,
             "model_name": model,
@@ -401,7 +403,6 @@ class ApiRequest:
             self,
             files: List[Union[str, Path, bytes]],
             prev_id: str = None,
-            delete: bool = True,
     ):
         '''
         对应api.py/knowledge_base/upload_tmep_docs接口
@@ -420,7 +421,6 @@ class ApiRequest:
         files = [convert_file(file) for file in files]
         data = {
             "prev_id": prev_id,
-            "delete": delete,
         }
 
         response = self.post(
@@ -434,6 +434,7 @@ class ApiRequest:
             self,
             query: str,
             knowledge_id: str,
+            conversation_id: str = None,
             history: List[Dict] = [],
             stream: bool = True,
             model: str = LLM_MODELS[0],
@@ -447,6 +448,7 @@ class ApiRequest:
         data = {
             "query": query,
             "knowledge_id": knowledge_id,
+            "conversation_id": conversation_id,
             "history": history,
             "stream": stream,
             "model_name": model,
@@ -471,6 +473,7 @@ class ApiRequest:
             self,
             query: str,
             search_engine_name: str,
+            conversation_id: str = None,
             top_k: int = SEARCH_ENGINE_TOP_K,
             history: List[Dict] = [],
             stream: bool = True,
@@ -486,6 +489,7 @@ class ApiRequest:
         data = {
             "query": query,
             "search_engine_name": search_engine_name,
+            "conversation_id": conversation_id,
             "top_k": top_k,
             "history": history,
             "stream": stream,

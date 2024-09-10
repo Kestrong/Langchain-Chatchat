@@ -155,8 +155,8 @@ def upload_docs(
 
     for file in files:
         if 0 < MAX_KNOWLEDGE_FILE_SIZE < file.size:
-            raise HTTPException(status_code=413,
-                                detail=f"File({file.filename}) is too large, max size is {MAX_KNOWLEDGE_FILE_SIZE} bytes")
+            return BaseResponse(code=413,
+                                msg=f"File({file.filename}) is too large, max size is {MAX_KNOWLEDGE_FILE_SIZE} bytes")
 
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:

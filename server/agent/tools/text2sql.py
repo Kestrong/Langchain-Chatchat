@@ -18,7 +18,7 @@ class Text2SqlInput(BaseModel):
                args_schema=Text2SqlInput)
 def text2sql(query: str):
     origin_query = query
-    model_name = model_container.MODEL.model_name
+    model_name = model_container.MODEL.metadata.get("origin_model_name", model_container.MODEL.model_name)
     table_names = text2sql_config["table_names"]
     table_comments = text2sql_config["table_comments"]
     sqlalchemy_connect_str = text2sql_config["sqlalchemy_connect_str"]

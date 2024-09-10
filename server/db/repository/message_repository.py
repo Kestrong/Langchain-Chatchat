@@ -36,7 +36,10 @@ def update_message(session, message_id, response: str = None, metadata: Dict = N
         if response is not None:
             m.response = response
         if isinstance(metadata, dict):
-            m.meta_data = metadata
+            if m.meta_data is None:
+                m.meta_data = metadata
+            else:
+                m.meta_data.update(metadata)
         return message_id
 
 

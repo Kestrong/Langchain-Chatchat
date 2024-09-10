@@ -1,13 +1,11 @@
-import logging
 from typing import Any, List, Dict
 
 from langchain.memory.chat_memory import BaseChatMemory
 from langchain.schema import get_buffer_string, BaseMessage, HumanMessage, AIMessage
 from langchain.schema.language_model import BaseLanguageModel
 
-from configs import MAX_TOKENS
+from configs import MAX_TOKENS_INPUT
 from server.db.repository.message_repository import filter_message
-from server.db.models.message_model import MessageModel
 
 
 class ConversationBufferDBMemory(BaseChatMemory):
@@ -16,7 +14,7 @@ class ConversationBufferDBMemory(BaseChatMemory):
     ai_prefix: str = "Assistant"
     llm: BaseLanguageModel
     memory_key: str = "history"
-    max_token_limit: int = max(MAX_TOKENS / 2, 2048)
+    max_token_limit: int = max(MAX_TOKENS_INPUT / 2, 2048)
     message_limit: int = 10
 
     @property

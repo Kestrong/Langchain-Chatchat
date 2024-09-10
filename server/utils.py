@@ -55,6 +55,7 @@ def get_ChatOpenAI(
         verbose: bool = True,
         **kwargs: Any,
 ) -> ChatOpenAI:
+    origin_model_name = model_name
     config = get_model_worker_config(model_name)
     if model_name == "openai-api" or config.get('resource_name') == "openai-api":
         model_name = config.get("model_name")
@@ -71,6 +72,9 @@ def get_ChatOpenAI(
         openai_proxy=config.get("openai_proxy"),
         **kwargs
     )
+    if model.metadata is None:
+        model.metadata = {}
+    model.metadata["origin_model_name"] = origin_model_name
     return model
 
 

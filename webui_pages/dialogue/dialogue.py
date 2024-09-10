@@ -40,13 +40,16 @@ def get_messages_history(history_len: int, content_in_expander: bool = False) ->
     return chat_box.filter_history(history_len=history_len, filter=filter)
 
 
-def upload_temp_docs(files, prev_id, _api: ApiRequest) -> str:
+def upload_temp_docs(files, prev_id, _api: ApiRequest) -> Tuple[bool, str]:
     '''
     将文件上传到临时目录，用于文件对话
     返回临时向量库ID
     '''
-    id = _api.upload_temp_docs(files=files, prev_id=prev_id).get("data", {}).get("id")
-    return id
+    response = _api.upload_temp_docs(files=files, prev_id=prev_id)
+    failed = response.get('code') != 200
+    if failed:
+        st.error(response.get('msg'))
+    return not failed, response.get("data").get("id")
 
 
 def parse_command(text: str, modal: Modal) -> bool:
@@ -254,11 +257,12 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                 cur_id = st.session_state.get('file_chat_id')
                 cols = st.columns(2)
                 if cols[0].button("开始上传", disabled=len(files) == 0):
-                    cur_id = st.session_state["file_chat_id"] = upload_temp_docs(files, cur_id, api)
-                    st.toast(f"文件{[f.name for f in files]}已上传")
+                    f, cur_id = upload_temp_docs(files, cur_id, api)
+                    st.session_state["file_chat_id"] = cur_id
+                    st.toast(f"文件{[f.name for f in files]}已上传") if f else None
                 if cols[1].button("删除文件", disabled=cur_id is None):
-                    upload_temp_docs([], cur_id, api)
-                    st.toast(f"远端文件{[f.name for f in files]}已删除")
+                    f, _ = upload_temp_docs([], cur_id, api)
+                    st.toast(f"远端文件{[f.name for f in files]}已删除") if f else None
         elif dialogue_mode == "搜索引擎问答":
             search_engine_list = api.list_search_engines()
             if DEFAULT_SEARCH_ENGINE in search_engine_list:
@@ -357,6 +361,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                 ans = ""
                 for d in api.agent_chat(prompt,
                                         history=history,
+                                        conversation_id=conversation_id,
                                         model=llm_model,
                                         prompt_name=prompt_template_name,
                                         temperature=temperature,
@@ -368,10 +373,10 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                         pass
                     if error_msg := check_error_msg(d):  # check whether error occured
                         st.error(error_msg)
-                    if chunk := d.get("answer"):
+                    if chunk := d.get("thought"):
                         text += chunk
                         chat_box.update_msg(text, element_index=1)
-                    if chunk := d.get("final_answer"):
+                    if chunk := d.get("answer"):
                         ans += chunk
                         chat_box.update_msg(ans, element_index=0)
                     if chunk := d.get("tools"):
@@ -414,6 +419,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                 d = {}
                 for d in api.file_chat(prompt,
                                        knowledge_id=st.session_state["file_chat_id"],
+                                       conversation_id=conversation_id,
                                        history=history,
                                        model=llm_model,
                                        prompt_name=prompt_template_name,
@@ -434,6 +440,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                 d = {}
                 for d in api.search_engine_chat(prompt,
                                                 search_engine_name=search_engine,
+                                                conversation_id=conversation_id,
                                                 top_k=se_top_k,
                                                 history=history,
                                                 model=llm_model,

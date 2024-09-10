@@ -11,9 +11,15 @@ from langchain.docstore.document import Document
 from fastapi import Body
 from fastapi.concurrency import run_in_threadpool
 from sse_starlette import EventSourceResponse
+
+from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
+from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.chat.task_manager import task_manager
+from server.chat.chat_type import ChatType
+from server.db.repository import add_message_to_db
 from server.utils import wrap_done, get_ChatOpenAI
 from server.utils import BaseResponse, get_prompt_template
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS
+from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
 from typing import AsyncIterable
 import asyncio
 import json
@@ -113,7 +119,9 @@ async def lookup_search_engine(
     docs = search_result2docs(results)
     return docs
 
+
 async def search_engine_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
+                             conversation_id: str = Body("", description="对话框ID"),
                              search_engine_name: str = Body(..., description="搜索引擎名称", examples=["duckduckgo"]),
                              top_k: int = Body(SEARCH_ENGINE_TOP_K, description="检索结果数量"),
                              history: List[History] = Body([],
@@ -132,7 +140,8 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
                              prompt_name: str = Body("default",
                                                      description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                              split_result: bool = Body(False,
-                                                       description="是否对搜索结果进行拆分（主要用于metaphor搜索引擎）")
+                                                       description="是否对搜索结果进行拆分（主要用于metaphor搜索引擎）"),
+                             store_message: bool = Body(True, description="是否保存消息到数据库"),
                              ):
     if search_engine_name not in SEARCH_ENGINES.keys():
         return BaseResponse(code=404, msg=f"未支持搜索引擎 {search_engine_name}")
@@ -158,6 +167,13 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
             max_tokens = None
 
         callbacks = [callback]
+        message_id = add_message_to_db(chat_type=ChatType.SEARCH_ENGINE_CHAT.value, query=query,
+                                       conversation_id=conversation_id, store=store_message)
+        conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
+                                                            message_id=message_id, query=query,
+                                                            chat_type=ChatType.SEARCH_ENGINE_CHAT.value, )
+        task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
+        callbacks.extend([conversation_callback, task_callback])
         # Enable langchain-chatchat to support langfuse
         import os
         langfuse_secret_key = os.environ.get('LANGFUSE_SECRET_KEY')
@@ -172,7 +188,7 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
             model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
-            callbacks=callbacks,
+            callbacks=[callback],
         )
 
         docs = await lookup_search_engine(query, search_engine_name, top_k, split_result=split_result)
@@ -187,7 +203,7 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
 
         # Begin a task that runs in the background.
         task = asyncio.create_task(wrap_done(
-            chain.acall({"context": context, "question": query}),
+            chain.acall({"context": context, "question": query}, callbacks=callbacks),
             callback.done),
         )
 
@@ -199,24 +215,29 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
         if len(source_documents) == 0:  # 没有找到相关资料（不太可能）
             source_documents.append(f"""<span style='color:red'>未找到相关文档,该回答为大模型自身能力解答！</span>""")
 
+        task_manager.put(message_id, task)
+
+        d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
+        yield json.dumps(d, ensure_ascii=False)
         if stream:
             async for token in callback.aiter():
                 # Use server-sent-events to stream the response
-                yield json.dumps({"answer": token}, ensure_ascii=False)
-            yield json.dumps({"docs": source_documents}, ensure_ascii=False)
+                yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": token},
+                                 ensure_ascii=False)
+            yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "docs": source_documents},
+                             ensure_ascii=False)
         else:
             answer = ""
             async for token in callback.aiter():
                 answer += str(token)
-            yield json.dumps({"answer": answer,
-                              "docs": source_documents},
-                             ensure_ascii=False)
+            yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": answer,
+                              "docs": source_documents}, ensure_ascii=False)
         await task
 
-    return EventSourceResponse(search_engine_chat_iterator(query=query,
-                                                           search_engine_name=search_engine_name,
-                                                           top_k=top_k,
-                                                           history=history,
-                                                           model_name=model_name,
-                                                           prompt_name=prompt_name),
-                               )
+    return EventSourceResponse(wrap_event_response(search_engine_chat_iterator(query=query,
+                                                                               search_engine_name=search_engine_name,
+                                                                               top_k=top_k,
+                                                                               history=history,
+                                                                               model_name=model_name,
+                                                                               prompt_name=prompt_name),
+                                                   ))

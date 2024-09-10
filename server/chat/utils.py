@@ -1,10 +1,9 @@
 import json
+from typing import List, Tuple, Dict, Union, AsyncIterable
 
+from langchain.prompts.chat import ChatMessagePromptTemplate
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
-from langchain.prompts.chat import ChatMessagePromptTemplate
-from configs import logger, log_verbose
-from typing import List, Tuple, Dict, Union
 
 
 class History(BaseModel):
@@ -56,6 +55,18 @@ def parse_llm_token_inner_json(model_name: str, token: str):
             return {"answer": inner_json.get('answer'), 'extra': {"conversation_id": inner_json.get('conversation_id'),
                                                                   "message_id": inner_json.get('message_id')}}
     return {"answer": token}
+
+
+class MaxInputTokenException(BaseException):
+    pass
+
+
+async def wrap_event_response(event_response: AsyncIterable[str]) -> AsyncIterable[str]:
+    try:
+        async for event in event_response:
+            yield event
+    except MaxInputTokenException as e:
+        yield f"{e}"
 
 
 EMPTY_LLM_CHAT_PROMPT = PromptTemplate.from_template("{{ input }}", template_format="jinja2")

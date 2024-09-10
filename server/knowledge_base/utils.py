@@ -373,7 +373,7 @@ def files2docs_in_thread(
     生成器返回值为 status, (kb_name, file_name, docs | error)
     '''
 
-    def file2docs(*, file: KnowledgeFile, **kwargs) -> Tuple[bool, Tuple[str, str, List[Document]]]:
+    def file2docs(*, file: KnowledgeFile, **kwargs) -> Tuple[bool, Tuple[str, str, Union[str, List[Document]]]]:
         try:
             return True, (file.kb_name, file.filename, file.file2text(**kwargs))
         except Exception as e:
@@ -401,7 +401,7 @@ def files2docs_in_thread(
             kwargs["zh_title_enhance"] = zh_title_enhance
             kwargs_list.append(kwargs)
         except Exception as e:
-            yield False, (kb_name, filename, str(e))
+            yield False, (file.kb_name, file.filename, str(e))
 
     for result in run_in_thread_pool(func=file2docs, params=kwargs_list):
         yield result

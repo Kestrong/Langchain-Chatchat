@@ -12,7 +12,8 @@ from configs import (LLM_MODELS,
                      RERANKER_MAX_LENGTH)
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
-from server.chat import task_manager
+from server.chat.task_manager import task_manager
+from server.chat.chat_type import ChatType
 from server.db.repository import add_message_to_db
 from server.utils import wrap_done, get_ChatOpenAI, get_model_path
 from server.utils import BaseResponse, get_prompt_template
@@ -21,7 +22,7 @@ from langchain.callbacks import AsyncIteratorCallbackHandler
 from typing import AsyncIterable, List, Optional
 import asyncio, json
 from langchain.prompts.chat import ChatPromptTemplate
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS
+from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
 from server.knowledge_base.kb_service.base import KBServiceFactory
 from urllib.parse import urlencode
 from server.knowledge_base.kb_doc_api import search_docs
@@ -31,7 +32,8 @@ from server.utils import embedding_device
 
 async def knowledge_base_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
                               conversation_id: str = Body("", description="对话框ID"),
-                              knowledge_base_names: List[str] = Body([], description="知识库名称", examples=[["samples"]]),
+                              knowledge_base_names: List[str] = Body([], description="知识库名称",
+                                                                     examples=[["samples"]]),
                               top_k: int = Body(VECTOR_SEARCH_TOP_K, description="匹配向量数"),
                               score_threshold: float = Body(
                                   SCORE_THRESHOLD,
@@ -84,11 +86,11 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         nonlocal max_tokens
         callback = AsyncIteratorCallbackHandler()
         # 负责保存llm response到message db
-        message_id = add_message_to_db(chat_type="knowledge_base_chat", query=query, conversation_id=conversation_id,
-                                       store=store_message)
+        message_id = add_message_to_db(chat_type=ChatType.KNOWLEDGE_BASE_CHAT.value, query=query,
+                                       conversation_id=conversation_id, store=store_message)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
-                                                            message_id=message_id, chat_type="knowledge_base_chat",
-                                                            query=query)
+                                                            message_id=message_id, query=query,
+                                                            chat_type=ChatType.KNOWLEDGE_BASE_CHAT.value)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         if isinstance(max_tokens, int) and max_tokens <= 0:
             max_tokens = None
@@ -99,7 +101,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         langfuse_secret_key = os.environ.get('LANGFUSE_SECRET_KEY')
         langfuse_public_key = os.environ.get('LANGFUSE_PUBLIC_KEY')
         langfuse_host = os.environ.get('LANGFUSE_HOST')
-        if langfuse_secret_key and langfuse_public_key and langfuse_host :
+        if langfuse_secret_key and langfuse_public_key and langfuse_host:
             from langfuse import Langfuse
             from langfuse.callback import CallbackHandler
             langfuse_handler = CallbackHandler()
@@ -109,7 +111,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
-            callbacks=callbacks,
+            callbacks=[callback],
         )
         docs = []
         for knowledge_base_name in knowledge_base_names:
@@ -129,10 +131,10 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         if USE_RERANKER:
             reranker_model_path = get_model_path(RERANKER_MODEL)
             reranker_model = LangchainReranker(top_n=top_k,
-                                            device=embedding_device(),
-                                            max_length=RERANKER_MAX_LENGTH,
-                                            model_name_or_path=reranker_model_path
-                                            )
+                                               device=embedding_device(),
+                                               max_length=RERANKER_MAX_LENGTH,
+                                               model_name_or_path=reranker_model_path
+                                               )
             print("-------------before rerank-----------------")
             print(docs)
             docs = reranker_model.compress_documents(documents=docs,
@@ -164,7 +166,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
 
         # Begin a task that runs in the background.
         task = asyncio.create_task(wrap_done(
-            chain.acall({"context": context, "question": query}),
+            chain.acall({"context": context, "question": query}, callbacks=callbacks),
             callback.done),
         )
 
@@ -190,7 +192,8 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                 # Use server-sent-events to stream the response
                 yield json.dumps({"answer": token, "message_id": message_id, "conversation_id": conversation_id},
                                  ensure_ascii=False)
-            yield json.dumps({"docs": source_documents}, ensure_ascii=False)
+            yield json.dumps({"docs": source_documents, "message_id": message_id, "conversation_id": conversation_id},
+                             ensure_ascii=False)
         else:
             answer = ""
             async for token in callback.aiter():
@@ -200,4 +203,5 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                              ensure_ascii=False)
         await task
 
-    return EventSourceResponse(knowledge_base_chat_iterator(query, top_k, history,model_name,prompt_name))
+    return EventSourceResponse(
+        wrap_event_response(knowledge_base_chat_iterator(query, top_k, history, model_name, prompt_name)))

@@ -73,20 +73,21 @@ async def chat_router(query: str = Body(..., description="用户输入", example
     elif chat_type == ChatType.SEARCH_ENGINE_CHAT.value or (
             search_engine_name is not None and search_engine_name != ''):
 
-        return await search_engine_chat(query=query, search_engine_name=search_engine_name, top_k=top_k,
+        return await search_engine_chat(query=query, conversation_id=conversation_id, store_message=store_message,
+                                        search_engine_name=search_engine_name, top_k=top_k,
                                         history=history, stream=stream, model_name=model_name, temperature=temperature,
                                         max_tokens=max_tokens, prompt_name=prompt_name, split_result=split_result)
 
     elif chat_type == ChatType.AGENT_CHAT.value or (tool_name is not None and tool_name != ''):
 
         return await agent_chat(query=query, history=history, stream=stream, model_name=model_name,
-                                temperature=temperature, tool_name=tool_name,
-                                max_tokens=max_tokens, prompt_name=prompt_name)
+                                temperature=temperature, tool_name=tool_name, conversation_id=conversation_id,
+                                store_message=store_message, max_tokens=max_tokens, prompt_name=prompt_name)
 
     elif chat_type == ChatType.FILE_CHAT.value or knowledge_id:
         return await file_chat(query=query, knowledge_id=knowledge_id, history=history, stream=stream,
                                model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                               prompt_name=prompt_name)
+                               prompt_name=prompt_name, conversation_id=conversation_id, store_message=store_message, )
 
     elif chat_type == ChatType.COMPLETION.value:
 

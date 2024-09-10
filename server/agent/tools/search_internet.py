@@ -1,31 +1,15 @@
-import json
-
-from server.agent.tools_select import register_tool
-from server.chat.search_engine_chat import search_engine_chat
-from configs import VECTOR_SEARCH_TOP_K, MAX_TOKENS, DEFAULT_SEARCH_ENGINE
 import asyncio
-from server.agent import model_container
+
 from pydantic import BaseModel, Field
+
+from configs import VECTOR_SEARCH_TOP_K, DEFAULT_SEARCH_ENGINE
+from server.agent.tools_select import register_tool
+from server.chat.search_engine_chat import lookup_search_engine
 
 
 async def search_engine_iter(query: str):
-    response = await search_engine_chat(query=query,
-                                        search_engine_name=DEFAULT_SEARCH_ENGINE,  # 这里切换搜索引擎
-                                        model_name=model_container.MODEL.model_name,
-                                        temperature=0.01,  # Agent 搜索互联网的时候，温度设置为0.01
-                                        history=[],
-                                        top_k=VECTOR_SEARCH_TOP_K,
-                                        max_tokens=MAX_TOKENS,
-                                        prompt_name="default",
-                                        stream=False)
-
-    contents = ""
-
-    async for data in response.body_iterator:  # 这里的data是一个json字符串
-        data = json.loads(data)
-        contents = data["answer"]
-        docs = data["docs"]
-
+    docs = await lookup_search_engine(query, DEFAULT_SEARCH_ENGINE, VECTOR_SEARCH_TOP_K, split_result=True)
+    contents = "\n".join([doc.page_content for doc in docs])
     return contents
 
 

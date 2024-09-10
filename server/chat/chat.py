@@ -1,23 +1,26 @@
-from fastapi import Body
-from sse_starlette.sse import EventSourceResponse
-from configs import LLM_MODELS, TEMPERATURE
-from server.callback_handler.task_callback_handler import TaskCallbackHandler
-from server.utils import wrap_done, get_ChatOpenAI
-from langchain.chains import LLMChain
-from langchain.callbacks import AsyncIteratorCallbackHandler
-from typing import AsyncIterable
 import asyncio
 import json
-import uuid
-import server.chat.task_manager as task_manager
-from langchain.prompts.chat import ChatPromptTemplate
+from typing import AsyncIterable
 from typing import List, Optional, Union
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json
+
+from fastapi import Body
+from langchain.callbacks import AsyncIteratorCallbackHandler
+from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from server.utils import get_prompt_template
-from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
-from server.db.repository import add_message_to_db
+from langchain.prompts.chat import ChatPromptTemplate
+from sse_starlette.sse import EventSourceResponse
+
+from server.chat.task_manager import task_manager
+from configs import LLM_MODELS, TEMPERATURE
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
+from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.chat.chat_type import ChatType
+from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
+    wrap_event_response
+from server.db.repository import add_message_to_db
+from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
+from server.utils import get_prompt_template
+from server.utils import wrap_done, get_ChatOpenAI
 
 
 async def chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
@@ -39,7 +42,6 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                prompt_name: str = Body("default", description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                store_message: bool = Body(True, description="是否保存消息到数据库"),
                ):
-
     origin_query = query
     if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
         extra['question'] = query
@@ -53,10 +55,11 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         memory = None
 
         # 负责保存llm response到message db
-        message_id = add_message_to_db(chat_type="llm_chat", query=origin_query, conversation_id=conversation_id,
-                                       store=store_message)
+        message_id = add_message_to_db(chat_type=ChatType.LLM_CHAT.value, query=origin_query,
+                                       conversation_id=conversation_id, store=store_message)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
-                                                            message_id=message_id, chat_type="llm_chat", query=query)
+                                                            message_id=message_id, chat_type=ChatType.LLM_CHAT.value,
+                                                            query=query)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         callbacks.extend([conversation_callback, task_callback])
         # message_id = uuid.uuid4().hex
@@ -66,12 +69,10 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         langfuse_secret_key = os.environ.get('LANGFUSE_SECRET_KEY')
         langfuse_public_key = os.environ.get('LANGFUSE_PUBLIC_KEY')
         langfuse_host = os.environ.get('LANGFUSE_HOST')
-        if langfuse_secret_key and langfuse_public_key and langfuse_host :
-            from langfuse import Langfuse
+        if langfuse_secret_key and langfuse_public_key and langfuse_host:
             from langfuse.callback import CallbackHandler
             langfuse_handler = CallbackHandler()
             callbacks.append(langfuse_handler)
-
 
         if isinstance(max_tokens, int) and max_tokens <= 0:
             max_tokens = None
@@ -80,16 +81,16 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
             model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
-            callbacks=callbacks,
+            callbacks=[callback],
         )
 
-        if history: # 优先使用前端传入的历史消息
+        if history:  # 优先使用前端传入的历史消息
             history = [History.from_data(h) for h in history]
             prompt_template = get_prompt_template("llm_chat", prompt_name)
             input_msg = History(role="user", content=prompt_template).to_msg_template(False)
             chat_prompt = ChatPromptTemplate.from_messages(
                 [i.to_msg_template() for i in history] + [input_msg])
-        elif conversation_id and history_len > 0: # 前端要求从数据库取历史消息
+        elif conversation_id and history_len > 0:  # 前端要求从数据库取历史消息
             # 使用memory 时必须 prompt 必须含有memory.memory_key 对应的变量
             prompt = get_prompt_template("llm_chat", "with_history")
             chat_prompt = PromptTemplate.from_template(prompt, template_format="jinja2")
@@ -109,7 +110,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
 
         # Begin a task that runs in the background.
         task = asyncio.create_task(wrap_done(
-            chain.acall({"input": query}),
+            chain.acall({"input": query}, callbacks=callbacks),
             callback.done),
         )
 
@@ -131,4 +132,4 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
 
         await task
 
-    return EventSourceResponse(chat_iterator())
+    return EventSourceResponse(wrap_event_response(chat_iterator()))

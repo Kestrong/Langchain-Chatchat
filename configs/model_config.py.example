@@ -34,7 +34,9 @@ LLM_DEVICE = os.environ.get("LLM_DEVICE", "auto")
 
 HISTORY_LEN = 5
 
-MAX_TOKENS = 4*1024
+MAX_TOKENS = 2 * 1024
+
+MAX_TOKENS_INPUT = 32 * 1024
 
 TEMPERATURE = 0.7
 
@@ -329,24 +331,20 @@ MODEL_PATH = {
         "Llama-2-13b-chat-hf": "meta-llama/Llama-2-13b-chat-hf",
         "Llama-2-70b-chat-hf": "meta-llama/Llama-2-70b-chat-hf",
 
+        "Meta-Llama-3.1-8B-Instruct": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        "Meta-Llama-3.1-70B-Instruct": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+
         "telechat-7B": "telechat/telechat-7B",
+        "telechat-12B": "telechat/telechat-12B",
 
         "Qwen-1_8B-Chat": "Qwen/Qwen-1_8B-Chat",
         "Qwen-7B-Chat": "Qwen/Qwen-7B-Chat",
         "Qwen-14B-Chat": "Qwen/Qwen-14B-Chat",
         "Qwen-72B-Chat": "Qwen/Qwen-72B-Chat",
 
-        # Qwen1.5 模型 VLLM可能出现问题
-        "Qwen1.5-0.5B-Chat": "Qwen/Qwen1.5-0.5B-Chat",
-        "Qwen1.5-1.8B-Chat": "Qwen/Qwen1.5-1.8B-Chat",
-        "Qwen1.5-4B-Chat": "Qwen/Qwen1.5-4B-Chat",
-        "Qwen1.5-7B-Chat": "Qwen/Qwen1.5-7B-Chat",
-        "Qwen1.5-14B-Chat": "Qwen/Qwen1.5-14B-Chat",
-        "Qwen1.5-72B-Chat": "Qwen/Qwen1.5-72B-Chat",
-
         "Qwen2-1.5B-Instruct": "Qwen/Qwen2-1.5B-Instruct",
         "Qwen2-7B-Instruct": "Qwen/Qwen2-7B-Instruct",
-        "Qwen2-14B-Instruct": "Qwen/Qwen2-14B-Instruct",
+        "Qwen2-57B-A14B-Instruct": "Qwen/Qwen2-57B-A14B-Instruct",
         "Qwen2-72B-Instruct": "Qwen/Qwen2-72B-Instruct",
 
         "baichuan-7b-chat": "baichuan-inc/Baichuan-7B-Chat",
@@ -419,6 +417,9 @@ VLLM_MODEL_DICT = {
     "Llama-2-13b-chat-hf": "meta-llama/Llama-2-13b-chat-hf",
     "Llama-2-70b-chat-hf": "meta-llama/Llama-2-70b-chat-hf",
 
+    "Meta-Llama-3.1-8B-Instruct": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "Meta-Llama-3.1-70B-Instruct": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+
     "Qwen-1_8B-Chat": "Qwen/Qwen-1_8B-Chat",
     "Qwen-7B-Chat": "Qwen/Qwen-7B-Chat",
     "Qwen-14B-Chat": "Qwen/Qwen-14B-Chat",
@@ -426,7 +427,7 @@ VLLM_MODEL_DICT = {
 
     "Qwen2-1.5B-Instruct": "Qwen/Qwen2-1.5B-Instruct",
     "Qwen2-7B-Instruct": "Qwen/Qwen2-7B-Instruct",
-    "Qwen2-14B-Instruct": "Qwen/Qwen2-14B-Instruct",
+    "Qwen2-57B-A14B-Instruct": "Qwen/Qwen2-57B-A14B-Instruct",
     "Qwen2-72B-Instruct": "Qwen/Qwen2-72B-Instruct",
 
     "baichuan-7b-chat": "baichuan-inc/Baichuan-7B-Chat",
@@ -472,8 +473,10 @@ SUPPORT_AGENT_MODEL = [
     "openai-api",  # GPT4 模型
     "qwen-api",  # Qwen Max模型
     "zhipu-api",  # 智谱AI GLM4模型
+    "llama-api",
     "Qwen",  # 所有Qwen系列本地模型
     "chatglm3-6b",
     "internlm2-chat-20b",
     "Orion-14B-Chat-Plugin",
+    "Llama",
 ]
