@@ -39,7 +39,8 @@ def update_message(session, message_id, response: str = None, metadata: Dict = N
             if m.meta_data is None:
                 m.meta_data = metadata
             else:
-                m.meta_data.update(metadata)
+                metadata.update(m.meta_data)
+                m.meta_data = metadata
         return message_id
 
 

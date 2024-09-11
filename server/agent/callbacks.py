@@ -153,18 +153,3 @@ class AgentExecutorAsyncIteratorCallbackHandler(AsyncIteratorCallbackHandler):
             **kwargs: Any,
     ) -> None:
         self.out = True
-
-    async def on_chain_error(
-            self,
-            error: BaseException,
-            *,
-            run_id: UUID,
-            parent_run_id: Optional[UUID] = None,
-            tags: Optional[List[str]] = None,
-            **kwargs: Any,
-    ) -> None:
-        self.cur_tool.update(
-            status=AgentStatus.error,
-            error=str(error),
-        )
-        self.queue.put_nowait(dumps(self.cur_tool))

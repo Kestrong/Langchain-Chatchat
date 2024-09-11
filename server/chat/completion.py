@@ -3,7 +3,8 @@ import json
 from fastapi import Body
 from sse_starlette.sse import EventSourceResponse
 from configs import LLM_MODELS, TEMPERATURE
-from server.chat.utils import UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json
+from server.chat.utils import UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
+    wrap_event_response
 from server.utils import wrap_done, get_ChatOpenAI
 from langchain.chains import LLMChain
 from langchain.callbacks import AsyncIteratorCallbackHandler
@@ -24,12 +25,12 @@ async def completion(query: str = Body(..., description="用户输入", examples
                      prompt_name: str = Body("default",
                                              description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                      ):
-
-    #todo 因ApiModelWorker 默认是按chat处理的，会对params["prompt"] 解析为messages，因此ApiModelWorker 使用时需要有相应处理
+    # todo 因ApiModelWorker 默认是按chat处理的，会对params["prompt"] 解析为messages，因此ApiModelWorker 使用时需要有相应处理
     if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
         extra['question'] = query
         extra['stream'] = stream
         query = json.dumps(extra)
+
     async def completion_iterator(query: str,
                                   model_name: str = LLM_MODELS[0],
                                   prompt_name: str = prompt_name,
@@ -70,7 +71,7 @@ async def completion(query: str = Body(..., description="用户输入", examples
 
         await task
 
-    return EventSourceResponse(completion_iterator(query=query,
-                                                 model_name=model_name,
-                                                 prompt_name=prompt_name),
-                             )
+    return EventSourceResponse(wrap_event_response(completion_iterator(query=query,
+                                                                       model_name=model_name,
+                                                                       prompt_name=prompt_name),
+                                                   ))

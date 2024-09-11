@@ -6,7 +6,7 @@ from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import LLMResult
 from langchain_core.agents import AgentFinish
 
-from server.chat.utils import UN_FORMAT_ONLINE_LLM_MODELS, MaxInputTokenException
+from server.chat.utils import UN_FORMAT_ONLINE_LLM_MODELS
 from server.db.repository import update_message
 
 
@@ -55,46 +55,17 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             if self.model_name in UN_FORMAT_ONLINE_LLM_MODELS and answer.startswith(mark) and answer.endswith(mark):
                 parts = answer.split(mark)
                 answer = ''
+                extra_key_map = {"message_id": "third_message_id", "conversation_id": "third_conversation_id",
+                                 "user": "user", "api_key": "api_key"}
                 for part in parts:
                     if part is not None and part.strip() != '':
                         if part.startswith('{') and part.endswith('}'):
                             json_obj = json.loads(part)
                             answer += json_obj.get('answer')
-                            if 'message_id' in json_obj:
-                                metadata['third_message_id'] = json_obj.get('message_id')
-                            if 'conversation_id' in json_obj:
-                                metadata['third_conversation_id'] = json_obj.get('conversation_id')
-                            if 'user' in json_obj:
-                                metadata['user'] = json_obj.get('user')
-                            if 'api_key' in json_obj:
-                                metadata['api_key'] = json_obj.get('api_key')
+                            for key, value in extra_key_map.items():
+                                if key in json_obj:
+                                    metadata[value] = json_obj.get(key)
                         else:
                             answer += part
             update_message(self.message_id, answer, metadata if len(metadata) > 0 else None)
-            self.updated = True
-
-    def on_llm_error(
-            self,
-            error: BaseException,
-            *,
-            run_id: UUID,
-            parent_run_id: Optional[UUID] = None,
-            **kwargs: Any,
-    ) -> Any:
-        return self.on_chain_error(error, run_id=run_id, parent_run_id=parent_run_id, **kwargs)
-
-    def on_chain_error(
-            self,
-            error: BaseException,
-            *,
-            run_id: UUID,
-            parent_run_id: Optional[UUID] = None,
-            **kwargs: Any,
-    ) -> Any:
-        if not self.updated:
-            if isinstance(error, MaxInputTokenException):
-                response = json.loads(f"{error}").get('answer')
-            else:
-                response = f"{error}"
-            update_message(message_id=self.message_id, response=response)
             self.updated = True

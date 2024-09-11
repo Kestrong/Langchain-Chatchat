@@ -60,6 +60,14 @@ def filter_message(id: str = Query(description="会话id"),
                    page: int = Query(default=1, description="页码"),
                    limit: int = Query(default=10, description='消息数量')) -> BaseResponse:
     messages, total = filter_message_page(conversation_id=id, page=page, limit=min(abs(limit), 1000))
+    for m in messages:
+        metadata = m.get('meta_data')
+        if metadata:
+            if 'user' in metadata:
+                del metadata['user']
+            if 'api_key' in metadata:
+                del metadata['api_key']
+            m['meta_data'] = metadata
     return BaseResponse(code=200, data={'messages': messages, 'total': total})
 
 

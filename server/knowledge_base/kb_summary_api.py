@@ -9,7 +9,7 @@ from server.knowledge_base.kb_service.base import KBServiceFactory
 from typing import List, Optional
 from server.knowledge_base.kb_summary.base import KBSummaryService
 from server.knowledge_base.kb_summary.summary_chunk import SummaryAdapter
-from server.utils import wrap_done, get_ChatOpenAI, BaseResponse
+from server.utils import get_ChatOpenAI, BaseResponse
 from configs import LLM_MODELS, TEMPERATURE
 from server.knowledge_base.model.kb_document_model import DocumentWithVSId
 

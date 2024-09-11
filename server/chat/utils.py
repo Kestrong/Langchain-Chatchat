@@ -5,6 +5,9 @@ from langchain.prompts.chat import ChatMessagePromptTemplate
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 
+from configs import logger, log_verbose
+from server.db.repository import update_message
+
 
 class History(BaseModel):
     """
@@ -62,11 +65,28 @@ class MaxInputTokenException(BaseException):
 
 
 async def wrap_event_response(event_response: AsyncIterable[str]) -> AsyncIterable[str]:
+    d = {}
     try:
+        first = True
         async for event in event_response:
+            if first:
+                try:
+                    first = False
+                    d.update(json.loads(event))
+                except:
+                    pass
             yield event
     except MaxInputTokenException as e:
-        yield f"{e}"
+        d["answer"] = f"{e}"
+        if d.get("message_id"):
+            update_message(message_id=d.get("message_id"), response=d["answer"])
+        yield json.dumps(d, ensure_ascii=False)
+    except BaseException as e:
+        logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
+        d["answer"] = "当前对话出现异常"
+        if d.get("message_id"):
+            update_message(message_id=d.get("message_id"), response=d["answer"], metadata={"error_info": str(e)})
+        yield json.dumps(d, ensure_ascii=False)
 
 
 EMPTY_LLM_CHAT_PROMPT = PromptTemplate.from_template("{{ input }}", template_format="jinja2")

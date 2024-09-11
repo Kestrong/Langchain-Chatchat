@@ -44,9 +44,7 @@ class TaskCallbackHandler(BaseCallbackHandler):
 
         if token_num > MAX_TOKENS_INPUT:
             msg = f"当前限制输入不能超过{MAX_TOKENS_INPUT}个字符，您的输入长度为{token_num}(包含提示词、输入文档和历史对话内容)"
-            raise MaxInputTokenException(
-                json.dumps({"message_id": self.message_id, "conversation_id": self.conversation_id,
-                            "answer": msg}, ensure_ascii=False))
+            raise MaxInputTokenException(msg)
 
     def on_llm_end(
             self,
