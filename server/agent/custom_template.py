@@ -65,7 +65,8 @@ def remove_newlines_from_json(json_str):
     # 正则表达式匹配引号外的换行符
     pattern = r'("[^"]*")|\s+'
     # 使用sub函数替换为空，即删除这些字符
-    return re.sub(pattern, lambda m: m.group(1) if m.group(1) else '', json_str).replace("\n", "\\n")
+    return (re.sub(pattern, lambda m: m.group(1) if m.group(1) else '', json_str).replace("\n", "\\n")
+            .replace("\r", "\\r").replace("\t", "\\t"))
 
 
 def parse_json(json_string: str, fallback: bool = True) -> Union[str, dict]:
@@ -149,7 +150,7 @@ if __name__ == "__main__":
     Action: ```json
     {
       "action": "Final Answer",
-      "action_input": "光学晶格是光学领域中一个非常重要的研究领域，研究者们正在努力开发出更加高效的光学晶格，以便更好地控制光的传播、衍射和聚焦。
+      "action_input": "光学晶格是光学领域中一个非常重要的研究领域，研究者们正在努力开发出更加高效的光学晶格，以便更好地控制光的传播、衍射和聚焦。"
     }
     ```
     """
