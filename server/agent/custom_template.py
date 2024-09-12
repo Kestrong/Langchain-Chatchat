@@ -61,13 +61,22 @@ def validate_json(json_data: str):
         return False
 
 
+def remove_newlines_from_json(json_str):
+    # 正则表达式匹配引号外的换行符
+    pattern = r'("[^"]*")|\s+'
+    # 使用sub函数替换为空，即删除这些字符
+    return re.sub(pattern, lambda m: m.group(1) if m.group(1) else '', json_str).replace("\n", "\\n")
+
+
 def parse_json(json_string: str, fallback: bool = True) -> Union[str, dict]:
     json_input = None
     try:
         try:
             json_input = json.loads(json_string)
-        except:
-            json_input = json.loads(json.dumps(json_string))
+        except Exception as e:
+            logger.error(f"{e}")
+            json_string = remove_newlines_from_json(json_string)
+            json_input = json.loads(json_string)
     except:
         # ollama部署的qwen，返回的json键值可能为单引号，可能缺少最后的引号和括号
         if not json_string.endswith('"}'):
