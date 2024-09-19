@@ -38,19 +38,24 @@ class CustomPromptTemplate(BaseChatPromptTemplate):
             kwargs["agent_scratchpad"] = ""
         # Create a tools variable from the list of tools provided
 
-        tools = []
+        tools_json = []
         for t in self.tools:
             description = t.description if isinstance(t, Tool) else t.get("description")
             desc = re.sub(r"\n+", " ", description)
             name = t.name if isinstance(t, Tool) else t.get("name")
-            args = t.args if isinstance(t, Tool) else t.get("parameters")
-            text = (
-                f"{name}: Call this tool to interact with the {name} API. What is the {name} API useful for?"
-                f" {desc}"
-                f" Parameters: {args}"
-            )
-            tools.append(text)
-        kwargs["tools"] = "\n\n".join(tools)
+            args = {
+                k: {sub_k: sub_v for sub_k, sub_v in v.items() if sub_k != "title"}
+                for k, v in (t.args if isinstance(t, Tool) else t.get("parameters")).items()
+            }
+            simplified_config_langchain = {
+                "name": name,
+                "description": desc,
+                "parameters": args,
+            }
+            tools_json.append(simplified_config_langchain)
+        kwargs["tools"] = "\n".join(
+            [json.dumps(tool, indent=4, ensure_ascii=False) for tool in tools_json]
+        )
         # kwargs["tools"] = "\n".join([str(format_tool_to_openai_function(tool)) for tool in self.tools])
         # Create a list of tool names for the tools provided
         kwargs["tool_names"] = ", ".join([t.name if isinstance(t, Tool) else t.get("name") for t in self.tools])
