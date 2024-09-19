@@ -1,13 +1,13 @@
 from typing import Any, Dict
 
-import requests
 from fastapi import Body
 
 from configs import logger, log_verbose, LLM_MODELS
 from server.db.repository import feedback_message_to_db, get_message_by_id
+from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import get_token_info
 from server.model_workers.base import ApiChatQimingParams
-from server.utils import BaseResponse
+from server.utils import BaseResponse, get_httpx_client
 
 
 def post_feedback_to_qiming(model_name: str, score: int, reason: str, extra: dict):
@@ -21,8 +21,10 @@ def post_feedback_to_qiming(model_name: str, score: int, reason: str, extra: dic
         extra['feedbackProvider'] = feedbackProvider
         extra['likes'] = str(score)
         extra['feedback'] = reason if reason is not None and reason != '' else '回答很准确'
-        with requests.post(url=params.feedbackUrl, json=extra, headers=headers, timeout=10) as response:
+        with get_httpx_client(timeout=5) as client:
+            response = client.post(url=params.feedbackUrl, json=extra, headers=headers)
             if response.status_code != 200:
+                logger.error(response.text)
                 response.raise_for_status()
             json_data = response.json()
             if str(json_data.get('code')) != "0":
@@ -53,8 +55,9 @@ def post_feedback_to_iotqwen(message_id: str, model_name: str, score: int, reaso
             return None
         headers = {"Authorization": f"Bearer {api_key}",
                    "Content-Type": "application/json"}
-        with requests.post(url=params.feedbackUrl.format(message_id=third_message_id), json=data, headers=headers,
-                           timeout=10) as response:
+        with get_httpx_client(timeout=5) as client:
+            response = client.post(url=params.feedbackUrl.format(message_id=third_message_id), json=data,
+                                   headers=headers)
             if response.status_code != 200:
                 logger.error(response.text)
                 response.raise_for_status()
@@ -78,6 +81,6 @@ def chat_feedback(message_id: str = Body(..., max_length=32, description="聊天
         msg = f"反馈聊天记录出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
                      exc_info=e if log_verbose else None)
-        return BaseResponse(code=500, msg=msg)
+        return BaseResponse(code=500, msg=Message_I18N.API_FEEDBACK_ERROR.value)
 
-    return BaseResponse(code=200, msg=f"已反馈聊天记录 {message_id}")
+    return BaseResponse(code=200, msg=Message_I18N.API_FEEDBACK_SUCCESS.value)

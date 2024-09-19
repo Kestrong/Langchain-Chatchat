@@ -9,6 +9,7 @@ from langchain_core.outputs import LLMResult
 from server.chat.task_manager import task_manager as tm
 from configs import MAX_TOKENS_INPUT
 from server.chat.utils import MaxInputTokenException
+from server.memory.message_i18n import Message_I18N
 
 
 class TaskCallbackHandler(BaseCallbackHandler):
@@ -43,7 +44,8 @@ class TaskCallbackHandler(BaseCallbackHandler):
             token_num += len(prompt)
 
         if token_num > MAX_TOKENS_INPUT:
-            msg = f"当前限制输入不能超过{MAX_TOKENS_INPUT}个字符，您的输入长度为{token_num}(包含提示词、输入文档和历史对话内容)"
+            msg = Message_I18N.WORKER_MAX_TOKENS_INPUT.value.format(token_num=token_num,
+                                                                    MAX_TOKENS_INPUT=MAX_TOKENS_INPUT)
             raise MaxInputTokenException(msg)
 
     def on_llm_end(

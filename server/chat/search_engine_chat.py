@@ -17,6 +17,7 @@ from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.task_manager import task_manager
 from server.chat.chat_type import ChatType
 from server.db.repository import add_message_to_db
+from server.memory.message_i18n import Message_I18N
 from server.utils import wrap_done, get_ChatOpenAI
 from server.utils import BaseResponse, get_prompt_template
 from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
@@ -144,13 +145,15 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
                              store_message: bool = Body(True, description="是否保存消息到数据库"),
                              ):
     if search_engine_name not in SEARCH_ENGINES.keys():
-        return BaseResponse(code=404, msg=f"未支持搜索引擎 {search_engine_name}")
+        return BaseResponse(code=500, msg=Message_I18N.API_SEARCHENGINE_NOT_SUPPORT.value.format(
+            search_engine_name=search_engine_name))
 
     if search_engine_name == "bing" and not BING_SUBSCRIPTION_KEY:
-        return BaseResponse(code=404, msg=f"要使用Bing搜索引擎，需要设置 `BING_SUBSCRIPTION_KEY`")
+        return BaseResponse(code=500, msg=f"要使用Bing搜索引擎，需要设置 `BING_SUBSCRIPTION_KEY`")
 
     if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
-        return BaseResponse(code=500, msg=f"对不起，搜索引擎对话不支持该模型:{model_name}")
+        return BaseResponse(code=500, msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(
+            chat_type=ChatType.SEARCH_ENGINE_CHAT.value, model_name=model_name))
 
     history = [History.from_data(h) for h in history]
 
@@ -213,7 +216,7 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
         ]
 
         if len(source_documents) == 0:  # 没有找到相关资料（不太可能）
-            source_documents.append(f"""<span style='color:red'>未找到相关文档,该回答为大模型自身能力解答！</span>""")
+            source_documents.append("<span style='color:red'>" + Message_I18N.API_DOC_NOT_FOUND.value + "</span>")
 
         task_manager.put(message_id, task)
 

@@ -15,6 +15,7 @@ from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.task_manager import task_manager
 from server.chat.chat_type import ChatType
 from server.db.repository import add_message_to_db
+from server.memory.message_i18n import Message_I18N
 from server.utils import wrap_done, get_ChatOpenAI, get_model_path
 from server.utils import BaseResponse, get_prompt_template
 from langchain.chains import LLMChain
@@ -65,16 +66,19 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                               request: Request = None,
                               ):
     if not knowledge_base_names:
-        return BaseResponse(code=500, msg="知识库不能为空")
+        return BaseResponse(code=500, msg=Message_I18N.API_PARAM_NOT_PRESENT.value.format(name='knowledge_base_names'))
     for k in knowledge_base_names:
         kb = KBServiceFactory.get_service_by_name(k)
         if kb is None:
-            return BaseResponse(code=500, msg=f"未找到知识库 {knowledge_base_names}")
+            return BaseResponse(code=500, msg=Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=k))
 
     history = [History.from_data(h) for h in history]
 
     if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
-        return BaseResponse(code=500, msg=f"对不起，知识库对话不支持该模型:{model_name}")
+        return BaseResponse(code=500,
+                            msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(
+                                chat_type=ChatType.KNOWLEDGE_BASE_CHAT.value,
+                                model_name=model_name))
 
     async def knowledge_base_chat_iterator(
             query: str,
@@ -154,10 +158,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                 value.sort(key=lambda x: x.metadata['index'])
             docs.extend(value)
         context = "\n".join([doc.page_content for doc in docs])
-        if len(docs) == 0:  # 如果没有找到相关文档，使用empty模板
-            prompt_template = get_prompt_template("knowledge_base_chat", "empty")
-        else:
-            prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
+        prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
         input_msg = History(role="user", content=prompt_template).to_msg_template(False)
         chat_prompt = ChatPromptTemplate.from_messages(
             [i.to_msg_template() for i in history] + [input_msg])
@@ -184,7 +185,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             source_documents.append(text)
 
         if len(source_documents) == 0:  # 没有找到相关文档
-            source_documents.append(f"<span style='color:red'>未找到相关文档,该回答为大模型自身能力解答！</span>")
+            source_documents.append("<span style='color:red'>" + Message_I18N.API_DOC_NOT_FOUND.value + "</span>")
         d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
         yield json.dumps(d, ensure_ascii=False)
         if stream:

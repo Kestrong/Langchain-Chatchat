@@ -2,7 +2,9 @@ from sqlalchemy import func
 
 from server.db.models.knowledge_base_model import KnowledgeBaseModel
 from server.db.session import with_session
+from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import get_token_info
+from common.exceptions import ChatBusinessException
 
 
 @with_session
@@ -12,7 +14,7 @@ def add_kb_to_db(session, kb_name, kb_name_cn, kb_info, vs_type, embed_model):
     if not kb:
         kb_cn = session.query(KnowledgeBaseModel).filter(KnowledgeBaseModel.kb_name_cn == kb_name_cn).first()
         if kb_cn is not None:
-            raise Exception(f"已存在同名知识库 {kb_name_cn}")
+            raise ChatBusinessException(Message_I18N.API_KB_EXIST.value.format(kb_name=kb_name_cn))
         token_info = get_token_info()
         kb = KnowledgeBaseModel(kb_name=kb_name, kb_name_cn=kb_name_cn, kb_info=kb_info, vs_type=vs_type,
                                 embed_model=embed_model, create_by=token_info.get("userId"),
@@ -23,7 +25,7 @@ def add_kb_to_db(session, kb_name, kb_name_cn, kb_info, vs_type, embed_model):
             kb_cn = session.query(KnowledgeBaseModel).filter(KnowledgeBaseModel.kb_name_cn == kb_name_cn,
                                                              KnowledgeBaseModel.id != kb.id).first()
             if kb_cn is not None:
-                raise Exception(f"已存在同名知识库 {kb_name_cn}")
+                raise ChatBusinessException(Message_I18N.API_KB_EXIST.value.format(kb_name=kb_name_cn))
         kb.kb_info = kb_info if kb_info is not None else kb.kb_info
         kb.vs_type = vs_type if vs_type is not None else kb.vs_type
         kb.kb_name_cn = kb_name_cn if kb_name_cn is not None else kb.kb_name_cn

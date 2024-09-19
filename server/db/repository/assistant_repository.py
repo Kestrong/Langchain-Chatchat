@@ -9,27 +9,28 @@ from server.memory.token_info_memory import get_token_info
 
 
 @with_session
-def add_assistant_to_db(session, name: str, code: str, avatar: str, prompt: str, model_name: str, prologue: str,
-                        history_len: int, knowledge_base_ids: str, force_feedback: str, extra: dict, model_config: dict,
-                        sort_id: int):
+def add_assistant_to_db(session, name: str, name_en: str, code: str, avatar: str, prompt: str, model_name: str,
+                        prologue: str, history_len: int, knowledge_base_ids: str,
+                        force_feedback: str, extra: dict, model_config: dict, tool_config: dict, sort_id: int):
     if not code:
         code = str(uuid.uuid4()).upper()[:8]
-    c = AssistantModel(name=name, code=code, avatar=avatar, prompt=prompt, model_name=model_name, prologue=prologue,
-                       knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback, history_len=history_len,
-                       create_by=get_token_info().get("userId"), extra=extra,
-                       model_config=model_config, sort_id=sort_id)
+    c = AssistantModel(name=name, name_en=name_en, code=code, avatar=avatar, prompt=prompt, model_name=model_name,
+                       prologue=prologue, knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback,
+                       history_len=history_len, create_by=get_token_info().get("userId"), extra=extra,
+                       model_config=model_config, tool_config=tool_config, sort_id=sort_id)
     session.add(c)
     session.flush()
     return c.id
 
 
 @with_session
-def update_assistant_to_db(session, name: str, code: str, assistant_id: int, avatar: str, prompt: str, model_name: str,
-                           history_len: int, prologue: str, knowledge_base_ids: str, force_feedback: str, extra: dict,
-                           model_config: dict, sort_id: int):
+def update_assistant_to_db(session, name: str, name_en: str, code: str, assistant_id: int, avatar: str, prompt: str,
+                           model_name: str, history_len: int, prologue: str, knowledge_base_ids: str,
+                           force_feedback: str, extra: dict, model_config: dict, tool_config: dict, sort_id: int):
     assistant: AssistantModel = session.query(AssistantModel).filter(AssistantModel.id == assistant_id).first()
     if assistant is not None:
         assistant.name = name
+        assistant.name_en = name_en
         if code and assistant.code != code:
             assistant.code = code
         if not assistant.code:
@@ -41,8 +42,9 @@ def update_assistant_to_db(session, name: str, code: str, assistant_id: int, ava
         assistant.knowledge_base_ids = knowledge_base_ids
         assistant.force_feedback = force_feedback
         assistant.history_len = history_len
-        assistant.extra = extra if extra is not None else assistant.extra
-        assistant.model_config = model_config if model_config is not None else assistant.model_config
+        assistant.extra = extra if extra else assistant.extra
+        assistant.model_config = model_config if model_config else assistant.model_config
+        assistant.tool_config = tool_config if tool_config else assistant.tool_config
         assistant.sort_id = sort_id
     else:
         raise ValueError("Assistant with id {} does not exist".format(assistant))

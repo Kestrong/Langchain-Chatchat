@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from configs import logger, log_verbose
 from server.db.repository import update_message
+from server.memory.message_i18n import Message_I18N
 
 
 class History(BaseModel):
@@ -83,7 +84,7 @@ async def wrap_event_response(event_response: AsyncIterable[str]) -> AsyncIterab
         yield json.dumps(d, ensure_ascii=False)
     except BaseException as e:
         logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
-        d["answer"] = "当前对话出现异常"
+        d["answer"] = Message_I18N.WORKER_CHAT_ERROR.value
         if d.get("message_id"):
             update_message(message_id=d.get("message_id"), response=d["answer"], metadata={"error_info": str(e)})
         yield json.dumps(d, ensure_ascii=False)

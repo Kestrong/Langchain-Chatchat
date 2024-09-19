@@ -32,34 +32,34 @@ class QwenWorker(ApiModelWorker):
         if log_verbose:
             logger.info(f'{self.__class__.__name__}:params: {params}')
 
-        client = OpenAI(
-            api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
-            base_url=params.api_base_url,  # 填写DashScope服务的base_url
-        )
-        try:
-            with client.chat.completions.create(
-                    model=params.version,
-                    temperature=params.temperature,
-                    messages=params.messages,
-                    stream=True,
-                    max_tokens=params.max_tokens,
-                    top_p=params.top_p
-            ) as responses:
-                text = ''
-                for resp in responses:
-                    if resp.choices and resp.choices[0].delta and resp.choices[0].delta.content:
-                        text += resp.choices[0].delta.content
-                        yield {
-                            "error_code": 0,
-                            "text": text,
-                        }
-        except Exception as e:
-            data = {
-                "error_code": 500,
-                "text": f'{e}'
-            }
-            self.logger.error(f"请求千问 API 时发生错误：{data}")
-            yield data
+        with OpenAI(
+                api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
+                base_url=params.api_base_url,  # 填写DashScope服务的base_url
+        ) as client:
+            try:
+                with client.chat.completions.create(
+                        model=params.version,
+                        temperature=params.temperature,
+                        messages=params.messages,
+                        stream=True,
+                        max_tokens=params.max_tokens,
+                        top_p=params.top_p
+                ) as responses:
+                    text = ''
+                    for resp in responses:
+                        if resp.choices and resp.choices[0].delta and resp.choices[0].delta.content:
+                            text += resp.choices[0].delta.content
+                            yield {
+                                "error_code": 0,
+                                "text": text,
+                            }
+            except Exception as e:
+                data = {
+                    "error_code": 500,
+                    "text": f'{e}'
+                }
+                self.logger.error(f"请求千问 API 时发生错误：{data}")
+                yield data
 
     def do_embeddings(self, params: ApiEmbeddingsParams) -> Dict:
         params.load_config(self.model_names[0])

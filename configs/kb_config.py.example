@@ -57,7 +57,7 @@ DATABASE_SCHEMA = os.environ.get('DATABASE_SCHEMA')
 # SQLALCHEMY_DATABASE_URI = f"sqlite:///{DB_ROOT_PATH}"
 SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL','postgresql+psycopg2://user:password@ip:port/database?client_encoding=utf8mb4')
 # SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://user:password@ip:port/database?charset=utf8mb4"
-
+AUTO_CREATE_TABLES = True
 ECHO_SQL = False
 
 # 可选向量库类型及对应配置

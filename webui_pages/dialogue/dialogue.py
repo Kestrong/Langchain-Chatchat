@@ -8,8 +8,9 @@ from streamlit_chatbox import *
 from streamlit_modal import Modal
 
 from configs import (HISTORY_LEN, PROMPT_TEMPLATES, DEFAULT_KNOWLEDGE_BASE, DEFAULT_SEARCH_ENGINE, SUPPORT_AGENT_MODEL)
-from server.agent.tools_select import get_tools
+from server.agent.tools_select import get_all_tools
 from server.knowledge_base.utils import LOADER_DICT
+from server.utils import get_tool_config
 from webui_pages.utils import *
 
 chat_box = ChatBox(
@@ -278,14 +279,23 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                 se_top_k = st.number_input("匹配搜索结果条数：", 1, 20, SEARCH_ENGINE_TOP_K)
         elif dialogue_mode == "自定义Agent问答":
             with st.expander("Agent问答配置", True):
-                tool_name_map = {t.name: t.title for t in get_tools()}
-                tool_selected = st.selectbox(
+                tool_name_map = {t.name: t.title for t in get_all_tools()}
+                tool_selected = st.multiselect(
                     label="请选择工具",
                     options=tool_name_map.keys(),
                     format_func=lambda x: tool_name_map[x],
-                    index=None,
                     placeholder="无"
                 )
+                api_selected = None
+                if 'http_request' in tool_selected:
+                    apis = get_tool_config().TOOL_CONFIG.get('http_request').get("apis", [])
+                    api_name_map = {api.get("name"): api.get("title") for api in apis}
+                    api_selected = st.multiselect(
+                        label="请选择接口",
+                        options=api_name_map.keys(),
+                        format_func=lambda x: api_name_map[x],
+                        placeholder="无"
+                    )
 
     # Display chat messages from history on app rerun
     chat_box.output_messages()
@@ -365,7 +375,8 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                                         model=llm_model,
                                         prompt_name=prompt_template_name,
                                         temperature=temperature,
-                                        tool_name=tool_selected
+                                        tool_names=tool_selected,
+                                        api_names=api_selected
                                         ):
                     try:
                         d = json.loads(d)

@@ -335,7 +335,8 @@ class ApiRequest:
             temperature: float = TEMPERATURE,
             max_tokens: int = None,
             prompt_name: str = "default",
-            tool_name: str = "",
+            tool_names: List[str] = [],
+            api_names: List[str] = [],
     ):
         '''
         对应api.py/chat/agent_chat 接口
@@ -349,7 +350,8 @@ class ApiRequest:
             "temperature": temperature,
             "max_tokens": max_tokens,
             "prompt_name": prompt_name,
-            "tool_name": tool_name,
+            "tool_names": tool_names,
+            "api_names": api_names,
         }
 
         # print(f"received input message:")

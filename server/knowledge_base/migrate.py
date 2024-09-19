@@ -22,7 +22,12 @@ from typing import Literal, List
 
 
 def create_tables():
-    Base.metadata.create_all(bind=engine)
+    try:
+        from configs import AUTO_CREATE_TABLES
+    except ImportError:
+        AUTO_CREATE_TABLES = True
+    if AUTO_CREATE_TABLES:
+        Base.metadata.create_all(bind=engine)
 
 
 def reset_tables():

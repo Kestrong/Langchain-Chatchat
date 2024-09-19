@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Dict
 from urllib.parse import quote
 
-from fastapi import File, Form, Body, Query, UploadFile, HTTPException
+from fastapi import File, Form, Body, Query, UploadFile
 from langchain.docstore.document import Document
 from pydantic import Json
 from sse_starlette import EventSourceResponse
@@ -20,7 +20,9 @@ from server.knowledge_base.kb_service.base import KBServiceFactory
 from server.knowledge_base.model.kb_document_model import DocumentWithVSId
 from server.knowledge_base.oss import default_oss
 from server.knowledge_base.utils import (validate_kb_name, list_files_from_folder, files2docs_in_thread, KnowledgeFile)
+from server.memory.message_i18n import Message_I18N
 from server.utils import BaseResponse, run_in_thread_pool, PageResponse, Page
+from common.exceptions import ChatBusinessException
 
 
 def search_docs(
@@ -58,11 +60,11 @@ def update_docs_by_id(
     '''
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:
-        return BaseResponse(code=500, msg=f"指定的知识库 {knowledge_base_name} 不存在")
+        return BaseResponse(code=500, msg=Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=knowledge_base_name))
     if kb.update_doc_by_ids(docs=docs):
-        return BaseResponse(msg=f"文档更新成功")
+        return BaseResponse(msg=Message_I18N.COMMON_CALL_SUCCESS.value)
     else:
-        return BaseResponse(msg=f"文档更新失败")
+        return BaseResponse(msg=Message_I18N.API_UPDATE_ERROR.value)
 
 
 def list_files(
@@ -74,12 +76,13 @@ def list_files(
         create_time_end: datetime = Query(None, allow_inf_nan=True, description="创建时间结束"),
 ) -> PageResponse:
     if not validate_kb_name(knowledge_base_name):
-        return PageResponse(code=403, msg="Invalid knowledge base name", data=None)
+        return PageResponse(code=500, msg="Invalid knowledge base name", data=None)
 
     knowledge_base_name = urllib.parse.unquote(knowledge_base_name)
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:
-        return PageResponse(code=404, msg=f"未找到知识库 {knowledge_base_name}", data=None)
+        return PageResponse(code=500, msg=Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=knowledge_base_name),
+                            data=None)
     else:
         data, total = kb.list_files(page_size=min(abs(page_size), 1000), page_num=page_num, keyword=keyword,
                                     create_time_begin=create_time_begin, create_time_end=create_time_end,
@@ -151,7 +154,7 @@ def upload_docs(
     API接口：上传文件，并/或向量化
     """
     if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=403, msg="Invalid knowledge base name")
+        return BaseResponse(code=500, msg="Invalid knowledge base name")
 
     for file in files:
         if 0 < MAX_KNOWLEDGE_FILE_SIZE < file.size:
@@ -160,7 +163,7 @@ def upload_docs(
 
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:
-        return BaseResponse(code=404, msg=f"未找到知识库 {knowledge_base_name}")
+        return BaseResponse(code=500, msg=Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=knowledge_base_name))
 
     failed_files = {}
     file_names = list(docs.keys())
@@ -191,7 +194,7 @@ def upload_docs(
         if not not_refresh_vs_cache:
             kb.save_vector_store()
 
-    return BaseResponse(code=200, msg="文件上传与向量化完成", data={"failed_files": failed_files})
+    return BaseResponse(code=200, msg=Message_I18N.COMMON_CALL_SUCCESS.value, data={"failed_files": failed_files})
 
 
 def delete_docs(
@@ -201,12 +204,12 @@ def delete_docs(
         not_refresh_vs_cache: bool = Body(False, description="暂不保存向量库（用于FAISS）"),
 ) -> BaseResponse:
     if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=403, msg="Invalid knowledge base name")
+        return BaseResponse(code=500, msg="Invalid knowledge base name")
 
     knowledge_base_name = urllib.parse.unquote(knowledge_base_name)
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:
-        return BaseResponse(code=404, msg=f"未找到知识库 {knowledge_base_name}")
+        return BaseResponse(code=500, msg=Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=knowledge_base_name))
 
     failed_files = {}
     for file_name in file_names:
@@ -226,7 +229,7 @@ def delete_docs(
     if not not_refresh_vs_cache:
         kb.save_vector_store()
 
-    return BaseResponse(code=200, msg=f"文件删除完成", data={"failed_files": failed_files})
+    return BaseResponse(code=200, msg=Message_I18N.COMMON_CALL_SUCCESS.value, data={"failed_files": failed_files})
 
 
 def update_info(
@@ -235,19 +238,22 @@ def update_info(
         kb_info: str = Body(..., description="知识库介绍", examples=["这是一个知识库"]),
 ):
     if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=403, msg="Invalid Knowledge Base Name")
+        return BaseResponse(code=500, msg="Invalid Knowledge Base Name")
 
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:
-        return BaseResponse(code=404, msg=f"未找到知识库 {knowledge_base_name}")
+        return BaseResponse(code=500, msg=Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=knowledge_base_name))
     try:
         kb.update_info(knowledge_base_name_cn, kb_info)
+    except ChatBusinessException as e:
+        logger.error(f"{e}")
+        return BaseResponse(code=500, msg=f"{e}")
     except Exception as e:
         msg = f"修改知识库出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
                      exc_info=e if log_verbose else None)
-        return BaseResponse(code=500, msg=msg)
-    return BaseResponse(code=200, msg=f"知识库修改完成",
+        return BaseResponse(code=500, msg=Message_I18N.API_UPDATE_ERROR.value)
+    return BaseResponse(code=200, msg=Message_I18N.COMMON_CALL_SUCCESS.value,
                         data={"knowledge_base_name_cn": knowledge_base_name_cn, "kb_info": kb_info})
 
 
@@ -267,11 +273,11 @@ def update_docs(
     更新知识库文档
     """
     if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=403, msg="Invalid knowledge base name")
+        return BaseResponse(code=500, msg="Invalid knowledge base name")
 
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:
-        return BaseResponse(code=404, msg=f"未找到知识库 {knowledge_base_name}")
+        return BaseResponse(code=500, msg=Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=knowledge_base_name))
 
     failed_files = {}
     kb_files = []
@@ -324,7 +330,7 @@ def update_docs(
     if not not_refresh_vs_cache:
         kb.save_vector_store()
 
-    return BaseResponse(code=200, msg=f"更新文档完成", data={"failed_files": failed_files})
+    return BaseResponse(code=200, msg=Message_I18N.COMMON_CALL_SUCCESS.value, data={"failed_files": failed_files})
 
 
 def download_doc(
@@ -382,7 +388,7 @@ def recreate_vector_store(
     def output():
         kb = KBServiceFactory.get_service(knowledge_base_name, vs_type, embed_model)
         if not kb.exists() and not allow_empty_kb:
-            yield {"code": 404, "msg": f"未找到知识库 ‘{knowledge_base_name}’"}
+            yield {"code": 500, "msg": Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=knowledge_base_name)}
         else:
             if kb.exists():
                 kb.clear_vs()

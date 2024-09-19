@@ -5,6 +5,7 @@ from server.db.repository.conversation_repository import add_conversation_to_db,
     delete_conversation_from_db, get_conversation_from_db, delete_user_conversation_from_db
 from server.db.repository.message_repository import delete_message_from_db, \
     filter_message_page
+from server.memory.message_i18n import Message_I18N
 from server.utils import BaseResponse
 
 
@@ -18,7 +19,7 @@ def create_conversation(chat_type: str = Body(
         msg = f"创建会话出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
                      exc_info=e if log_verbose else None)
-        return BaseResponse(code=500, msg=msg)
+        return BaseResponse(code=500, msg=Message_I18N.API_CREATE_ERROR.value)
     return BaseResponse(code=200, data={'conversation_id': conversation_id})
 
 
@@ -30,7 +31,7 @@ def update_conversation(id: str = Body(description="会话id"),
         msg = f"修改会话出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
                      exc_info=e if log_verbose else None)
-        return BaseResponse(code=500, msg=msg)
+        return BaseResponse(code=500, msg=Message_I18N.API_UPDATE_ERROR.value)
     return BaseResponse(code=200, data={'conversation_id': conversation_id})
 
 
@@ -41,7 +42,7 @@ def delete_conversation(id: str = Query(description="会话id")) -> BaseResponse
         msg = f"删除会话出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
                      exc_info=e if log_verbose else None)
-        return BaseResponse(code=500, msg=msg)
+        return BaseResponse(code=500, msg=Message_I18N.API_DELETE_ERROR.value)
     return BaseResponse(code=200, data={'conversation_id': conversation_id})
 
 
@@ -52,7 +53,7 @@ def delete_user_conversation(assistant_id: int = Query(-1, description="助手ID
         msg = f"删除用户会话出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
                      exc_info=e if log_verbose else None)
-        return BaseResponse(code=500, msg=msg)
+        return BaseResponse(code=500, msg=Message_I18N.API_DELETE_ERROR.value)
     return BaseResponse(code=200, data={})
 
 
@@ -87,5 +88,5 @@ def delete_message(message_id: str = Query(description="消息id")) -> BaseRespo
         msg = f"删除消息出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
                      exc_info=e if log_verbose else None)
-        return BaseResponse(code=500, msg=msg)
+        return BaseResponse(code=500, msg=Message_I18N.API_DELETE_ERROR.value)
     return BaseResponse(code=200, data={'message_id': message_id})

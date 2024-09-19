@@ -16,6 +16,8 @@ CIAM_TOKEN_COOKIE_NAME = "iam-access-token"
 MOCK_TOKEN_INFO_ENABLED = False
 MOCK_TOKEN_INFO = {}
 
+DEFAULT_LOCALE = "zh-CN"
+
 # webui.py server
 WEBUI_SERVER = {
     "host": DEFAULT_BIND_HOST,

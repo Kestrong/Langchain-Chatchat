@@ -1,10 +1,13 @@
 import numexpr
 from langchain.chains import LLMMathChain
+from langchain.chains.llm_math.prompt import PROMPT
 from langchain.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 
-from server.agent import model_container
+from server.agent import get_model_container
 from server.agent.tools_select import register_tool
+from server.memory.message_i18n import Message_I18N
+from server.memory.token_info_memory import is_english
 
 _PROMPT_TEMPLATE = """
 将数学问题翻译成可以使用Python的numexpr库执行的表达式。使用运行此代码的输出来回答问题。
@@ -27,7 +30,7 @@ ${{运行代码的输出}}
 ...numexpr.evaluate("37593 * 67")...
 ```output
 2518731
-
+```
 答案: 2518731
 
 问题: 37593的五次方根是多少？
@@ -37,7 +40,7 @@ ${{运行代码的输出}}
 ...numexpr.evaluate("37593**(1/5)")...
 ```output
 8.222831614237718
-
+```
 答案: 8.222831614237718
 
 
@@ -48,7 +51,7 @@ ${{运行代码的输出}}
 ...numexpr.evaluate("2 ** 2")...
 ```output
 4
-
+```
 答案: 4
 
 
@@ -56,7 +59,7 @@ ${{运行代码的输出}}
 问题: {question}
 """
 
-PROMPT = PromptTemplate(
+PROMPT_CN = PromptTemplate(
     input_variables=["question"],
     template=_PROMPT_TEMPLATE,
 )
@@ -70,8 +73,9 @@ class CalculatorInput(BaseModel):
                description="Useful for when you need to answer questions about simple calculations or math problems",
                args_schema=CalculatorInput)
 def calculate(query: str):
+    model_container = get_model_container()
     model = model_container.MODEL
-    llm_math = LLMMathChain.from_llm(model, verbose=True, prompt=PROMPT)
+    llm_math = LLMMathChain.from_llm(model, verbose=True, prompt=PROMPT if is_english() else PROMPT_CN)
     try:
         ans = llm_math.run(query)
         return ans
@@ -79,7 +83,7 @@ def calculate(query: str):
         try:
             return str(numexpr.evaluate(query))
         except Exception:
-            return f'```{query}```表达式无法被numexpr解析执行'
+            return Message_I18N.TOOL_CALCULATE_ERROR.value.format(query=query)
 
 
 if __name__ == "__main__":

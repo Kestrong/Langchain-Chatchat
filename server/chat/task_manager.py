@@ -5,6 +5,7 @@ from typing import Dict
 from fastapi import Query
 
 from configs.basic_config import logger
+from server.memory.message_i18n import Message_I18N
 from server.utils import BaseResponse
 
 
@@ -54,4 +55,4 @@ def stop(task_id: str = Query(description="任务id")) -> BaseResponse:
         finally:
             task_manager.remove(task_id)
         return BaseResponse(code=200, data={'task_id': task_id})
-    return BaseResponse(code=500, msg=f'task[{task_id}] is not exist')
+    return BaseResponse(code=500, msg=Message_I18N.API_TASK_NOT_EXIST.value.format(task_id=task_id))

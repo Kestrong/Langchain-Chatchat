@@ -5,11 +5,12 @@ import nltk
 from fastapi.security import APIKeyHeader
 from starlette.requests import Request
 
+from server.agent.tools_select import get_tools_info
 from server.chat.chat_router import chat_router
 from server.chat.conversation import create_conversation, delete_conversation, update_conversation, filter_message, \
     filter_conversation, delete_message, delete_user_conversation
 from server.chat.task_manager import stop
-from server.memory.token_info_memory import set_token
+from server.memory.token_info_memory import set_token, i18n_context
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -18,7 +19,7 @@ from configs.model_config import NLTK_DATA_PATH
 from configs.server_config import OPEN_CROSS_DOMAIN, CIAM_TOKEN_COOKIE_NAME
 import argparse
 import uvicorn
-from fastapi import Body, Header, Depends, Security
+from fastapi import Body, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 from server.chat.chat import chat
@@ -72,6 +73,9 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
         if token is None or token.strip() == '':
             token = request.cookies.get(CIAM_TOKEN_COOKIE_NAME)
         set_token(token)
+        locale = request.cookies.get('LOCALE')
+        if locale:
+            i18n_context.set(locale)
         response = await call_next(request)
         return response
 
@@ -181,6 +185,8 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
              summary="获取服务器原始配置信息",
              )(get_server_configs)
 
+    app.post("/server/tools_info", tags=["Server State"], summary="工具信息")(get_tools_info)
+
     app.post("/server/list_search_engines",
              tags=["Server State"],
              summary="获取服务器支持的搜索引擎",
@@ -236,6 +242,7 @@ def mount_assistant_routes(app: FastAPI):
                tags=["Chat"],
                summary="删除助手",
                )(delete_assistant)
+
 
 def mount_menu_routes(app: FastAPI):
     from server.chat.menu import create_menu, update_menu, delete_menu, get_menus, get_menu_detail

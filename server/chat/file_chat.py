@@ -12,12 +12,13 @@ from sse_starlette.sse import EventSourceResponse
 from configs import (LLM_MODELS, TEMPERATURE, MAX_TEMP_FILE_SIZE, MAX_TEMP_FILE_NUM)
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
-from server.chat.task_manager import task_manager
 from server.chat.chat_type import ChatType
+from server.chat.task_manager import task_manager
 from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
 from server.db.repository import add_message_to_db
 from server.knowledge_base.oss import default_oss, OssType, oss_factory
 from server.knowledge_base.utils import KnowledgeFile, get_file_path
+from server.memory.message_i18n import Message_I18N
 from server.utils import (wrap_done, get_ChatOpenAI,
                           BaseResponse, get_prompt_template, run_in_thread_pool)
 
@@ -109,11 +110,13 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
                     store_message: bool = Body(True, description="是否保存消息到数据库"),
                     ):
     if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
-        return BaseResponse(code=500, msg=f"对不起，文件对话不支持该模型:{model_name}")
+        return BaseResponse(code=500,
+                            msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(chat_type=ChatType.FILE_CHAT.value,
+                                                                                    model_name=model_name))
     if knowledge_id is None or knowledge_id.strip() == "":
-        return BaseResponse(code=500, msg=f"临时知识库{knowledge_id}不允许为空")
+        return BaseResponse(code=500, msg=Message_I18N.API_PARAM_NOT_PRESENT.value.format(name="knowledge_id"))
     if not (files := default_oss().list_objects(bucket_name="temp", object_name=knowledge_id)):
-        return BaseResponse(code=500, msg=f"未找到临时知识库 {knowledge_id}，请先上传文件")
+        return BaseResponse(code=500, msg=Message_I18N.API_FILE_NOT_EXIST.value)
 
     history = [History.from_data(h) for h in history]
 
@@ -157,20 +160,17 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
             for success, file, msg, part_docs in _parse_files_in_thread(files=files, dir=knowledge_id, doc=True):
                 inum += 1
                 if success:
-                    context += f"文章名称：{file}\n"
+                    context += Message_I18N.API_ARTICLE_NAME.value + f":{file}\n"
                     context += "\n".join([doc.page_content for doc in part_docs])
                     text = f"""[{inum}] {file} \n"""
                 else:
-                    text = f"""[{inum}] {file}(解析失败) \n"""
+                    text = f"""[{inum}] {file}(""" + Message_I18N.COMMON_PARSE_FAILED.value + """) \n"""
                 source_documents.append(text)
         finally:
             if default_oss().type() != OssType.FILESYSTEM.value:
                 oss_factory[OssType.FILESYSTEM.value].delete_object("temp", knowledge_id)
 
-        if len(context) == 0:  ## 如果没有找到相关文档，使用Empty模板
-            prompt_template = get_prompt_template("knowledge_base_chat", "empty")
-        else:
-            prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
+        prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
         input_msg = History(role="user", content=prompt_template).to_msg_template(False)
         chat_prompt = ChatPromptTemplate.from_messages(
             [i.to_msg_template() for i in history] + [input_msg])

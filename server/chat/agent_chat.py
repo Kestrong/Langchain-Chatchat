@@ -3,25 +3,27 @@ import json
 from typing import AsyncIterable, Optional, List
 
 from fastapi import Body
-from langchain.agents import LLMSingleActionAgent, AgentExecutor
+from langchain.agents import AgentExecutor, LLMSingleActionAgent
+from langchain.agents.structured_chat.output_parser import StructuredChatOutputParserWithRetries
 from langchain.chains import LLMChain
 from langchain.memory import ConversationBufferWindowMemory
 from sse_starlette.sse import EventSourceResponse
 
 from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, Agent_MODEL
-from server.agent import model_container
+from server.agent import create_model_container
 from server.agent.callbacks import AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
 from server.agent.custom_agent.ChatGLM3Agent import initialize_glm3_agent
 from server.agent.custom_template import CustomOutputParser, CustomPromptTemplate
-from server.agent.tools_select import get_tools, get_tool_names
+from server.agent.tools.http_request import _http_request
+from server.agent.tools_select import get_all_tools, get_tool, create_dynamic_tool
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
 from server.db.repository import add_message_to_db
-from server.knowledge_base.kb_service.base import get_kb_details
-from server.utils import wrap_done, get_ChatOpenAI, get_prompt_template, BaseResponse
+from server.memory.message_i18n import Message_I18N
+from server.utils import wrap_done, get_ChatOpenAI, get_prompt_template, BaseResponse, get_tool_config
 
 
 async def agent_chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
@@ -39,16 +41,33 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                      max_tokens: Optional[int] = Body(None, description="限制LLM生成Token数量，默认None代表模型最大值"),
                      prompt_name: str = Body("default",
                                              description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
-                     tool_name: str = Body("", description="工具的名称"),
+                     tool_names: List[str] = Body([], description="工具的名称"),
+                     api_names: List[str] = Body([], description="api的名称"),
                      store_message: bool = Body(True, description="是否保存消息到数据库"),
                      ):
     if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
-        return BaseResponse(code=500, msg=f"对不起，agent对话不支持该模型:{model_name}")
+        return BaseResponse(code=500,
+                            msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(chat_type=ChatType.AGENT_CHAT.value,
+                                                                                    model_name=model_name))
 
     history = [History.from_data(h) for h in history]
-    tools, tool_names = get_tools(tool_name=tool_name), get_tool_names(tool_name=tool_name)
-    if not tools:
-        return BaseResponse(code=500, msg="对不起，没有工具可以调用。")
+    model_container = create_model_container()
+    if tool_names is not None and len(tool_names) > 0:
+        available_tools = []
+        for tool_name in tool_names:
+            if tool_name == 'http_request':
+                apis = model_container.TOOL_CONFIG.get("http_request", get_tool_config().TOOL_CONFIG.get("http_request", {})).get("apis", [])
+                available_tools.extend([create_dynamic_tool(api, _http_request) for api in apis if not api_names or api.get("name") in api_names])
+            else:
+                t = get_tool(tool_name)
+                if t:
+                    available_tools.append(t)
+    else:
+        available_tools = get_all_tools()
+
+    if not available_tools:
+        return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
+    available_tool_names = [t.name for t in available_tools]
 
     async def agent_chat_iterator(
             query: str,
@@ -79,19 +98,13 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             from langfuse.callback import CallbackHandler
             langfuse_handler = CallbackHandler()
             callbacks.append(langfuse_handler)
+
         model = get_ChatOpenAI(
             model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
             callbacks=[callback],
         )
-
-        for t in tool_names:
-            if t.lower().__contains__("knowledgebase"):
-                kb_list = {x["kb_name"]: x for x in get_kb_details()}
-                model_container.DATABASE = {name: details['kb_info'] for name, details in kb_list.items()}
-                break
-
         if Agent_MODEL:
             model_agent = get_ChatOpenAI(
                 model_name=Agent_MODEL,
@@ -106,11 +119,10 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         prompt_template = get_prompt_template("agent_chat", prompt_name)
         prompt_template_agent = CustomPromptTemplate(
             template=prompt_template,
-            tools=tools,
+            tools=available_tools,
             template_format='jinja2',
             input_variables=["input", "intermediate_steps"]
         )
-        output_parser = CustomOutputParser()
         llm_chain = LLMChain(llm=model, prompt=prompt_template_agent)
         memory = ConversationBufferWindowMemory(k=max(HISTORY_LEN * 2, len(history) if history else 0))
         for message in history:
@@ -121,7 +133,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         if "chatglm3" in model_container.MODEL.model_name or "zhipu-api" in model_container.MODEL.model_name:
             agent_executor = initialize_glm3_agent(
                 llm=model,
-                tools=tools,
+                tools=available_tools,
                 callback_manager=None,
                 prompt=prompt_template,
                 input_variables=["input", "intermediate_steps"],
@@ -129,14 +141,16 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                 verbose=True,
             )
         else:
+            output_parser = StructuredChatOutputParserWithRetries.from_llm(llm=model, base_parser=CustomOutputParser())
+            output_parser.output_fixing_parser.max_retries = 3
             agent = LLMSingleActionAgent(
                 llm_chain=llm_chain,
                 output_parser=output_parser,
                 stop=["Observation:", "\nObservation", "<|endoftext|>", "<|im_start|>", "<|im_end|>"],
-                allowed_tools=tool_names,
+                allowed_tools=available_tool_names,
             )
             agent_executor = AgentExecutor.from_agent_and_tools(agent=agent,
-                                                                tools=tools,
+                                                                tools=available_tools,
                                                                 verbose=True,
                                                                 memory=memory,
                                                                 )
@@ -161,24 +175,19 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                     continue
                 elif data["status"] == AgentStatus.error:
                     use_tool_name = data["tool_name"]
-                    fm_use_tool_name = [f"{t.title}({t.name})" for t in get_tools(use_tool_name)]
-                    tools_use.append("\n```\n")
-                    tools_use.append("工具名称: " + f"{fm_use_tool_name[0]}" if fm_use_tool_name else use_tool_name)
-                    tools_use.append("工具状态: " + "调用失败")
-                    tools_use.append("错误信息: " + data["error"])
-                    tools_use.append("重新开始尝试")
-                    tools_use.append("\n```\n")
+                    use_tool = [a for a in available_tools if a.name == use_tool_name]
+                    tools_use.append(Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
+                        tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
+                        error=data["error"]))
                     yield json.dumps({"tools": tools_use, "message_id": message_id, "conversation_id": conversation_id},
                                      ensure_ascii=False)
                 elif data["status"] == AgentStatus.tool_end:
                     use_tool_name = data["tool_name"]
-                    fm_use_tool_name = [f"{t.title}({t.name})" for t in get_tools(use_tool_name)]
-                    tools_use.append("\n```\n")
-                    tools_use.append("工具名称: " + f"{fm_use_tool_name[0]}" if fm_use_tool_name else use_tool_name)
-                    tools_use.append("工具状态: " + "调用成功")
-                    tools_use.append("工具输入: " + data["input_str"])
-                    tools_use.append("工具输出: " + data["output_str"])
-                    tools_use.append("\n```\n")
+                    use_tool = [a for a in available_tools if a.name == use_tool_name]
+                    tools_use.append(Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
+                        tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
+                        input_str=str(data.get("input_str")),
+                        output_str=str(data.get("output_str"))))
                     yield json.dumps({"tools": tools_use, "message_id": message_id, "conversation_id": conversation_id},
                                      ensure_ascii=False)
                 elif data["status"] == AgentStatus.agent_finish:
@@ -197,20 +206,20 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                 data = json.loads(chunk)
                 if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
                     continue
-                if data["status"] == AgentStatus.error:
-                    tool_use += "\n```\n"
-                    tool_use += "工具名称: " + data["tool_name"] + "\n"
-                    tool_use += "工具状态: " + "调用失败" + "\n"
-                    tool_use += "错误信息: " + data["error"] + "\n"
-                    tool_use += "\n```\n"
-                if data["status"] == AgentStatus.tool_end:
-                    tool_use += "\n```\n"
-                    tool_use += "工具名称: " + data["tool_name"] + "\n"
-                    tool_use += "工具状态: " + "调用成功" + "\n"
-                    tool_use += "工具输入: " + data["input_str"] + "\n"
-                    tool_use += "工具输出: " + data["output_str"] + "\n"
-                    tool_use += "\n```\n"
-                if data["status"] == AgentStatus.agent_finish:
+                elif data["status"] == AgentStatus.error:
+                    use_tool_name = data["tool_name"]
+                    use_tool = [a for a in available_tools if a.name == use_tool_name]
+                    tool_use += Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
+                        tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
+                        error=data["error"])
+                elif data["status"] == AgentStatus.tool_end:
+                    use_tool_name = data["tool_name"]
+                    use_tool = [a for a in available_tools if a.name == use_tool_name]
+                    tool_use += Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
+                        tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
+                        input_str=str(data.get("input_str")),
+                        output_str=str(data.get("output_str")))
+                elif data["status"] == AgentStatus.agent_finish:
                     answer = data["final_answer"]
                 else:
                     llm_tokens = data["llm_token"]

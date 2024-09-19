@@ -3,6 +3,8 @@ import os
 
 from configs import SQLALCHEMY_DATABASE_URI, DATABASE_SCHEMA
 
+ENABLE_TOOLS = []
+
 DEFAULT_SEARCH_ENGINE = "metaphor"
 
 # 搜索引擎匹配结题数量
@@ -29,19 +31,59 @@ SENIVERSE_API_KEY = ""
 
 WOLFRAM_ALPHA_API_KEY = ""
 
-text2sql: dict = {
-    # SQLAlchemy连接字符串，支持的数据库有：
-    # crate、duckdb、googlesql、mssql、mysql、mariadb、oracle、postgresql、sqlite、clickhouse、prestodb
-    # 不同的数据库请查阅SQLAlchemy用法，修改sqlalchemy_connect_str，配置对应的数据库连接，如sqlite为sqlite:///数据库文件路径，下面示例为mysql
-    # 如提示缺少对应数据库的驱动，请自行通过poetry安装
-    "sqlalchemy_schema": os.environ.get('TEXT2SQL_DATABASE_SCHEMA', DATABASE_SCHEMA),
-    "sqlalchemy_connect_str": os.environ.get('TEXT2SQL_DATABASE_URL', SQLALCHEMY_DATABASE_URI),
-    # 如果想指定特定表，请填写表名称，如["sys_user","sys_dept"]，不填写走智能判断应该使用哪些表
-    "table_names": [],
-    # 对表名进行额外说明，辅助大模型更好的判断应该使用哪些表，尤其是SQLDatabaseSequentialChain模式下,是根据表名做的预测，很容易误判。
-    "table_comments": {
-        # 如果出现大模型选错表的情况，可尝试根据实际情况填写表名和说明
-        # "tableA":"这是一个用户表，存储了用户的基本信息",
-        # "tableB":"角色表",
+TOOL_CONFIG = {
+    "aes": {
+        "key": "ffcs@flmchat2024"
     },
+    "shell": {
+        "allow_command": [],
+        "disallow_command": ["(.*|^)rm|dd|cp|mv|shutdown|reboot|poweroff|fdisk|mkfs|chmod|chown|curl|wget .*"]
+    },
+    "text2sql": {
+        # 数据库是否只读，请谨慎改成False，否则可能会导致无法挽回的数据丢失
+        "read_only": True,
+        # 是否只返回sql不执行
+        "return_sql": False,
+        # SQLAlchemy连接字符串，支持的数据库有：
+        # crate、duckdb、googlesql、mssql、mysql、mariadb、oracle、postgresql、sqlite、clickhouse、prestodb
+        # 不同的数据库请查阅SQLAlchemy用法，修改sqlalchemy_connect_str，配置对应的数据库连接，如sqlite为sqlite:///数据库文件路径，下面示例为mysql
+        # 如提示缺少对应数据库的驱动，请自行通过poetry安装
+        "sqlalchemy_schema": os.environ.get('TEXT2SQL_DATABASE_SCHEMA', DATABASE_SCHEMA),
+        "sqlalchemy_connect_str": os.environ.get('TEXT2SQL_DATABASE_URL', SQLALCHEMY_DATABASE_URI),
+        "return_intermediate_steps": True,
+        "top_k": 3,
+        # 如果想指定特定表，请填写表名称，如["sys_user","sys_dept"]，不填写走智能判断应该使用哪些表
+        "table_names": [],
+        # 对表名进行额外说明，辅助大模型更好的判断应该使用哪些表，尤其是SQLDatabaseSequentialChain模式下,是根据表名做的预测，很容易误判。
+        "table_comments": {
+            # 如果出现大模型选错表的情况，可尝试根据实际情况填写表名和说明
+            # "tableA":"这是一个用户表，存储了用户的基本信息",
+            # "tableB":"角色表",
+        },
+    },
+    "http_request": {
+        "apis": [
+            {
+                "method": "GET",
+                "url": "https://api.juejin.cn/search_api/v1/search",
+                "headers": {},
+                "cookies": {},
+                "timeout": 5,
+                "name": "juejin",
+                "title": "掘金开发者网站搜索",
+                "request_template": None,
+                "response_template": "{{ data | map(attribute='content_highlight') | join('\n\n') }}",
+                "description": "你可以使用该接口对掘金开发者网站的内容进行关键词搜索",
+                "return_direct": True,
+                "parameters": {
+                    "query": {
+                        "title": "query",
+                        "description": "搜索关键词",
+                        "type": "string"
+                    }
+                }
+            }
+        ]
+    }
 }
+

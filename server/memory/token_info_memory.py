@@ -2,7 +2,7 @@ import base64
 import json
 from contextvars import ContextVar
 
-from configs import MOCK_TOKEN_INFO, MOCK_TOKEN_INFO_ENABLED
+from configs import MOCK_TOKEN_INFO, MOCK_TOKEN_INFO_ENABLED, DEFAULT_LOCALE
 
 # 创建一个线程本地变量
 token_context = ContextVar[str]('X_Token', default=None)
@@ -26,3 +26,13 @@ def get_token_info() -> dict:
 
 def set_token(token):
     token_context.set(token)
+
+
+i18n_context = ContextVar[str]('i18n', default=DEFAULT_LOCALE)
+
+
+def is_english() -> bool:
+    i18n = i18n_context.get()
+    if i18n is None:
+        return False
+    return i18n.__contains__('en') or i18n.__contains__('us')

@@ -15,7 +15,6 @@ from langchain.chat_models import ChatOpenAI
 from langchain.llms import OpenAI
 import httpx
 from typing import (
-    TYPE_CHECKING,
     Literal,
     Optional,
     Callable,
@@ -26,8 +25,6 @@ from typing import (
     Union,
     Tuple
 )
-import logging
-import torch
 
 from server.minx_chat_openai import MinxChatOpenAI
 
@@ -389,16 +386,13 @@ def get_model_worker_config(model_name: str = None) -> dict:
     加载model worker的配置项。
     优先级:FSCHAT_MODEL_WORKERS[model_name] > ONLINE_LLM_MODEL[model_name] > FSCHAT_MODEL_WORKERS["default"]
     '''
-    from configs.model_config import ONLINE_LLM_MODEL, MODEL_PATH, MODEL_METADATA
+    from configs.model_config import ONLINE_LLM_MODEL, MODEL_PATH
     from configs.server_config import FSCHAT_MODEL_WORKERS
     from server import model_workers
 
     config = FSCHAT_MODEL_WORKERS.get("default", {}).copy()
     config.update(ONLINE_LLM_MODEL.get(model_name, {}).copy())
     config.update(FSCHAT_MODEL_WORKERS.get(model_name, {}).copy())
-
-    if model_name in MODEL_METADATA:
-        config["label"] = MODEL_METADATA[model_name].get('label')
 
     if model_name in ONLINE_LLM_MODEL:
         config["online_api"] = True
@@ -488,6 +482,13 @@ def get_prompt_template(type: str, name: str) -> Optional[str]:
     if name.startswith('[*safe_prompt*]') and name.endswith('[*safe_prompt*]'):
         return name.lstrip('[*safe_prompt*]').rstrip('[*safe_prompt*]')
     return prompt_config.PROMPT_TEMPLATES[type].get(name)
+
+
+def get_tool_config():
+    from configs import tool_config
+    import importlib
+    importlib.reload(tool_config)
+    return tool_config
 
 
 def set_httpx_config(

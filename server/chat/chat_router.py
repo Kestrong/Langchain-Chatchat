@@ -3,6 +3,7 @@ from typing import List, Optional, Union
 from fastapi import Body, Request
 
 from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD
+from server.agent import create_model_container
 from server.chat.agent_chat import agent_chat
 from server.chat.chat import chat
 from server.chat.chat_type import ChatType
@@ -47,9 +48,11 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                       store_message: bool = Body(True, description="是否保存消息到数据库"),
                       split_result: bool = Body(False,
                                                 description="是否对搜索结果进行拆分（主要用于metaphor搜索引擎）"),
-                      tool_name: str = Body("", description="工具的名称"),
+                      tool_names: List[str] = Body([], description="工具的名称"),
+                      api_names: List[str] = Body([], description="api的名称"),
                       request: Request = None,
                       ):
+    assistant = None
     if assistant_id >= 0:
         assistant = get_assistant_detail_from_db(assistant_id=assistant_id)
         kbs = assistant.get("knowledge_bases", [])
@@ -78,11 +81,16 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                         history=history, stream=stream, model_name=model_name, temperature=temperature,
                                         max_tokens=max_tokens, prompt_name=prompt_name, split_result=split_result)
 
-    elif chat_type == ChatType.AGENT_CHAT.value or (tool_name is not None and tool_name != ''):
-
+    elif chat_type == ChatType.AGENT_CHAT.value or tool_names:
+        if assistant:
+            tool_config = assistant.get("tool_config")
+            if tool_config and len(tool_config) > 0:
+                model_container = create_model_container()
+                model_container.TOOL_CONFIG.update(tool_config)
         return await agent_chat(query=query, history=history, stream=stream, model_name=model_name,
-                                temperature=temperature, tool_name=tool_name, conversation_id=conversation_id,
-                                store_message=store_message, max_tokens=max_tokens, prompt_name=prompt_name)
+                                temperature=temperature, tool_names=tool_names, conversation_id=conversation_id,
+                                store_message=store_message, max_tokens=max_tokens, prompt_name=prompt_name,
+                                api_names=api_names)
 
     elif chat_type == ChatType.FILE_CHAT.value or knowledge_id:
         return await file_chat(query=query, knowledge_id=knowledge_id, history=history, stream=stream,

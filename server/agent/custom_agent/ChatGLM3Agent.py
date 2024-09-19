@@ -12,16 +12,17 @@ from langchain.agents.agent import Agent
 from langchain.agents.agent import AgentExecutor
 from langchain.agents.agent import AgentOutputParser
 from langchain.agents.structured_chat.base import HUMAN_MESSAGE_TEMPLATE
-from langchain.agents.structured_chat.output_parser import StructuredChatOutputParser
+from langchain.agents.structured_chat.output_parser import StructuredChatOutputParser, \
+    StructuredChatOutputParserWithRetries
 from langchain.callbacks.base import BaseCallbackManager
 from langchain.chains.llm import LLMChain
 from langchain.memory import ConversationBufferWindowMemory
-from langchain.output_parsers import OutputFixingParser
 from langchain.prompts.chat import ChatPromptTemplate
 from langchain.pydantic_v1 import Field
 from langchain.schema import AgentAction, AgentFinish, BasePromptTemplate
 from langchain.schema.language_model import BaseLanguageModel
 from langchain.tools.base import BaseTool
+from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import ToolMessage, FunctionMessage, SystemMessage, ChatMessage, HumanMessage, AIMessage
 from langchain_core.prompts import HumanMessagePromptTemplate
 from pydantic.schema import model_schema
@@ -33,48 +34,44 @@ HUMAN_MESSAGE = "Let's start! Human:{input}\n\nThought:{agent_scratchpad}\n"
 
 
 class StructuredGLM3ChatOutputParser(StructuredChatOutputParser):
-    """
-    Output parser with retries for the structured chat agent.
-    """
-
-    base_parser: AgentOutputParser = Field(default_factory=StructuredChatOutputParser)
-    output_fixing_parser: Optional[OutputFixingParser] = None
 
     def parse(self, text: str) -> Union[AgentAction, AgentFinish]:
         logger.debug(f"原始输入:{text},结束")
-        origin_text = text
-        special_tokens = ["Action:", "<|observation|>"]
-        first_index = min(
-            [
-                text.find(token) if token in text else len(text)
-                for token in special_tokens
-            ]
-        )
-        text = text[:first_index]
-
-        if "tool_call" in text:
-            action_end = text.find("```")
-            action = text[:action_end].strip()
-            params_str_start = text.find("(") + 1
-            params_str_end = text.rfind(")")
-            params_str = text[params_str_start:params_str_end]
-
-            params_pairs = [
-                param.split("=") for param in params_str.split(",") if "=" in param
-            ]
-            params = {
-                pair[0].strip(): pair[1].strip().strip("'\"") for pair in params_pairs
-            }
-            return AgentAction(tool=action, tool_input=params, log=text)
-        else:
-            finish_tokens = ['<|assistant|>', '<|user|>']
-            index = min(
+        try:
+            special_tokens = ["Action:", "<|observation|>"]
+            first_index = min(
                 [
                     text.find(token) if token in text else len(text)
-                    for token in finish_tokens
+                    for token in special_tokens
                 ]
             )
-            return AgentFinish({"output": text[:index]}, log=text)
+            text = text[:first_index]
+
+            if "tool_call" in text:
+                action_end = text.find("```")
+                action = text[:action_end].strip()
+                params_str_start = text.find("(") + 1
+                params_str_end = text.rfind(")")
+                params_str = text[params_str_start:params_str_end]
+
+                params_pairs = [
+                    param.split("=") for param in params_str.split(",") if "=" in param
+                ]
+                params = {
+                    pair[0].strip(): pair[1].strip().strip("'\"") for pair in params_pairs
+                }
+                return AgentAction(tool=action, tool_input=params, log=text)
+            else:
+                finish_tokens = ['<|assistant|>', '<|user|>']
+                index = min(
+                    [
+                        text.find(token) if token in text else len(text)
+                        for token in finish_tokens
+                    ]
+                )
+                return AgentFinish({"output": text[:index]}, log=text)
+        except Exception as e:
+            raise OutputParserException(f"Could not parse LLM output: {text}") from e
 
     @property
     def _type(self) -> str:
@@ -116,7 +113,10 @@ class StructuredGLM3ChatAgent(Agent):
     def _get_default_output_parser(
             cls, llm: Optional[BaseLanguageModel] = None, **kwargs: Any
     ) -> AgentOutputParser:
-        return StructuredGLM3ChatOutputParser(llm=llm)
+        base_parser = StructuredGLM3ChatOutputParser()
+        output_parser = StructuredChatOutputParserWithRetries.from_llm(llm=llm, base_parser=base_parser)
+        output_parser.output_fixing_parser.max_retries = 3
+        return output_parser
 
     @property
     def _stop(self) -> List[str]:
