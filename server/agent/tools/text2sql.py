@@ -45,14 +45,10 @@ class Text2SqlInput(BaseModel):
 def text2sql(query: str):
     origin_query = query
     model_container = get_model_container()
-    model = model_container.MODEL
 
     text2sql_config_bak = get_tool_config().TOOL_CONFIG.get("text2sql", {})
     text2sql_config: dict = model_container.TOOL_CONFIG.get('text2sql', {})
-    if model:
-        model_name = model.metadata.get("origin_model_name", model.model_name)
-    else:
-        model_name = text2sql_config.get('model_name', text2sql_config_bak.get('model_name'))
+    model_name = text2sql_config.get('model_name', text2sql_config_bak.get('model_name'))
     table_names = text2sql_config.get('table_names', text2sql_config_bak.get('table_names'))
     table_comments = text2sql_config.get('table_comments', text2sql_config_bak.get('table_names'))
 

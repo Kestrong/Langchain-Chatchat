@@ -9,7 +9,7 @@ from langchain.chains import LLMChain
 from langchain.memory import ConversationBufferWindowMemory
 from sse_starlette.sse import EventSourceResponse
 
-from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, Agent_MODEL, logger
+from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, logger
 from server.agent import create_model_container, ModelContainer
 from server.agent.callbacks import AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
 from server.agent.custom_agent.ChatGLM3Agent import initialize_glm3_agent
@@ -113,16 +113,6 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             max_tokens=max_tokens,
             callbacks=[callback],
         )
-        if Agent_MODEL:
-            model_agent = get_ChatOpenAI(
-                model_name=Agent_MODEL,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                callbacks=[callback],
-            )
-            model_container.MODEL = model_agent
-        else:
-            model_container.MODEL = model
 
         prompt_template = get_prompt_template("agent_chat", prompt_name)
         prompt_template_agent = CustomPromptTemplate(
@@ -138,7 +128,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                 memory.chat_memory.add_user_message(message.content)
             else:
                 memory.chat_memory.add_ai_message(message.content)
-        if "chatglm3" in model_container.MODEL.model_name or "zhipu-api" in model_container.MODEL.model_name:
+        if "chatglm3" in model_name or "zhipu-api" in model_name:
             agent_executor = initialize_glm3_agent(
                 llm=model,
                 tools=available_tools,
@@ -258,12 +248,6 @@ async def call_tool(
         model_container = create_model_container()
         if assistant_id >= 0:
             assistant = get_assistant_simple_from_db(assistant_id=assistant_id)
-            model_container.MODEL = get_ChatOpenAI(
-                model_name=assistant.get("model_name"),
-                temperature=TEMPERATURE,
-                max_tokens=None,
-                callbacks=[AgentExecutorAsyncIteratorCallbackHandler()],
-            )
             tool_config = assistant.get("tool_config")
             if tool_config and len(tool_config) > 0:
                 model_container.TOOL_CONFIG.update(tool_config)
