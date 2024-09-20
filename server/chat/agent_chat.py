@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import AsyncIterable, Optional, List
+from typing import AsyncIterable, Optional, List, Dict, Any
 
 from fastapi import Body
 from langchain.agents import AgentExecutor, LLMSingleActionAgent
@@ -248,7 +248,7 @@ async def call_tool(
         assistant_id: int = Body(-1, description="助手ID"),
         tool_name: str = Body(examples=["calculate"], description="工具名称"),
         api_name: str = Body(default="", description="接口名称"),
-        tool_input: dict = Body({}, examples=[{"query": "3+5/2"}]),
+        tool_input: Dict[str, Any] = Body({}, examples=[{"query": "3+5/2"}]),
 ) -> BaseResponse:
     try:
         if not tool_name:
