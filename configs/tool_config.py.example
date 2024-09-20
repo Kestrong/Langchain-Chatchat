@@ -40,6 +40,7 @@ TOOL_CONFIG = {
         "disallow_command": ["(.*|^)rm|dd|cp|mv|shutdown|reboot|poweroff|fdisk|mkfs|chmod|chown|curl|wget .*"]
     },
     "text2sql": {
+        "model_name": LLM_MODELS[0],
         # 数据库是否只读，请谨慎改成False，否则可能会导致无法挽回的数据丢失
         "read_only": True,
         # 是否只返回sql不执行

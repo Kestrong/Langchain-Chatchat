@@ -4,7 +4,7 @@ from typing import Optional, Type, Callable, Union, Dict, Any, Tuple
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Extra, Field, create_model
 
-from server.utils import get_tool_config
+from server.utils import get_tool_config, BaseResponse
 
 _TOOLS_REGISTRY = {}
 
@@ -23,16 +23,28 @@ def clear_values(d: dict):
             d[key] = None
 
 
-def get_tools_info():
+def get_tools_info() -> BaseResponse:
     tool_config_template = copy.deepcopy(get_tool_config().TOOL_CONFIG)
     clear_values(tool_config_template)
 
+    extra_arg_map = {"return_direct": True, "request_direct": False, "request_template": None}
+    for ek, ev in extra_arg_map.items():
+        for k, v in tool_config_template.items():
+            if k == 'http_request':
+                for api in v.get("apis", []):
+                    if ek not in api.keys():
+                        api[ek] = ev
+            else:
+                if ek not in v.keys():
+                    v[ek] = ev
+
     description_format = lambda description: description.split(" - ")[
         1].strip() if description and " - " in description else description
-    return {"tools_info": [
+    toos_info = {"tools_info": [
         {"name": t.name, "title": t.title, "description": description_format(t.description), "parameters": t.args}
         for t in
         _TOOLS_REGISTRY.values()], "tool_config_template": tool_config_template}
+    return BaseResponse(code=200, data=toos_info)
 
 
 def create_dynamic_tool(api: dict, func: Callable):

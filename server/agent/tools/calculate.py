@@ -75,8 +75,8 @@ class CalculatorInput(BaseModel):
 def calculate(query: str):
     model_container = get_model_container()
     model = model_container.MODEL
-    llm_math = LLMMathChain.from_llm(model, verbose=True, prompt=PROMPT if is_english() else PROMPT_CN)
     try:
+        llm_math = LLMMathChain.from_llm(model, verbose=True, prompt=PROMPT if is_english() else PROMPT_CN)
         ans = llm_math.run(query)
         return ans
     except Exception:

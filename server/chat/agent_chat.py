@@ -9,8 +9,8 @@ from langchain.chains import LLMChain
 from langchain.memory import ConversationBufferWindowMemory
 from sse_starlette.sse import EventSourceResponse
 
-from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, Agent_MODEL
-from server.agent import create_model_container
+from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, Agent_MODEL, logger
+from server.agent import create_model_container, ModelContainer
 from server.agent.callbacks import AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
 from server.agent.custom_agent.ChatGLM3Agent import initialize_glm3_agent
 from server.agent.custom_template import CustomOutputParser, CustomPromptTemplate
@@ -21,9 +21,28 @@ from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
-from server.db.repository import add_message_to_db
+from server.db.repository import add_message_to_db, get_assistant_simple_from_db
 from server.memory.message_i18n import Message_I18N
 from server.utils import wrap_done, get_ChatOpenAI, get_prompt_template, BaseResponse, get_tool_config
+
+
+def get_available_tools(tool_names: List[str], api_names: List[str], model_container: ModelContainer, ):
+    if tool_names is not None and len(tool_names) > 0:
+        available_tools = []
+        for tool_name in tool_names:
+            if tool_name == 'http_request':
+                apis = model_container.TOOL_CONFIG.get("http_request",
+                                                       get_tool_config().TOOL_CONFIG.get("http_request", {})).get(
+                    "apis", [])
+                available_tools.extend([create_dynamic_tool(api, _http_request) for api in apis if
+                                        not api_names or api.get("name") in api_names])
+            else:
+                t = get_tool(tool_name)
+                if t:
+                    available_tools.append(t)
+    else:
+        available_tools = get_all_tools()
+    return available_tools
 
 
 async def agent_chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
@@ -52,18 +71,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
 
     history = [History.from_data(h) for h in history]
     model_container = create_model_container()
-    if tool_names is not None and len(tool_names) > 0:
-        available_tools = []
-        for tool_name in tool_names:
-            if tool_name == 'http_request':
-                apis = model_container.TOOL_CONFIG.get("http_request", get_tool_config().TOOL_CONFIG.get("http_request", {})).get("apis", [])
-                available_tools.extend([create_dynamic_tool(api, _http_request) for api in apis if not api_names or api.get("name") in api_names])
-            else:
-                t = get_tool(tool_name)
-                if t:
-                    available_tools.append(t)
-    else:
-        available_tools = get_all_tools()
+    available_tools = get_available_tools(tool_names, api_names, model_container)
 
     if not available_tools:
         return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
@@ -234,3 +242,38 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                                        model_name=model_name,
                                                                        prompt_name=prompt_name),
                                                    ))
+
+
+async def call_tool(
+        assistant_id: int = Body(-1, description="助手ID"),
+        tool_name: str = Body(examples=["calculate"], description="工具名称"),
+        api_name: str = Body(default="", description="接口名称"),
+        tool_input: dict = Body({}, examples=[{"query": "3+5/2"}]),
+) -> BaseResponse:
+    try:
+        if not tool_name:
+            return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
+        if tool_name == 'http_request' and not api_name:
+            return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
+        model_container = create_model_container()
+        if assistant_id >= 0:
+            assistant = get_assistant_simple_from_db(assistant_id=assistant_id)
+            model_container.MODEL = get_ChatOpenAI(
+                model_name=assistant.get("model_name"),
+                temperature=TEMPERATURE,
+                max_tokens=None,
+                callbacks=[AgentExecutorAsyncIteratorCallbackHandler()],
+            )
+            tool_config = assistant.get("tool_config")
+            if tool_config and len(tool_config) > 0:
+                model_container.TOOL_CONFIG.update(tool_config)
+        available_tools = get_available_tools(tool_names=[tool_name],
+                                              api_names=[api_name],
+                                              model_container=model_container)
+        if not available_tools:
+            return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
+        result = await available_tools[0].ainvoke(tool_input)
+        return BaseResponse(code=200, data=result)
+    except Exception as e:
+        logger.error(f"{e}")
+        return BaseResponse(code=500, msg=Message_I18N.COMMON_CALL_FAILED.value)

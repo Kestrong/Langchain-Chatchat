@@ -6,6 +6,7 @@ from fastapi.security import APIKeyHeader
 from starlette.requests import Request
 
 from server.agent.tools_select import get_tools_info
+from server.chat.agent_chat import call_tool
 from server.chat.chat_router import chat_router
 from server.chat.conversation import create_conversation, delete_conversation, update_conversation, filter_message, \
     filter_conversation, delete_message, delete_user_conversation
@@ -179,13 +180,15 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
              summary="切换指定的LLM模型（Model Worker)",
              )(change_llm_model)
 
+    # 工具相关
+    app.post("/tools/tools_info", tags=["Toolkits"], summary="工具信息")(get_tools_info)
+    app.post("/tools/call", tags=["Toolkits"], summary="调用工具")(call_tool)
+
     # 服务器相关接口
     app.post("/server/configs",
              tags=["Server State"],
              summary="获取服务器原始配置信息",
              )(get_server_configs)
-
-    app.post("/server/tools_info", tags=["Server State"], summary="工具信息")(get_tools_info)
 
     app.post("/server/list_search_engines",
              tags=["Server State"],
