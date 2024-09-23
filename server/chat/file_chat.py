@@ -154,21 +154,20 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
             callbacks=[callback],
         )
         source_documents = []
-        inum = 0
         context = ""
         try:
             for success, file, msg, part_docs in _parse_files_in_thread(files=files, dir=knowledge_id, doc=True):
-                inum += 1
                 if success:
                     context += Message_I18N.API_ARTICLE_NAME.value + f":{file}\n"
                     context += "\n".join([doc.page_content for doc in part_docs])
-                    text = f"""[{inum}] {file} \n"""
+                    text = file
                 else:
-                    text = f"""[{inum}] {file}(""" + Message_I18N.COMMON_PARSE_FAILED.value + """) \n"""
-                source_documents.append(text)
+                    text = f"""{file}(""" + Message_I18N.COMMON_PARSE_FAILED.value + """)"""
+                source_documents.append({"filename": text, "url": ""})
         finally:
             if default_oss().type() != OssType.FILESYSTEM.value:
                 oss_factory[OssType.FILESYSTEM.value].delete_object("temp", knowledge_id)
+        conversation_callback.docs = source_documents
 
         prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
         input_msg = History(role="user", content=prompt_template).to_msg_template(False)

@@ -1,6 +1,6 @@
 from typing import List, Optional, Union
 
-from fastapi import Body, Request
+from fastapi import Body
 
 from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD
 from server.agent import create_model_container
@@ -50,7 +50,6 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                                 description="是否对搜索结果进行拆分（主要用于metaphor搜索引擎）"),
                       tool_names: List[str] = Body([], description="工具的名称"),
                       api_names: List[str] = Body([], description="api的名称"),
-                      request: Request = None,
                       ):
     assistant = None
     if assistant_id >= 0:
@@ -71,7 +70,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                          knowledge_base_names=knowledge_base_names, top_k=top_k,
                                          score_threshold=score_threshold, history=history, stream=stream,
                                          model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                                         prompt_name=prompt_name, store_message=store_message, request=request)
+                                         prompt_name=prompt_name, store_message=store_message)
 
     elif chat_type == ChatType.SEARCH_ENGINE_CHAT.value or (
             search_engine_name is not None and search_engine_name != ''):

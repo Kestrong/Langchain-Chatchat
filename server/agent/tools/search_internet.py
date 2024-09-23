@@ -9,8 +9,10 @@ from server.chat.search_engine_chat import lookup_search_engine
 
 async def search_engine_iter(query: str):
     docs = await lookup_search_engine(query, DEFAULT_SEARCH_ENGINE, VECTOR_SEARCH_TOP_K, split_result=True)
-    contents = "\n".join([doc.page_content for doc in docs])
-    return contents
+    context = ""
+    for inum, doc in enumerate(docs):
+        context += f"""[{doc.metadata["filename"]}]({doc.metadata["source"]})\n\n{doc.page_content}\n\n"""
+    return context
 
 
 class SearchInternetInput(BaseModel):

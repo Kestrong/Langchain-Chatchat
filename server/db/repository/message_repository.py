@@ -9,7 +9,7 @@ from server.memory.token_info_memory import get_token_info
 
 
 @with_session
-def add_message_to_db(session, conversation_id: str, chat_type, query, response="", message_id=None,
+def add_message_to_db(session, conversation_id: str, chat_type, query, response=None, message_id=None,
                       metadata: Dict = {}, store: bool = True):
     """
     新增聊天记录
@@ -71,7 +71,7 @@ def feedback_message_to_db(session, message_id, feedback_score, feedback_reason)
 @with_session
 def filter_message(session, conversation_id: str, limit: int = 10):
     # 用户最新的query 也会插入到db，忽略这个message record
-    filters = [MessageModel.conversation_id == conversation_id, MessageModel.response != '']
+    filters = [MessageModel.conversation_id == conversation_id, MessageModel.response.isnot(None)]
     messages = session.query(MessageModel).filter(*filters).order_by(MessageModel.create_time.desc()).limit(limit).all()
     # 直接返回 List[MessageModel] 报错
     data = []
@@ -86,7 +86,7 @@ def filter_message_page(session, conversation_id: str, page: int = 1, limit: int
     page_num = max(page, 1)
     offset = (page_num - 1) * page_size
     # 用户最新的query 也会插入到db，忽略这个message record
-    filters = [MessageModel.conversation_id == conversation_id, MessageModel.response != '']
+    filters = [MessageModel.conversation_id == conversation_id, MessageModel.response.isnot(None)]
     messages = session.query(MessageModel).filter(*filters).order_by(MessageModel.create_time.desc()).offset(
         offset).limit(limit).all()
     total = session.query(func.count(MessageModel.id)).filter(*filters).scalar()

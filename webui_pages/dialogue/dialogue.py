@@ -10,6 +10,7 @@ from streamlit_modal import Modal
 from configs import (HISTORY_LEN, PROMPT_TEMPLATES, DEFAULT_KNOWLEDGE_BASE, DEFAULT_SEARCH_ENGINE, SUPPORT_AGENT_MODEL)
 from server.agent.tools_select import get_all_tools
 from server.knowledge_base.utils import LOADER_DICT
+from server.memory.message_i18n import Message_I18N
 from server.utils import get_tool_config
 from webui_pages.utils import *
 
@@ -417,7 +418,11 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                         text += chunk
                         chat_box.update_msg(text, element_index=0)
                 chat_box.update_msg(text, element_index=0, streaming=False)
-                chat_box.update_msg("\n\n".join(d.get("docs", [])), element_index=1, streaming=False)
+                docs = [f"""[{inum+1}] [{doc["filename"]}]({api.base_url + doc.get("url")})""" for inum, doc in
+                        enumerate(d.get("docs", []))]
+                if len(docs) == 0:
+                    docs.append("<span style='color:red'>" + Message_I18N.API_DOC_NOT_FOUND.value + "</span>")
+                chat_box.update_msg("\n\n".join(docs), element_index=1, streaming=False)
             elif dialogue_mode == "文件对话":
                 if st.session_state["file_chat_id"] is None:
                     st.error("请先上传文件再进行对话")
@@ -441,7 +446,8 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                         text += chunk
                         chat_box.update_msg(text, element_index=0)
                 chat_box.update_msg(text, element_index=0, streaming=False)
-                chat_box.update_msg("\n\n".join(d.get("docs", [])), element_index=1, streaming=False)
+                docs = [f"""[{inum+1}] {doc["filename"]}""" for inum, doc in enumerate(d.get("docs", []))]
+                chat_box.update_msg("\n\n".join(docs), element_index=1, streaming=False)
             elif dialogue_mode == "搜索引擎问答":
                 chat_box.ai_say([
                     f"正在执行 `{search_engine}` 搜索...",
@@ -464,7 +470,10 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                         text += chunk
                         chat_box.update_msg(text, element_index=0)
                 chat_box.update_msg(text, element_index=0, streaming=False)
-                chat_box.update_msg("\n\n".join(d.get("docs", [])), element_index=1, streaming=False)
+                docs = [f"""[{inum+1}] [{doc["filename"]}]({doc.get("url")})""" for inum, doc in enumerate(d.get("docs"))]
+                if len(docs) == 0:
+                    docs.append("<span style='color:red'>" + Message_I18N.API_DOC_NOT_FOUND.value + "</span>")
+                chat_box.update_msg("\n\n".join(docs), element_index=1, streaming=False)
 
     if st.session_state.get("need_rerun"):
         st.session_state["need_rerun"] = False

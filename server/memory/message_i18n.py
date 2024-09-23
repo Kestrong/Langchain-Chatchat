@@ -18,6 +18,7 @@ message_i18n_map = {
 
         "WORKER_MAX_TOKENS_INPUT": "当前限制输入不能超过{MAX_TOKENS_INPUT}个字符，您的输入长度为{token_num}(包含提示词、输入文档和历史对话内容)",
         "WORKER_CHAT_ERROR": "当前对话出现异常",
+        "WORKER_CHAT_CANCELLED": "当前对话已中断",
 
         "API_AGENT_TOOL_ERROR_INFO": "\n```\n工具名称: {tool_name}\n工具状态: 调用失败\n错误信息: {error}\n\n```\n",
         "API_AGENT_TOOL_SUCCESS_INFO": "\n```\n工具名称: {tool_name}\n工具状态: 调用成功\n工具输入: {input_str}\n工具输出: {output_str}\n```\n",
@@ -52,6 +53,7 @@ message_i18n_map = {
 
         "WORKER_MAX_TOKENS_INPUT": "The current limit on input cannot exceed {MAX_TOKENS_INPUT} characters. Your input length is {token_num} (including prompt words, input documents, and historical conversation content)",
         "WORKER_CHAT_ERROR": "There is an exception occur",
+        "WORKER_CHAT_CANCELLED": "Chat cancelled",
 
         "API_AGENT_TOOL_SUCCESS_INFO": "\n```\nTool name: {tool_name}\nTool status: Call failed\nError message: {error}\n```\n",
         "API_AGENT_TOOL_ERROR_INFO": "\n```\nTool name: {tool_name}\nTool status: Call success\nTool input: {input_str}\nTool output: {output_str}\n```\n",
@@ -95,6 +97,7 @@ class Message_I18N(enum.Enum):
 
     WORKER_MAX_TOKENS_INPUT = get_message_i18n("WORKER_MAX_TOKENS_INPUT")
     WORKER_CHAT_ERROR = get_message_i18n("WORKER_CHAT_ERROR")
+    WORKER_CHAT_CANCELLED = get_message_i18n("WORKER_CHAT_CANCELLED")
 
     API_AGENT_TOOL_ERROR_INFO = get_message_i18n("API_AGENT_TOOL_ERROR_INFO")
     API_AGENT_TOOL_SUCCESS_INFO = get_message_i18n("API_AGENT_TOOL_SUCCESS_INFO")

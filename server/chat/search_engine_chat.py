@@ -1,32 +1,32 @@
-from langchain.utilities.bing_search import BingSearchAPIWrapper
-from langchain.utilities.duckduckgo_search import DuckDuckGoSearchAPIWrapper
-from configs import (BING_SEARCH_URL, BING_SUBSCRIPTION_KEY, METAPHOR_API_KEY,
-                     LLM_MODELS, SEARCH_ENGINE_TOP_K, TEMPERATURE, OVERLAP_SIZE)
-from langchain.chains import LLMChain
-from langchain.callbacks import AsyncIteratorCallbackHandler
-
-from langchain.prompts.chat import ChatPromptTemplate
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.docstore.document import Document
-from fastapi import Body
-from fastapi.concurrency import run_in_threadpool
-from sse_starlette import EventSourceResponse
-
-from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
-from server.callback_handler.task_callback_handler import TaskCallbackHandler
-from server.chat.task_manager import task_manager
-from server.chat.chat_type import ChatType
-from server.db.repository import add_message_to_db
-from server.memory.message_i18n import Message_I18N
-from server.utils import wrap_done, get_ChatOpenAI
-from server.utils import BaseResponse, get_prompt_template
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
-from typing import AsyncIterable
 import asyncio
 import json
+from typing import AsyncIterable
 from typing import List, Optional, Dict
-from strsimpy.normalized_levenshtein import NormalizedLevenshtein
+
+from fastapi import Body
+from fastapi.concurrency import run_in_threadpool
+from langchain.callbacks import AsyncIteratorCallbackHandler
+from langchain.chains import LLMChain
+from langchain.docstore.document import Document
+from langchain.prompts.chat import ChatPromptTemplate
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.utilities.bing_search import BingSearchAPIWrapper
+from langchain.utilities.duckduckgo_search import DuckDuckGoSearchAPIWrapper
 from markdownify import markdownify
+from sse_starlette import EventSourceResponse
+from strsimpy.normalized_levenshtein import NormalizedLevenshtein
+
+from configs import (BING_SEARCH_URL, BING_SUBSCRIPTION_KEY, METAPHOR_API_KEY,
+                     LLM_MODELS, SEARCH_ENGINE_TOP_K, TEMPERATURE, OVERLAP_SIZE)
+from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
+from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.chat.chat_type import ChatType
+from server.chat.task_manager import task_manager
+from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
+from server.db.repository import add_message_to_db
+from server.memory.message_i18n import Message_I18N
+from server.utils import BaseResponse, get_prompt_template
+from server.utils import wrap_done, get_ChatOpenAI
 
 
 def bing_search(text, result_len=SEARCH_ENGINE_TOP_K, **kwargs):
@@ -183,7 +183,6 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
         langfuse_public_key = os.environ.get('LANGFUSE_PUBLIC_KEY')
         langfuse_host = os.environ.get('LANGFUSE_HOST')
         if langfuse_secret_key and langfuse_public_key and langfuse_host:
-            from langfuse import Langfuse
             from langfuse.callback import CallbackHandler
             langfuse_handler = CallbackHandler()
             callbacks.append(langfuse_handler)
@@ -195,7 +194,16 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
         )
 
         docs = await lookup_search_engine(query, search_engine_name, top_k, split_result=split_result)
-        context = "\n".join([doc.page_content for doc in docs])
+        context = ""
+        source_documents = []
+        exist_file = []
+        for inum, doc in enumerate(docs):
+            context += doc.page_content + "\n"
+            filename = doc.metadata["filename"]
+            if filename not in exist_file:
+                source_documents.append({"filename": filename, "url": doc.metadata["source"]})
+                exist_file.append(filename)
+        conversation_callback.docs = source_documents
 
         prompt_template = get_prompt_template("search_engine_chat", prompt_name)
         input_msg = History(role="user", content=prompt_template).to_msg_template(False)
@@ -209,14 +217,6 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
             chain.acall({"context": context, "question": query}, callbacks=callbacks),
             callback.done),
         )
-
-        source_documents = [
-            f"""出处 [{inum + 1}] [{doc.metadata["source"]}]({doc.metadata["source"]}) \n\n{doc.page_content}\n\n"""
-            for inum, doc in enumerate(docs)
-        ]
-
-        if len(source_documents) == 0:  # 没有找到相关资料（不太可能）
-            source_documents.append("<span style='color:red'>" + Message_I18N.API_DOC_NOT_FOUND.value + "</span>")
 
         task_manager.put(message_id, task)
 

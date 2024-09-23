@@ -5,6 +5,7 @@ from langchain.prompts.chat import ChatMessagePromptTemplate
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 
+from common.exceptions import ChatBusinessException
 from configs import logger, log_verbose
 from server.db.repository import update_message
 from server.memory.message_i18n import Message_I18N
@@ -84,10 +85,14 @@ async def wrap_event_response(event_response: AsyncIterable[str]) -> AsyncIterab
         yield json.dumps(d, ensure_ascii=False)
     except BaseException as e:
         logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
-        d["answer"] = Message_I18N.WORKER_CHAT_ERROR.value
-        if d.get("message_id"):
-            update_message(message_id=d.get("message_id"), response=d["answer"], metadata={"error_info": str(e)})
-        yield json.dumps(d, ensure_ascii=False)
+        if isinstance(e, ChatBusinessException):
+            d["answer"] = str(e)
+            yield json.dumps(d, ensure_ascii=False)
+        else:
+            d["answer"] = Message_I18N.WORKER_CHAT_ERROR.value
+            if d.get("message_id"):
+                update_message(message_id=d.get("message_id"), response=d["answer"], metadata={"error_info": str(e)})
+            yield json.dumps(d, ensure_ascii=False)
 
 
 EMPTY_LLM_CHAT_PROMPT = PromptTemplate.from_template("{{ input }}", template_format="jinja2")

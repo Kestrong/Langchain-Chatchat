@@ -1,8 +1,16 @@
+import asyncio
+import json
 from collections import OrderedDict
+from typing import AsyncIterable, List, Optional
+from urllib.parse import urlencode
 
 from fastapi import Body, Request
-from sse_starlette.sse import EventSourceResponse
 from fastapi.concurrency import run_in_threadpool
+from langchain.callbacks import AsyncIteratorCallbackHandler
+from langchain.chains import LLMChain
+from langchain.prompts.chat import ChatPromptTemplate
+from sse_starlette.sse import EventSourceResponse
+
 from configs import (LLM_MODELS,
                      VECTOR_SEARCH_TOP_K,
                      SCORE_THRESHOLD,
@@ -12,23 +20,17 @@ from configs import (LLM_MODELS,
                      RERANKER_MAX_LENGTH)
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
-from server.chat.task_manager import task_manager
 from server.chat.chat_type import ChatType
-from server.db.repository import add_message_to_db
-from server.memory.message_i18n import Message_I18N
-from server.utils import wrap_done, get_ChatOpenAI, get_model_path
-from server.utils import BaseResponse, get_prompt_template
-from langchain.chains import LLMChain
-from langchain.callbacks import AsyncIteratorCallbackHandler
-from typing import AsyncIterable, List, Optional
-import asyncio, json
-from langchain.prompts.chat import ChatPromptTemplate
+from server.chat.task_manager import task_manager
 from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
-from server.knowledge_base.kb_service.base import KBServiceFactory
-from urllib.parse import urlencode
+from server.db.repository import add_message_to_db
 from server.knowledge_base.kb_doc_api import search_docs
+from server.knowledge_base.kb_service.base import KBServiceFactory
+from server.memory.message_i18n import Message_I18N
 from server.reranker.reranker import LangchainReranker
+from server.utils import BaseResponse, get_prompt_template
 from server.utils import embedding_device
+from server.utils import wrap_done, get_ChatOpenAI, get_model_path
 
 
 async def knowledge_base_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
@@ -63,7 +65,6 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                   description="使用的prompt模板名称(在configs/prompt_config.py中配置)"
                               ),
                               store_message: bool = Body(True, description="是否保存消息到数据库"),
-                              request: Request = None,
                               ):
     if not knowledge_base_names:
         return BaseResponse(code=500, msg=Message_I18N.API_PARAM_NOT_PRESENT.value.format(name='knowledge_base_names'))
@@ -106,7 +107,6 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         langfuse_public_key = os.environ.get('LANGFUSE_PUBLIC_KEY')
         langfuse_host = os.environ.get('LANGFUSE_HOST')
         if langfuse_secret_key and langfuse_public_key and langfuse_host:
-            from langfuse import Langfuse
             from langfuse.callback import CallbackHandler
             langfuse_handler = CallbackHandler()
             callbacks.append(langfuse_handler)
@@ -157,11 +157,23 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             if len(value) > 0 and 'index' in value[0].metadata:
                 value.sort(key=lambda x: x.metadata['index'])
             docs.extend(value)
-        context = "\n".join([doc.page_content for doc in docs])
+        context = ""
+        source_documents = []
+        exist_file = []
+        for inum, doc in enumerate(docs):
+            context += doc.page_content + "\n"
+            filename = doc.metadata["source"]
+            if filename not in exist_file:
+                parameters = urlencode({"knowledge_base_name": doc.metadata.get("kb_name"), "file_name": filename,
+                                        "preview": True})
+                url = "/knowledge_base/download_doc?" + parameters
+                source_documents.append({"filename": filename, "url": url})
+                exist_file.append(filename)
+        conversation_callback.docs = source_documents
+
         prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
         input_msg = History(role="user", content=prompt_template).to_msg_template(False)
-        chat_prompt = ChatPromptTemplate.from_messages(
-            [i.to_msg_template() for i in history] + [input_msg])
+        chat_prompt = ChatPromptTemplate.from_messages([i.to_msg_template() for i in history] + [input_msg])
 
         chain = LLMChain(prompt=chat_prompt, llm=model)
 
@@ -173,19 +185,6 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
 
         task_manager.put(message_id, task)
 
-        source_documents = []
-        for inum, doc in enumerate(docs):
-            filename = doc.metadata.get("source")
-            parameters = urlencode({"knowledge_base_name": doc.metadata.get("kb_name"), "file_name": filename,
-                                    "preview": True})
-            base_url = request.base_url
-            url = f"{base_url}knowledge_base/download_doc?" + parameters
-            page_content = doc.page_content if len(doc.page_content) <= 100 else doc.page_content[:100] + "..."
-            text = f"""[{inum + 1}] [{filename}]({url}) \n\n{page_content}\n\n"""
-            source_documents.append(text)
-
-        if len(source_documents) == 0:  # 没有找到相关文档
-            source_documents.append("<span style='color:red'>" + Message_I18N.API_DOC_NOT_FOUND.value + "</span>")
         d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
         yield json.dumps(d, ensure_ascii=False)
         if stream:
