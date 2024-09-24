@@ -108,15 +108,15 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         if not self.updated:
             msg = ""
             answer = "".join(self.generated_tokens)
-            error_info = None
+            error_info = f'{error.__class__.__name__}: {error}'
             if answer.strip() == "":
                 if isinstance(error, CancelledError):
                     msg = answer = Message_I18N.WORKER_CHAT_CANCELLED.value
-                    error_info = "cancelled"
                 else:
                     msg = answer = Message_I18N.WORKER_CHAT_ERROR.value
-                    error_info = str(error)
             self.update_message(answer, error=error_info)
             self.updated = True
             self.generated_tokens = []
-            raise ChatBusinessException(msg)
+            b_error = ChatBusinessException(msg)
+            b_error.__cause__ = error
+            raise b_error
