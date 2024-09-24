@@ -65,21 +65,22 @@ class QwenWorker(ApiModelWorker):
         params.load_config(self.model_names[0])
         if log_verbose:
             logger.info(f'{self.__class__.__name__}:params: {params}')
-        client = OpenAI(
-            api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
-            base_url=params.api_base_url,  # 填写DashScope服务的base_url
-        )
-        result = []
-        i = 0
-        while i < len(params.texts):
-            texts = params.texts[i:i + 25]
+        with OpenAI(
+                api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
+                base_url=params.api_base_url,  # 填写DashScope服务的base_url
+        ) as client:
             try:
-                with client.embeddings.create(
+                result = []
+                i = 0
+                while i < len(params.texts):
+                    texts = params.texts[i:i + 25]
+                    resp = client.embeddings.create(
                         model=params.embed_model or self.DEFAULT_EMBED_MODEL,
                         input=texts,  # 最大25行
-                ) as resp:
+                    )
                     embeddings = [x.embedding for x in resp.data]
                     result += embeddings
+                    i += 25
             except Exception as e:
                 data = {
                     "error_code": 500,
@@ -87,7 +88,6 @@ class QwenWorker(ApiModelWorker):
                 }
                 self.logger.error(f"请求千问 API 时发生错误：{data}")
                 return data
-            i += 25
         return {"code": 200, "data": result}
 
     def get_embeddings(self, params):

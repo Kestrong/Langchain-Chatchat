@@ -699,6 +699,9 @@ def list_online_embed_models() -> List[str]:
             worker_class = getattr(model_workers, provider, None)
             if worker_class is not None and worker_class.can_embedding():
                 ret.append(k)
+        elif k == "openai-api" or v.get('resource_name') == "openai-api":
+            ret.append(k)
+
     return ret
 
 

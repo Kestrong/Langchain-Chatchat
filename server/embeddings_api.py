@@ -1,5 +1,6 @@
 from langchain.docstore.document import Document
 from configs import EMBEDDING_MODEL, logger
+from server.model_workers import QwenWorker
 from server.model_workers.base import ApiEmbeddingsParams
 from server.utils import BaseResponse, get_model_worker_config, list_embed_models, list_online_embed_models
 from fastapi import Body
@@ -27,9 +28,9 @@ def embed_texts(
         if embed_model in list_online_embed_models():  # 使用在线API
             config = get_model_worker_config(embed_model)
             worker_class = config.get("worker_class")
+            worker = worker_class() if worker_class else QwenWorker(model_names=[embed_model])
             embed_model = config.get("embed_model")
-            worker = worker_class()
-            if worker_class.can_embedding():
+            if worker.can_embedding():
                 params = ApiEmbeddingsParams(texts=texts, to_query=to_query, embed_model=embed_model)
                 resp = worker.do_embeddings(params)
                 return BaseResponse(**resp)
