@@ -391,9 +391,6 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                     if chunk := d.get("answer"):
                         ans += chunk
                         chat_box.update_msg(ans, element_index=0)
-                    if chunk := d.get("tools"):
-                        text += "\n\n".join(d.get("tools", []))
-                        chat_box.update_msg(text, element_index=1)
                 chat_box.update_msg(ans, element_index=0, streaming=False)
                 chat_box.update_msg(text, element_index=1, streaming=False)
             elif dialogue_mode == "知识库问答":

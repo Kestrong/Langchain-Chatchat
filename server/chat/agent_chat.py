@@ -166,7 +166,6 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         yield json.dumps(d, ensure_ascii=False)
         if stream:
             async for chunk in callback.aiter():
-                tools_use = []
                 # Use server-sent-events to stream the response
                 data = json.loads(chunk)
                 if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
@@ -174,19 +173,19 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                 elif data["status"] == AgentStatus.error:
                     use_tool_name = data["tool_name"]
                     use_tool = [a for a in available_tools if a.name == use_tool_name]
-                    tools_use.append(Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
+                    thought = Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
                         tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
-                        error=data["error"]))
-                    yield json.dumps({"tools": tools_use, "message_id": message_id, "conversation_id": conversation_id},
+                        error=data["error"])
+                    yield json.dumps({"thought": thought, "message_id": message_id, "conversation_id": conversation_id},
                                      ensure_ascii=False)
                 elif data["status"] == AgentStatus.tool_end:
                     use_tool_name = data["tool_name"]
                     use_tool = [a for a in available_tools if a.name == use_tool_name]
-                    tools_use.append(Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
+                    thought = Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
                         tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
                         input_str=str(data.get("input_str")),
-                        output_str=str(data.get("output_str"))))
-                    yield json.dumps({"tools": tools_use, "message_id": message_id, "conversation_id": conversation_id},
+                        output_str=str(data.get("output_str")))
+                    yield json.dumps({"thought": thought, "message_id": message_id, "conversation_id": conversation_id},
                                      ensure_ascii=False)
                 elif data["status"] == AgentStatus.agent_finish:
                     final_answer = data["final_answer"]
@@ -198,8 +197,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                         ensure_ascii=False)
         else:
             answer = ""
-            tool_use = ""
-            llm_tokens = ""
+            thought = ""
             async for chunk in callback.aiter():
                 data = json.loads(chunk)
                 if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
@@ -207,23 +205,22 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                 elif data["status"] == AgentStatus.error:
                     use_tool_name = data["tool_name"]
                     use_tool = [a for a in available_tools if a.name == use_tool_name]
-                    tool_use += Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
+                    thought += Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
                         tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
                         error=data["error"])
                 elif data["status"] == AgentStatus.tool_end:
                     use_tool_name = data["tool_name"]
                     use_tool = [a for a in available_tools if a.name == use_tool_name]
-                    tool_use += Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
+                    thought += Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
                         tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
                         input_str=str(data.get("input_str")),
                         output_str=str(data.get("output_str")))
                 elif data["status"] == AgentStatus.agent_finish:
                     answer = data["final_answer"]
                 else:
-                    llm_tokens = data["llm_token"]
+                    thought += data["llm_token"]
 
-            yield json.dumps({"thought": llm_tokens, "answer": answer,
-                              "message_id": message_id, "tools": tool_use,
+            yield json.dumps({"thought": thought, "answer": answer, "message_id": message_id,
                               "conversation_id": conversation_id}, ensure_ascii=False)
         await task
 
