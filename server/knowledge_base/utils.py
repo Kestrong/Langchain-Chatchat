@@ -151,7 +151,14 @@ def get_loader(loader_name: str, file_path: str, loader_kwargs: Dict = None):
     if loader_name == "UnstructuredFileLoader":
         loader_kwargs.setdefault("autodetect_encoding", True)
     elif loader_name == "CSVLoader":
-        loader_kwargs.setdefault("autodetect_encoding", True)
+        if not loader_kwargs.get("encoding"):
+            # 如果未指定 encoding，自动识别文件编码类型，避免langchain loader 加载文件报编码错误
+            with open(file_path, 'rb') as struct_file:
+                encode_detect = chardet.detect(struct_file.read())
+            if encode_detect is None:
+                encode_detect = {"encoding": "utf-8"}
+            loader_kwargs["encoding"] = encode_detect["encoding"]
+
     elif loader_name == "JSONLoader":
         loader_kwargs.setdefault("jq_schema", ".")
         loader_kwargs.setdefault("text_content", False)
@@ -161,7 +168,10 @@ def get_loader(loader_name: str, file_path: str, loader_kwargs: Dict = None):
 
     loader = DocumentLoader(file_path, **loader_kwargs)
     if isinstance(loader, TextLoader):
-        loader.autodetect_encoding = True
+        if loader.encoding is None:
+            loader.encoding = "utf-8"
+        if loader.autodetect_encoding is None:
+            loader.autodetect_encoding = True
     return loader
 
 

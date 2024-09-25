@@ -4,7 +4,7 @@ from collections import OrderedDict
 from typing import AsyncIterable, List, Optional
 from urllib.parse import urlencode
 
-from fastapi import Body, Request
+from fastapi import Body
 from fastapi.concurrency import run_in_threadpool
 from langchain.callbacks import AsyncIteratorCallbackHandler
 from langchain.chains import LLMChain
@@ -128,30 +128,26 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                 d.metadata['kb_name'] = knowledge_base_name
                 docs.append(d)
         docs.sort(key=lambda x: x.score)
-        if len(docs) > top_k:
-            docs = docs[:top_k]
 
         # 加入reranker
         if USE_RERANKER:
             reranker_model_path = get_model_path(RERANKER_MODEL)
-            reranker_model = LangchainReranker(top_n=top_k,
+            reranker_model = LangchainReranker(top_n=max(top_k // 2, 3),
                                                device=embedding_device(),
                                                max_length=RERANKER_MAX_LENGTH,
                                                model_name_or_path=reranker_model_path
                                                )
-            print("-------------before rerank-----------------")
-            print(docs)
             docs = reranker_model.compress_documents(documents=docs,
                                                      query=query)
-            print("------------after rerank------------------")
-            print(docs)
 
+        if len(docs) > top_k:
+            docs = docs[:top_k]
         docs_map = OrderedDict()
         for doc in docs:
-            source = doc.metadata['source']
-            if source not in docs_map:
-                docs_map[source] = []
-            docs_map[source].append(doc)
+            key = f"{doc.metadata.get('kb_name')}:{doc.metadata.get('source')}"
+            if key not in docs_map:
+                docs_map[key] = []
+            docs_map[key].append(doc)
         docs = []
         for key, value in docs_map.items():
             if len(value) > 0 and 'index' in value[0].metadata:
