@@ -1,6 +1,7 @@
-from langchain.document_loaders.unstructured import UnstructuredFileLoader
 from typing import List
+
 import tqdm
+from langchain.document_loaders.unstructured import UnstructuredFileLoader
 
 
 class RapidOCRDocLoader(UnstructuredFileLoader):
@@ -77,10 +78,7 @@ class RapidOCRDocLoader(UnstructuredFileLoader):
                             if [rowId, colId] in index:
                                 for paragraph in block.rows[rowId].cells[colId].paragraphs:
                                     context = paragraph.text.strip()
-                                    if resp and resp[-2].isdigit() and str(context[0]).isdigit():
-                                        resp = resp[0:-1] + " " + context + "\n"
-                                    else:
-                                        resp += context + "\n"
+                                    resp += context + "\n"
                 b_unit.update(1)
             return resp
 
