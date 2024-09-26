@@ -72,11 +72,20 @@ FSCHAT_MODEL_WORKERS = {
         # "embed_in_truncate": False,
 
         # 以下为vllm_worker配置参数,注意使用vllm必须有gpu，仅在Linux测试通过
-        # "max_parallel_loading_workers":1,
+        # "max_parallel_loading_workers":4,
         # "enforce_eager":False,
         # "max_context_len_to_capture":2048,
-        # "max_model_len":2048
-        # tokenizer = model_path # 如果tokenizer与model_path不一致在此处添加
+        # "max_model_len":1024 * 8,
+        # "kv_cache_dtype": "auto",  # auto、fp8_e5m2
+        # "disable_custom_all_reduce": False,
+        # "enable_lora": False,
+        # "max_loras": 1,
+        # "max_lora_rank": 16,
+        # "lora_extra_vocab_size": 256,
+        # "lora_dtype": 'auto',
+        # "max_cpu_loras": None,
+        # 以下vllm配置为可选
+        # tokenizer = model_path, # 如果tokenizer与model_path不一致在此处添加
         # 'tokenizer_mode':'auto',
         # 'trust_remote_code':True,
         # 'download_dir':None,

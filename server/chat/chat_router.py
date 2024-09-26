@@ -2,7 +2,7 @@ from typing import List, Optional, Union
 
 from fastapi import Body
 
-from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD
+from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD, HISTORY_LEN
 from server.agent import create_model_container
 from server.chat.agent_chat import agent_chat
 from server.chat.chat import chat
@@ -63,6 +63,14 @@ async def chat_router(query: str = Body(..., description="用户输入", example
         if assistant.get('extra') is not None:
             extra.update(assistant.get('extra'))
         extra['assistant_id'] = assistant_id
+        config_history_len: int = assistant.get('history_len', HISTORY_LEN)
+        if history:
+            if 0 < config_history_len < len(history):
+                history = history[-config_history_len:]
+            elif config_history_len <= 0:
+                history.clear()
+        elif history_len > 0:
+            history_len = min(history_len, config_history_len)
 
     if chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or knowledge_base_names:
 

@@ -108,7 +108,7 @@ class BaseResponse(BaseModel):
 
     class Config:
         json_encoders = {datetime: lambda dt: dt.strftime("%Y-%m-%d %H:%M:%S")}
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "code": 200,
                 "msg": "success",
@@ -122,7 +122,7 @@ class Page(BaseModel):
 
     class Config:
         json_encoders = {datetime: lambda dt: dt.strftime("%Y-%m-%d %H:%M:%S")}
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "total": 0,
                 "records": []
@@ -135,7 +135,7 @@ class PageResponse(BaseResponse):
 
     class Config:
         json_encoders = {datetime: lambda dt: dt.strftime("%Y-%m-%d %H:%M:%S")}
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "code": 200,
                 "msg": "success",
@@ -149,7 +149,7 @@ class ListResponse(BaseResponse):
 
     class Config:
         json_encoders = {datetime: lambda dt: dt.strftime("%Y-%m-%d %H:%M:%S")}
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "code": 200,
                 "msg": "success",
@@ -167,7 +167,7 @@ class ChatMessage(BaseModel):
     )
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "question": "工伤保险如何办理？",
                 "response": "根据已知信息，可以总结如下：\n\n1. 参保单位为员工缴纳工伤保险费，以保障员工在发生工伤时能够获得相应的待遇。\n"

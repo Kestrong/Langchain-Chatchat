@@ -144,6 +144,16 @@ def create_model_worker_app(log_level: str = "INFO", **kwargs) -> FastAPI:
             # 0.2.2 vllm需要新加的参数
             args.max_paddings = 256
 
+            #0.3.0 vllm需要新加的参数
+            args.kv_cache_dtype = 'auto'
+            args.disable_custom_all_reduce = False
+            args.enable_lora = False
+            args.max_loras = 1
+            args.max_lora_rank = 16
+            args.lora_extra_vocab_size = 256
+            args.lora_dtype = 'auto'
+            args.max_cpu_loras = None
+
             if args.model_path:
                 args.model = args.model_path
             if args.num_gpus > 1:
