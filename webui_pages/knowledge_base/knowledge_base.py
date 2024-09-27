@@ -183,7 +183,7 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
         ):
             cols = st.columns(4)
             separators = cols[0].text_input("文本切分符号：", placeholder="默认取系统设置")
-            chunk_size = cols[1].number_input("单段文本最大长度：", 1, 1000, CHUNK_SIZE)
+            chunk_size = cols[1].number_input("单段文本最大长度：", 1, 100000, CHUNK_SIZE)
             chunk_overlap = cols[2].number_input("相邻文本重合长度：", 0, chunk_size, OVERLAP_SIZE)
             cols[3].write("")
             cols[3].write("")

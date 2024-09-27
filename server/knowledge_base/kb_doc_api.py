@@ -335,18 +335,20 @@ def update_docs(
 
 def download_doc(
         knowledge_base_name: str = Query(..., description="知识库名称", examples=["samples"]),
-        file_name: str = Query(..., description="文件名称", examples=["test.txt"]),
+        filename: str = Query(..., description="文件名称", examples=["test.txt"]),
+        path: str = Query("", description="路径"),
         preview: bool = Query(False, description="是：浏览器内预览；否：下载"),
 ):
     """
     下载知识库文档
     """
     if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=403, msg="Invalid knowledge base name")
+        return BaseResponse(code=500, msg="Invalid knowledge base name")
 
-    kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
-    if kb is None:
-        return BaseResponse(code=404, msg=f"未找到知识库 {knowledge_base_name}")
+    if knowledge_base_name != 'temp':
+        kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
+        if kb is None:
+            return BaseResponse(code=500, msg=Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=knowledge_base_name))
 
     if preview:
         content_disposition_type = "inline"
@@ -354,14 +356,17 @@ def download_doc(
         content_disposition_type = "attachment"
 
     try:
-        data = default_oss().get_object(knowledge_base_name, file_name)
-        media_types = mimetypes.guess_type(file_name)
+        if path is not None and path.strip() != '':
+            data = default_oss().get_object(knowledge_base_name, object_name=f"{path}/{filename}")
+        else:
+            data = default_oss().get_object(knowledge_base_name, filename)
+        media_types = mimetypes.guess_type(filename)
         return StreamingResponse(content=data, media_type=media_types[0] if media_types else "application/octet-stream",
                                  headers={'Content-Disposition': "{}; filename*=utf-8''{}".format(
-                                     content_disposition_type, quote(file_name)
+                                     content_disposition_type, quote(filename)
                                  )})
     except Exception as e:
-        msg = f"{file_name} 读取文件失败，错误信息是：{e}"
+        msg = f"{filename} 读取文件失败，错误信息是：{e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
                      exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=msg)

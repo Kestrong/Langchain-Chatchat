@@ -163,7 +163,7 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
                     text = file
                 else:
                     text = f"""{file}(""" + Message_I18N.COMMON_PARSE_FAILED.value + """)"""
-                source_documents.append({"filename": text, "url": ""})
+                source_documents.append({"filename": text, "knowledge_base_name": "temp", "path": knowledge_id})
         finally:
             if default_oss().type() != OssType.FILESYSTEM.value:
                 oss_factory[OssType.FILESYSTEM.value].delete_object("temp", knowledge_id)

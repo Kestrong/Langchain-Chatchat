@@ -2,7 +2,6 @@ import asyncio
 import json
 from collections import OrderedDict
 from typing import AsyncIterable, List, Optional
-from urllib.parse import urlencode
 
 from fastapi import Body
 from fastapi.concurrency import run_in_threadpool
@@ -160,10 +159,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             context += doc.page_content + "\n"
             filename = doc.metadata["source"]
             if filename not in exist_file:
-                parameters = urlencode({"knowledge_base_name": doc.metadata.get("kb_name"), "file_name": filename,
-                                        "preview": True})
-                url = "/knowledge_base/download_doc?" + parameters
-                source_documents.append({"filename": filename, "url": url})
+                source_documents.append({"filename": filename, "knowledge_base_name": doc.metadata.get("kb_name")})
                 exist_file.append(filename)
         conversation_callback.docs = source_documents
 

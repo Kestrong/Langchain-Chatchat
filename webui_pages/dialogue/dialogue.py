@@ -2,6 +2,7 @@ import re
 import time
 import uuid
 from datetime import datetime
+from urllib.parse import urlencode
 
 import streamlit as st
 from streamlit_chatbox import *
@@ -415,8 +416,9 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                         text += chunk
                         chat_box.update_msg(text, element_index=0)
                 chat_box.update_msg(text, element_index=0, streaming=False)
-                docs = [f"""[{inum+1}] [{doc["filename"]}]({api.base_url + doc.get("url")})""" for inum, doc in
-                        enumerate(d.get("docs", []))]
+                docs = [
+                    f"""[{inum + 1}] [{doc["filename"]}]({api.base_url}/knowledge_base/download_doc?preview=true&{urlencode(doc)})"""
+                    for inum, doc in enumerate(d.get("docs", []))]
                 if len(docs) == 0:
                     docs.append("<span style='color:red'>" + Message_I18N.API_DOC_NOT_FOUND.value + "</span>")
                 chat_box.update_msg("\n\n".join(docs), element_index=1, streaming=False)
@@ -443,7 +445,9 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                         text += chunk
                         chat_box.update_msg(text, element_index=0)
                 chat_box.update_msg(text, element_index=0, streaming=False)
-                docs = [f"""[{inum+1}] {doc["filename"]}""" for inum, doc in enumerate(d.get("docs", []))]
+                docs = [
+                    f"""[{inum + 1}] [{doc["filename"]}]({api.base_url}/knowledge_base/download_doc?preview=true&{urlencode(doc)})"""
+                    for inum, doc in enumerate(d.get("docs", []))]
                 chat_box.update_msg("\n\n".join(docs), element_index=1, streaming=False)
             elif dialogue_mode == "搜索引擎问答":
                 chat_box.ai_say([
@@ -467,7 +471,8 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                         text += chunk
                         chat_box.update_msg(text, element_index=0)
                 chat_box.update_msg(text, element_index=0, streaming=False)
-                docs = [f"""[{inum+1}] [{doc["filename"]}]({doc.get("url")})""" for inum, doc in enumerate(d.get("docs"))]
+                docs = [f"""[{inum + 1}] [{doc["filename"]}]({doc.get("url")})""" for inum, doc in
+                        enumerate(d.get("docs"))]
                 if len(docs) == 0:
                     docs.append("<span style='color:red'>" + Message_I18N.API_DOC_NOT_FOUND.value + "</span>")
                 chat_box.update_msg("\n\n".join(docs), element_index=1, streaming=False)
