@@ -15,6 +15,7 @@ def add_conversation_to_db(session, chat_type, name="", conversation_id=None, as
     """
     if not conversation_id:
         conversation_id = uuid.uuid4().hex
+    name = name if name is None or len(name) <= 50 else name[:50]
     c = ConversationModel(id=conversation_id, chat_type=chat_type, name=name, assistant_id=assistant_id,
                           create_by=get_token_info().get("userId"))
 
@@ -26,7 +27,7 @@ def add_conversation_to_db(session, chat_type, name="", conversation_id=None, as
 def update_conversation_to_db(session, name, conversation_id):
     conversation = session.query(ConversationModel).filter(ConversationModel.id == conversation_id).first()
     if conversation is not None:
-        conversation.name = name
+        conversation.name = name if name is None or len(name) <= 50 else name[:50]
     else:
         raise ValueError("Conversation with id {} does not exist".format(conversation_id))
     return conversation.id
