@@ -149,15 +149,6 @@ FSCHAT_MODEL_WORKERS = {
     "claude-api": {
         "port": 21011,
     },
-    "qiming-api": {
-        "port": 21012,
-    },
-    "iotqwen-api": {
-        "port": 21013,
-    },
-    "lingxi-fault-api": {
-        "port": 21014,
-    },
 }
 
 FSCHAT_CONTROLLER = {
