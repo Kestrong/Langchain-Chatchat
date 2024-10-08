@@ -71,6 +71,10 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                 history.clear()
         elif history_len > 0:
             history_len = min(history_len, config_history_len)
+        if assistant.get("top_k", -1) > 0:
+            top_k = assistant.get("top_k")
+        if assistant.get("score_threshold", -1) > 0:
+            score_threshold = assistant.get("score_threshold")
 
     if chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or knowledge_base_names:
 
