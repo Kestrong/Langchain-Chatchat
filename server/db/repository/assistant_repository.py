@@ -10,13 +10,14 @@ from server.memory.token_info_memory import get_token_info
 
 @with_session
 def add_assistant_to_db(session, name: str, name_en: str, code: str, avatar: str, prompt: str, model_name: str,
-                        prologue: str, history_len: int, knowledge_base_ids: str,
+                        prologue: str, history_len: int, top_k: int, score_threshold: float, knowledge_base_ids: str,
                         force_feedback: str, extra: dict, model_config: dict, tool_config: dict, sort_id: int):
     if not code:
         code = str(uuid.uuid4()).upper()[:8]
     c = AssistantModel(name=name, name_en=name_en, code=code, avatar=avatar, prompt=prompt, model_name=model_name,
                        prologue=prologue, knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback,
-                       history_len=history_len, create_by=get_token_info().get("userId"), extra=extra,
+                       history_len=history_len, top_k=top_k, score_threshold=score_threshold,
+                       create_by=get_token_info().get("userId"), extra=extra,
                        model_config=model_config, tool_config=tool_config, sort_id=sort_id)
     session.add(c)
     session.flush()
@@ -25,7 +26,8 @@ def add_assistant_to_db(session, name: str, name_en: str, code: str, avatar: str
 
 @with_session
 def update_assistant_to_db(session, name: str, name_en: str, code: str, assistant_id: int, avatar: str, prompt: str,
-                           model_name: str, history_len: int, prologue: str, knowledge_base_ids: str,
+                           model_name: str, history_len: int, top_k: int, score_threshold: float, prologue: str,
+                           knowledge_base_ids: str,
                            force_feedback: str, extra: dict, model_config: dict, tool_config: dict, sort_id: int):
     assistant: AssistantModel = session.query(AssistantModel).filter(AssistantModel.id == assistant_id).first()
     if assistant is not None:
@@ -42,6 +44,8 @@ def update_assistant_to_db(session, name: str, name_en: str, code: str, assistan
         assistant.knowledge_base_ids = knowledge_base_ids
         assistant.force_feedback = force_feedback
         assistant.history_len = history_len
+        assistant.top_k = top_k
+        assistant.score_threshold = score_threshold
         assistant.extra = extra if extra else assistant.extra
         assistant.model_config = model_config if model_config else assistant.model_config
         assistant.tool_config = tool_config if tool_config else assistant.tool_config
