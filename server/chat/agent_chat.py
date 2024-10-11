@@ -21,7 +21,7 @@ from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
-from server.db.repository import add_message_to_db, get_assistant_simple_from_db
+from server.db.repository import add_message_to_db, get_assistant_simple_from_db, update_message
 from server.memory.message_i18n import Message_I18N
 from server.utils import wrap_done, get_ChatOpenAI, get_prompt_template, BaseResponse, get_tool_config
 
@@ -231,11 +231,41 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                    ))
 
 
+async def tool_chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
+                    extra: Dict[str, Any] = Body({}, description="额外的属性"),
+                    conversation_id: str = Body("", description="对话框ID"),
+                    tool_names: List[str] = Body([], description="工具的名称"),
+                    api_names: List[str] = Body([], description="api的名称"),
+                    store_message: bool = Body(True, description="是否保存消息到数据库"), ):
+    available_tools = get_available_tools(tool_names=tool_names,
+                                          api_names=api_names,
+                                          model_container=create_model_container())
+    if not available_tools:
+        return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
+
+    async def chat_iterator() -> AsyncIterable[str]:
+        message_id = add_message_to_db(chat_type=ChatType.AGENT_CHAT.value, query=query if query else f"{extra}",
+                                       metadata=extra if query else None, conversation_id=conversation_id,
+                                       store=store_message)
+        yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": ""},
+                         ensure_ascii=False)
+        result = None
+        try:
+            result = await available_tools[0].ainvoke(extra)
+            yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": result},
+                             ensure_ascii=False)
+        finally:
+            if result:
+                update_message(message_id=message_id, response=result)
+
+    return EventSourceResponse(wrap_event_response(chat_iterator()))
+
+
 async def call_tool(
         assistant_id: int = Body(-1, description="助手ID"),
         tool_name: str = Body(examples=["calculate"], description="工具名称"),
         api_name: str = Body(default="", description="接口名称"),
-        tool_input: Dict[str, Any] = Body({}, examples=[{"query": "3+5/2"}]),
+        tool_input: Dict[str, Any] = Body({}, examples=[{"expression": "3+5/2"}]),
 ) -> BaseResponse:
     try:
         if not tool_name:

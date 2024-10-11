@@ -63,6 +63,7 @@ TOOL_CONFIG = {
         },
     },
     "http_request": {
+        "call_direct": False,
         "apis": [
             {
                 "method": "GET",

@@ -1,10 +1,10 @@
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict, Any
 
 from fastapi import Body
 
 from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD, HISTORY_LEN
 from server.agent import create_model_container
-from server.chat.agent_chat import agent_chat
+from server.chat.agent_chat import agent_chat, tool_chat
 from server.chat.chat import chat
 from server.chat.chat_type import ChatType
 from server.chat.completion import completion
@@ -17,7 +17,7 @@ from server.db.repository import get_assistant_detail_from_db
 
 async def chat_router(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
                       chat_type: str = Body(ChatType.LLM_CHAT, description=f"对话类型:{[c.value for c in ChatType]}"),
-                      extra: dict = Body({}, description="额外的属性"),
+                      extra: Dict[str, Any] = Body({}, description="额外的属性"),
                       conversation_id: str = Body("", description="对话框ID"),
                       assistant_id: int = Body(-1, description="助手ID"),
                       knowledge_id: str = Body("", description="临时知识库ID"),
@@ -98,6 +98,9 @@ async def chat_router(query: str = Body(..., description="用户输入", example
             if tool_config and len(tool_config) > 0:
                 model_container = create_model_container()
                 model_container.TOOL_CONFIG.update(tool_config)
+                if len(tool_names) == 1 and tool_config.get(tool_names[0], {}).get("call_direct", False):
+                    return await tool_chat(query=query, conversation_id=conversation_id, extra=extra,
+                                           tool_names=tool_names, api_names=api_names, store_message=store_message)
         return await agent_chat(query=query, history=history, stream=stream, model_name=model_name,
                                 temperature=temperature, tool_names=tool_names, conversation_id=conversation_id,
                                 store_message=store_message, max_tokens=max_tokens, prompt_name=prompt_name,
