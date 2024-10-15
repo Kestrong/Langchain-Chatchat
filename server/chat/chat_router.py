@@ -51,6 +51,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                       tool_names: List[str] = Body([], description="工具的名称"),
                       api_names: List[str] = Body([], description="api的名称"),
                       ):
+    origin_prompt_name = prompt_name
     assistant = None
     if assistant_id >= 0:
         assistant = get_assistant_detail_from_db(assistant_id=assistant_id)
@@ -76,15 +77,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
         if assistant.get("score_threshold", -1) > 0:
             score_threshold = assistant.get("score_threshold")
 
-    if chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or knowledge_base_names:
-
-        return await knowledge_base_chat(query=query, conversation_id=conversation_id,
-                                         knowledge_base_names=knowledge_base_names, top_k=top_k,
-                                         score_threshold=score_threshold, history=history, stream=stream,
-                                         model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                                         prompt_name=prompt_name, store_message=store_message)
-
-    elif chat_type == ChatType.SEARCH_ENGINE_CHAT.value or (
+    if chat_type == ChatType.SEARCH_ENGINE_CHAT.value or (
             search_engine_name is not None and search_engine_name != ''):
 
         return await search_engine_chat(query=query, conversation_id=conversation_id, store_message=store_message,
@@ -103,13 +96,21 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                            tool_names=tool_names, api_names=api_names, store_message=store_message)
         return await agent_chat(query=query, history=history, stream=stream, model_name=model_name,
                                 temperature=temperature, tool_names=tool_names, conversation_id=conversation_id,
-                                store_message=store_message, max_tokens=max_tokens, prompt_name=prompt_name,
+                                store_message=store_message, max_tokens=max_tokens, prompt_name=origin_prompt_name,
                                 api_names=api_names)
 
     elif chat_type == ChatType.FILE_CHAT.value or knowledge_id:
         return await file_chat(query=query, knowledge_id=knowledge_id, history=history, stream=stream,
                                model_name=model_name, temperature=temperature, max_tokens=max_tokens,
                                prompt_name=prompt_name, conversation_id=conversation_id, store_message=store_message, )
+
+    elif chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or knowledge_base_names:
+
+        return await knowledge_base_chat(query=query, conversation_id=conversation_id,
+                                         knowledge_base_names=knowledge_base_names, top_k=top_k,
+                                         score_threshold=score_threshold, history=history, stream=stream,
+                                         model_name=model_name, temperature=temperature, max_tokens=max_tokens,
+                                         prompt_name=prompt_name, store_message=store_message)
 
     elif chat_type == ChatType.COMPLETION.value:
 
