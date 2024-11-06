@@ -1,6 +1,4 @@
 import json
-import time
-import uuid
 from typing import List, Dict, Literal
 
 import requests
@@ -9,18 +7,19 @@ from fastchat.conversation import Conversation
 
 from configs import logger
 from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
+from server.knowledge_base.oss import default_oss
 from server.model_workers import ApiModelWorker, ApiChatParams
 
 
-class LingxiFaultWorker(ApiModelWorker):
+class LingxiCutOverWorker(ApiModelWorker):
 
     def __init__(
             self,
             *,
-            model_names: List[str] = ["lingxi-fault-api"],
+            model_names: List[str] = ["lingxi-cutover-api"],
             controller_addr: str = None,
             worker_addr: str = None,
-            version: Literal["iotqwen-v1"] = "lingxi-fault-v1",
+            version: Literal["iotqwen-v1"] = "lingxi-cutover-v1",
             **kwargs,
     ):
         kwargs.update(model_names=model_names, controller_addr=controller_addr, worker_addr=worker_addr)
@@ -33,6 +32,7 @@ class LingxiFaultWorker(ApiModelWorker):
         content = params.messages[-1].get('content')
         contentObj = json.loads(content)
         assistant_id = contentObj.get('assistant_id')
+        knowledge_id = contentObj.get('knowledge_id')
         assistant = None
         if assistant_id and assistant_id >= 0:
             assistant = get_assistant_simple_from_db(assistant_id)
@@ -41,25 +41,31 @@ class LingxiFaultWorker(ApiModelWorker):
             model_config = assistant.get('model_config', {})
             role_meta.update(model_config)
         url = model_config.get('api_proxy', params.api_proxy)
-        api_key = model_config.get('api_key', params.api_key)
-        secret_key = model_config.get('secret_key', params.secret_key)
-        timestamp = str(int(round(time.time() * 1000)))
-        seqid = str(uuid.uuid1())
-        headers = {"X-APP-ID": api_key, "X-APP-KEY": secret_key, "Content-Type": "application/json"}
-        data = {"timestamp": timestamp, "seqid": seqid, "messages": [{"role": contentObj.get('question', '')}]}
+        headers = {"x-access-token": contentObj.get('token')}
+        data = {"question": contentObj.get('question', ''), "scene": contentObj.get('scene', '')}
         try:
+            attachment_names = default_oss().list_objects(bucket_name="temp", object_name=knowledge_id)
+            attachment = []
+            if attachment_names:
+                for a in attachment_names:
+                    o = default_oss().get_object(bucket_name="temp", object_name=f"{knowledge_id}/{a}")
+                    attachment.append(("attachment", (a, o)))
             with requests.post(url, stream=False, headers=headers, timeout=role_meta.get("timeout", 30),
-                               json=data) as response:
-                response.raise_for_status()
+                               data=data, files=attachment) as response:
+                if response.status_code != 200:
+                    logger.error(response.text)
+                    response.raise_for_status()
                 json_data = response.json()
-                if "10000" == json_data.get("code"):
-                    yield {"error_code": 0, "text": json_data.get("data", {}).get("output", "")}
+                if "200" == str(json_data.get("code")):
+                    files = json_data.get("result", {}).get("files", [])
+                    text = "\n".join([f"[{f.get('fileName')}]({f.get('downloadUrl')})" for f in files])
+                    yield {"error_code": 0, "text": text}
                 else:
-                    yield {"error_code": 0, "text": json_data.get("messages")}
+                    yield {"error_code": 0, "text": json_data.get("message")}
         except Exception as e:
             logger.error(f"{e}")
             model_label = (get_model_metadata_from_db(self.model_names[0]).get(self.model_names[0], {})
-                           .get('label', '灵晞故障处置大模型'))
+                           .get('label', '灵晞割接方案大模型'))
             yield {"error_code": 0, "text": f"调用{model_label}失败。"}
 
     def get_embeddings(self, params):

@@ -2,7 +2,7 @@ import sys
 from typing import List, Literal, Dict
 
 from fastchat import conversation as conv
-from fastchat.conversation import Conversation
+from fastchat.conversation import Conversation, SeparatorStyle
 from openai import OpenAI
 
 from configs import logger, log_verbose
@@ -34,7 +34,8 @@ class QwenWorker(ApiModelWorker):
 
         with OpenAI(
                 api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
-                base_url=params.api_base_url,  # 填写DashScope服务的base_url
+                base_url=params.api_proxy,  # 填写DashScope服务的base_url
+                timeout=params.role_meta.get("timeout", 60),
         ) as client:
             try:
                 with client.chat.completions.create(
@@ -67,7 +68,8 @@ class QwenWorker(ApiModelWorker):
             logger.info(f'{self.__class__.__name__}:params: {params}')
         with OpenAI(
                 api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
-                base_url=params.api_base_url,  # 填写DashScope服务的base_url
+                base_url=params.api_proxy,  # 填写DashScope服务的base_url
+                timeout=params.role_meta.get("timeout", 10),
         ) as client:
             try:
                 result = []
@@ -100,8 +102,14 @@ class QwenWorker(ApiModelWorker):
             system_message="你是一个聪明、对人类有帮助的人工智能，你可以对人类提出的问题给出有用、详细、礼貌的回答。",
             messages=[],
             roles=["user", "assistant", "system"],
-            sep="\n### ",
-            stop_str="###",
+            sep_style=SeparatorStyle.ADD_COLON_SINGLE,
+            sep="<|im_end|>",
+            stop_token_ids=[
+                151643,
+                151644,
+                151645,
+            ],  # "<|endoftext|>", "<|im_start|>", "<|im_end|>"
+            stop_str="<|endoftext|>",
         )
 
 

@@ -10,6 +10,7 @@ from server.chat.agent_chat import call_tool
 from server.chat.chat_router import chat_router
 from server.chat.conversation import create_conversation, delete_conversation, update_conversation, filter_message, \
     filter_conversation, delete_message, delete_user_conversation
+from server.chat.file_chat import delete_temp_docs
 from server.chat.task_manager import stop
 from server.memory.token_info_memory import set_token, i18n_context
 
@@ -371,6 +372,11 @@ def mount_knowledge_routes(app: FastAPI):
              tags=["Knowledge Base Management"],
              summary="上传文件到临时目录，用于文件对话。"
              )(upload_temp_docs)
+
+    app.post("/knowledge_base/delete_temp_docs",
+             tags=["Knowledge Base Management"],
+             summary="删除临时文件"
+             )(delete_temp_docs)
 
 
 def mount_filename_summary_routes(app: FastAPI):

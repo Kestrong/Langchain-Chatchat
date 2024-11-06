@@ -11,8 +11,9 @@ from server.chat.completion import completion
 from server.chat.file_chat import file_chat
 from server.chat.knowledge_base_chat import knowledge_base_chat
 from server.chat.search_engine_chat import search_engine_chat
-from server.chat.utils import History
+from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS
 from server.db.repository import get_assistant_detail_from_db
+from server.memory.token_info_memory import get_token
 
 
 async def chat_router(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
@@ -52,6 +53,9 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                       api_names: List[str] = Body([], description="api的名称"),
                       ):
     origin_prompt_name = prompt_name
+    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+        extra["knowledge_id"] = knowledge_id
+        extra["token"] = get_token()
     assistant = None
     if assistant_id >= 0:
         assistant = get_assistant_detail_from_db(assistant_id=assistant_id)
@@ -72,10 +76,14 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                 history.clear()
         elif history_len > 0:
             history_len = min(history_len, config_history_len)
-        if assistant.get("top_k", -1) > 0:
-            top_k = assistant.get("top_k")
+        top_k = assistant.get("top_k") if assistant.get("top_k", -1) > 0 else top_k
         if assistant.get("score_threshold", -1) > 0:
             score_threshold = assistant.get("score_threshold")
+        tool_config_db = assistant.get("tool_config", {})
+        if not tool_names and tool_config_db is not None and len(tool_config_db) > 0:
+            tool_names = [k for k, v in assistant.get("tool_config").items() if v.get("selected", False)]
+            api_names = [t.get("name") for t in assistant.get("tool_config").get("http_request", {}).get("apis", []) if
+                         t.get("selected", False)]
 
     if chat_type == ChatType.SEARCH_ENGINE_CHAT.value or (
             search_engine_name is not None and search_engine_name != ''):
@@ -92,14 +100,17 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                 model_container = create_model_container()
                 model_container.TOOL_CONFIG.update(tool_config)
                 if len(tool_names) == 1 and tool_config.get(tool_names[0], {}).get("call_direct", False):
-                    return await tool_chat(query=query, conversation_id=conversation_id, extra=extra,
-                                           tool_names=tool_names, api_names=api_names, store_message=store_message)
+                    return await tool_chat(query=query, knowledge_id=knowledge_id, conversation_id=conversation_id,
+                                           extra=extra, tool_names=tool_names, api_names=api_names,
+                                           store_message=store_message)
+
         return await agent_chat(query=query, history=history, stream=stream, model_name=model_name,
                                 temperature=temperature, tool_names=tool_names, conversation_id=conversation_id,
                                 store_message=store_message, max_tokens=max_tokens, prompt_name=origin_prompt_name,
                                 api_names=api_names)
 
-    elif chat_type == ChatType.FILE_CHAT.value or knowledge_id:
+    elif chat_type == ChatType.FILE_CHAT.value or (knowledge_id and model_name not in UN_FORMAT_ONLINE_LLM_MODELS):
+
         return await file_chat(query=query, knowledge_id=knowledge_id, history=history, stream=stream,
                                model_name=model_name, temperature=temperature, max_tokens=max_tokens,
                                prompt_name=prompt_name, conversation_id=conversation_id, store_message=store_message, )

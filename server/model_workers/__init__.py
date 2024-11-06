@@ -13,3 +13,4 @@ from .claude import ClaudeWorker
 from .qiming import QimingWorker
 from .iotqwen import IotQwenWorker
 from .lingxi_fault import LingxiFaultWorker
+from .lingxi_cutover import LingxiCutOverWorker

@@ -1,13 +1,13 @@
-from fastchat.conversation import Conversation
-from configs import LOG_PATH, TEMPERATURE
 import fastchat.constants
+from fastchat.conversation import Conversation
+
+from configs import LOG_PATH, TEMPERATURE
+
 fastchat.constants.LOGDIR = LOG_PATH
 from fastchat.serve.base_model_worker import BaseModelWorker
 import uuid
 import json
-import sys
 from pydantic import BaseModel, root_validator
-import fastchat
 import asyncio
 from server.utils import get_model_worker_config
 from typing import Dict, List, Optional
@@ -88,6 +88,7 @@ class ApiEmbeddingsParams(ApiConfigParams):
     texts: List[str]
     embed_model: Optional[str] = None
     to_query: bool = False # for minimax
+    role_meta: Dict = {}  # for minimax
 
 
 class ApiModelWorker(BaseModelWorker):

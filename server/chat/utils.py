@@ -101,4 +101,4 @@ async def wrap_event_response(event_response: AsyncIterable[str]) -> AsyncIterab
 EMPTY_LLM_CHAT_PROMPT = PromptTemplate.from_template("{{ input }}", template_format="jinja2")
 
 # 特殊的在线大模型，不支持知识库、agent对话等模式
-UN_FORMAT_ONLINE_LLM_MODELS = ['qiming-api', 'iotqwen-api', 'lingxi-fault-api']
+UN_FORMAT_ONLINE_LLM_MODELS = ['qiming-api', 'iotqwen-api', 'lingxi-fault-api', 'lingxi-cutover-api']

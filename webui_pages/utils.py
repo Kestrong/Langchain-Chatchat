@@ -423,6 +423,7 @@ class ApiRequest:
         files = [convert_file(file) for file in files]
         data = {
             "prev_id": prev_id,
+            "delete_prev": True
         }
 
         response = self.post(

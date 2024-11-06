@@ -58,14 +58,39 @@ def _parse_files_in_thread(
         yield result
 
 
+def is_generator_empty(generator):
+    try:
+        next(generator)
+        return False
+    except StopIteration:
+        return True
+
+
+def delete_temp_docs(files: List[str] = Body([], description="删除临时知识库文件"),
+                     prev_id: str = Body("", description="前知识库ID"), ) -> BaseResponse:
+    failed_files = []
+    if prev_id:
+        if files:
+            for f in files:
+                try:
+                    default_oss().delete_object("temp", f"{prev_id}/{f}")
+                except:
+                    failed_files.append(f)
+        if not files or is_generator_empty(default_oss().list_objects(bucket_name="temp", object_name=prev_id)):
+            default_oss().delete_object(bucket_name="temp", object_name=prev_id)
+
+    return BaseResponse(data={"failed_files": failed_files})
+
+
 def upload_temp_docs(
         files: List[UploadFile] = File([], description="上传文件，支持多文件"),
         prev_id: str = Form("", description="前知识库ID"),
+        delete_prev: bool = Form(False, description="是否清空之前上传的文件"),
 ) -> BaseResponse:
     '''
     将文件保存到临时目录，并返回切片文档。
     '''
-    if prev_id:
+    if prev_id and delete_prev:
         default_oss().delete_object(bucket_name="temp", object_name=prev_id)
 
     if not files:

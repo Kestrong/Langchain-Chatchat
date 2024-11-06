@@ -1,4 +1,3 @@
-# LangChain 的 ArxivQueryRun 工具
 import json
 
 from langchain_core.prompts.string import DEFAULT_FORMATTER_MAPPING
