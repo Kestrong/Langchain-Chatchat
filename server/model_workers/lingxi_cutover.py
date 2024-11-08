@@ -44,12 +44,13 @@ class LingxiCutOverWorker(ApiModelWorker):
         headers = {"x-access-token": contentObj.get('token')}
         data = {"question": contentObj.get('question', ''), "scene": contentObj.get('scene', '')}
         try:
-            attachment_names = default_oss().list_objects(bucket_name="temp", object_name=knowledge_id)
             attachment = []
-            if attachment_names:
-                for a in attachment_names:
-                    o = default_oss().get_object(bucket_name="temp", object_name=f"{knowledge_id}/{a}")
-                    attachment.append(("attachment", (a, o)))
+            if knowledge_id:
+                attachment_names = default_oss().list_objects(bucket_name="temp", object_name=knowledge_id)
+                if attachment_names:
+                    for a in attachment_names:
+                        o = default_oss().get_object(bucket_name="temp", object_name=f"{knowledge_id}/{a}")
+                        attachment.append(("attachment", (a, o)))
             with requests.post(url, stream=False, headers=headers, timeout=role_meta.get("timeout", 30),
                                data=data, files=attachment) as response:
                 if response.status_code != 200:
