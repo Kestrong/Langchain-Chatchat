@@ -292,6 +292,7 @@ async def tool_chat(query: str = Body(..., description="用户输入", examples=
         result = None
         try:
             extra["knowledge_id"] = knowledge_id
+            extra["question"] = query
             walk_results = []
             result = await do_call_tool_chain(walk_results=walk_results,
                                               tool_name=tool_names[0],

@@ -47,9 +47,12 @@ def create_app(run_mode: str = None):
     async def verify_authorization(authorization: str = Security(APIKeyHeader(name='Authorization', auto_error=False))):
         return authorization
 
+    from configs import ENV
+    prod = ENV == "prod"
     app = FastAPI(
         title="Langchain-Chatchat API Server",
-        version=VERSION, root_path="/flm",
+        version=VERSION, root_path="/flm", docs_url=None if prod else "/docs", redoc_url=None if prod else "/redoc",
+        openapi_url=None if prod else "/openapi.json",
         dependencies=[Depends(verify_authorization)]
     )
     MakeFastAPIOffline(app)
