@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from server.db.models.assistant_model import AssistantModel
 from server.db.models.knowledge_base_model import KnowledgeBaseModel
@@ -68,7 +68,8 @@ def get_assistants_from_db(session, page: int = 1, size: int = 100, keyword: str
     offset = (page_num - 1) * page_size
     filters = []
     if keyword is not None and keyword.strip() != '':
-        filters.append(AssistantModel.name.ilike('%{}%'.format(keyword)))
+        filters.append(or_(AssistantModel.name.ilike('%{}%'.format(keyword)),
+                           AssistantModel.name_en.ilike('%{}%'.format(keyword))))
     if code is not None and code.strip() != '':
         filters.append(AssistantModel.code == code)
     assistants = (session.query(AssistantModel).filter(*filters).order_by(AssistantModel.sort_id.asc()).offset(offset)
