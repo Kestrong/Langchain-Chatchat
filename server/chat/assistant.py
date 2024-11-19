@@ -7,7 +7,7 @@ from configs import LLM_MODELS, HISTORY_LEN
 from configs.basic_config import logger, log_verbose
 from server.db.repository import get_model_metadata_from_db
 from server.db.repository.assistant_repository import add_assistant_to_db, update_assistant_to_db, \
-    delete_assistant_from_db, get_assistant_from_db, get_assistant_detail_from_db
+    delete_assistant_from_db, get_assistants_from_db, get_assistant_detail_from_db
 from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import is_english
 from server.utils import BaseResponse
@@ -90,8 +90,9 @@ def delete_assistant(id: int = Query(description="助手id")) -> BaseResponse:
 def get_assistants(page: int = Query(default=1, description="页码"),
                    size: int = Query(default=100, description="分页大小"),
                    group: bool = Query(default=False, description="是否按模型进行分组"),
+                   code: str = Query(default=None, description="助手code"),
                    keyword: str = Query(default=None, description="关键字搜索")) -> BaseResponse:
-    assistants, total = get_assistant_from_db(page=page, size=size, keyword=keyword)
+    assistants, total = get_assistants_from_db(page=page, size=size, keyword=keyword, code=code)
     result = OrderedDict()
     english = is_english()
     MODEL_METADATA = get_model_metadata_from_db()
