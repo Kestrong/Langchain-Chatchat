@@ -9,7 +9,6 @@ from langchain_core.agents import AgentFinish
 from langchain_core.outputs import GenerationChunk, ChatGenerationChunk
 
 from common.exceptions import ChatBusinessException
-from server.chat.utils import UN_FORMAT_ONLINE_LLM_MODELS
 from server.db.repository import update_message
 from server.memory.message_i18n import Message_I18N
 
@@ -68,11 +67,11 @@ class ConversationCallbackHandler(BaseCallbackHandler):
     def update_message(self, answer: str, error: str = None):
         mark = f'###[{self.model_name}]###'
         metadata = {}
-        if self.model_name in UN_FORMAT_ONLINE_LLM_MODELS and answer.startswith(mark) and answer.endswith(mark):
+        if answer.startswith(mark) and answer.endswith(mark):
             parts = answer.split(mark)
             answer = ''
             extra_key_map = {"message_id": "third_message_id", "conversation_id": "third_conversation_id",
-                             "user": "user", "api_key": "api_key"}
+                             "user": "user", "api_key": "api_key", "appId": "appId"}
             for part in parts:
                 if part is not None and part.strip() != '':
                     if part.startswith('{') and part.endswith('}'):

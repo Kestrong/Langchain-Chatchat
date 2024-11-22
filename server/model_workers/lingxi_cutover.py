@@ -82,3 +82,6 @@ class LingxiCutOverWorker(ApiModelWorker):
             sep="\n### ",
             stop_str="###",
         )
+
+    def format_online_llm(self):
+        return False

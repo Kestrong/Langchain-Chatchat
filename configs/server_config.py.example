@@ -164,6 +164,9 @@ FSCHAT_MODEL_WORKERS = {
     "lingxi-cutover-api": {
         "port": 21015,
     },
+    "shaanxi-selfdev-api": {
+        "port": 21016,
+    },
 }
 
 FSCHAT_CONTROLLER = {

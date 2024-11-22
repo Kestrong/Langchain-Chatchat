@@ -7,6 +7,9 @@ from server.db.base import Base
 class AssistantModel(Base):
     """
     助手模型
+    model_config一些配置样例
+    1、文件上传组件：{"attachment_check": {"hint": "请选择相应的任务工单和路由调整的信息附件上传后再对话。", "require_type": [["xlsx", "xls"]]}, "uploader_display": true}
+    2、对话框嵌入页面：{"form":{"display":true,"url":"https://ip:port/path"}}
     """
     __tablename__ = 'assistant'
     id = Column(Integer, primary_key=True, autoincrement=True, comment='助手ID')

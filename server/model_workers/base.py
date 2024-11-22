@@ -12,8 +12,8 @@ import asyncio
 from server.utils import get_model_worker_config
 from typing import Dict, List, Optional
 
-
-__all__ = ["ApiModelWorker", "ApiChatParams", "ApiCompletionParams", "ApiEmbeddingsParams"]
+__all__ = ["ApiModelWorker", "ApiModelParams", "ApiChatParams", "ApiCompletionParams", "ApiChatWithFeedbackParams",
+           "ApiEmbeddingsParams"]
 
 
 class ApiConfigParams(BaseModel):
@@ -24,12 +24,12 @@ class ApiConfigParams(BaseModel):
     api_proxy: Optional[str] = None
     api_key: Optional[str] = None
     secret_key: Optional[str] = None
-    group_id: Optional[str] = None # for minimax
-    is_pro: bool = False # for minimax
+    group_id: Optional[str] = None  # for minimax
+    is_pro: bool = False  # for minimax
 
-    APPID: Optional[str] = None # for xinghuo
-    APISecret: Optional[str] = None # for xinghuo
-    is_v2: bool = False # for xinghuo
+    APPID: Optional[str] = None  # for xinghuo
+    APISecret: Optional[str] = None  # for xinghuo
+    is_v2: bool = False  # for xinghuo
 
     worker_name: Optional[str] = None
 
@@ -59,13 +59,14 @@ class ApiModelParams(ApiConfigParams):
     '''
     version: Optional[str] = None
     version_url: Optional[str] = None
-    api_version: Optional[str] = None # for azure
-    deployment_name: Optional[str] = None # for azure
-    resource_name: Optional[str] = None # for azure
+    api_version: Optional[str] = None  # for azure
+    deployment_name: Optional[str] = None  # for azure
+    resource_name: Optional[str] = None  # for azure
 
     temperature: float = TEMPERATURE
     max_tokens: Optional[int] = None
     top_p: Optional[float] = 1.0
+    provider: Optional[str] = None
 
 
 class ApiChatParams(ApiModelParams):
@@ -73,12 +74,13 @@ class ApiChatParams(ApiModelParams):
     chat请求参数
     '''
     messages: List[Dict[str, str]]
-    system_message: Optional[str] = None # for minimax
-    role_meta: Dict = {} # for minimax
+    system_message: Optional[str] = None  # for minimax
+    role_meta: Dict = {}  # for minimax
 
 
-class ApiChatQimingParams(ApiChatParams):
+class ApiChatWithFeedbackParams(ApiChatParams):
     feedbackUrl: str = None
+
 
 class ApiCompletionParams(ApiModelParams):
     prompt: str
@@ -87,29 +89,29 @@ class ApiCompletionParams(ApiModelParams):
 class ApiEmbeddingsParams(ApiConfigParams):
     texts: List[str]
     embed_model: Optional[str] = None
-    to_query: bool = False # for minimax
+    to_query: bool = False  # for minimax
     role_meta: Dict = {}  # for minimax
 
 
 class ApiModelWorker(BaseModelWorker):
-    DEFAULT_EMBED_MODEL: str = None # None means not support embedding
+    DEFAULT_EMBED_MODEL: str = None  # None means not support embedding
 
     def __init__(
-        self,
-        model_names: List[str],
-        controller_addr: str = None,
-        worker_addr: str = None,
-        context_len: int = 2048,
-        no_register: bool = False,
-        **kwargs,
+            self,
+            model_names: List[str],
+            controller_addr: str = None,
+            worker_addr: str = None,
+            context_len: int = 2048,
+            no_register: bool = False,
+            **kwargs,
     ):
         kwargs.setdefault("worker_id", uuid.uuid4().hex[:8])
         kwargs.setdefault("model_path", "")
         kwargs.setdefault("limit_worker_concurrency", 5)
         super().__init__(model_names=model_names,
-                        controller_addr=controller_addr,
-                        worker_addr=worker_addr,
-                        **kwargs)
+                         controller_addr=controller_addr,
+                         worker_addr=worker_addr,
+                         **kwargs)
         import fastchat.serve.base_model_worker
         import sys
         self.logger = fastchat.serve.base_model_worker.logger
@@ -127,7 +129,6 @@ class ApiModelWorker(BaseModelWorker):
         if not no_register and self.controller_addr:
             self.init_heart_beat()
 
-
     def count_token(self, params):
         prompt = params["prompt"]
         return {"count": len(str(prompt)), "error_code": 0}
@@ -140,7 +141,7 @@ class ApiModelWorker(BaseModelWorker):
             if self._is_chat(prompt):
                 messages = self.prompt_to_messages(prompt)
                 messages = self.validate_messages(messages)
-            else: # 使用chat模仿续写功能，不支持历史消息
+            else:  # 使用chat模仿续写功能，不支持历史消息
                 messages = [{"role": self.user_role, "content": f"please continue writing from here: {prompt}"}]
 
             p = ApiChatParams(
@@ -162,7 +163,6 @@ class ApiModelWorker(BaseModelWorker):
             return json.loads(x[:-1].decode())
         except Exception as e:
             return {"error_code": 500, "text": str(e)}
-
 
     # 需要用户自定义的方法
 
@@ -202,7 +202,6 @@ class ApiModelWorker(BaseModelWorker):
         之所以跟prompt_to_messages分开，是因为他们应用场景不同、参数不同
         '''
         return messages
-
 
     # help methods
     @property
@@ -250,3 +249,6 @@ class ApiModelWorker(BaseModelWorker):
     @classmethod
     def can_embedding(cls):
         return cls.DEFAULT_EMBED_MODEL is not None
+
+    def format_online_llm(self):
+        return True

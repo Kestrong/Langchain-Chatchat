@@ -64,6 +64,7 @@ TOOL_CONFIG = {
     },
     "http_request": {
         "call_direct": False,
+        "selected": False,
         "apis": [
             {
                 "method": "GET",
@@ -71,6 +72,9 @@ TOOL_CONFIG = {
                 "headers": {},
                 "cookies": {},
                 "timeout": 5,
+                "selected": False,
+                "type": "button",  # button link
+                "position": "each_message",  # fix each_message
                 "name": "juejin",
                 "title": "掘金开发者网站搜索",
                 "request_template": None,

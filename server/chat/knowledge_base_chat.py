@@ -21,7 +21,7 @@ from server.callback_handler.conversation_callback_handler import ConversationCa
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
+from server.chat.utils import History, wrap_event_response, un_format_online_llm_model
 from server.db.repository import add_message_to_db
 from server.knowledge_base.kb_doc_api import search_docs
 from server.knowledge_base.kb_service.base import KBServiceFactory
@@ -74,7 +74,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
 
     history = [History.from_data(h) for h in history]
 
-    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+    if un_format_online_llm_model(model_name):
         return BaseResponse(code=500,
                             msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(
                                 chat_type=ChatType.KNOWLEDGE_BASE_CHAT.value,

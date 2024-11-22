@@ -1,5 +1,6 @@
 import asyncio
 import json
+import uuid
 from typing import AsyncIterable
 from typing import List, Optional, Union
 
@@ -10,15 +11,16 @@ from langchain.prompts import PromptTemplate
 from langchain.prompts.chat import ChatPromptTemplate
 from sse_starlette.sse import EventSourceResponse
 
-from server.chat.task_manager import task_manager
 from configs import LLM_MODELS, TEMPERATURE
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
-    wrap_event_response
+from server.chat.task_manager import task_manager
+from server.chat.utils import History, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
+    wrap_event_response, un_format_online_llm_model
 from server.db.repository import add_message_to_db
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
+from server.model_workers import ApiModelParams
 from server.utils import get_prompt_template
 from server.utils import wrap_done, get_ChatOpenAI
 
@@ -43,9 +45,14 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                store_message: bool = Body(True, description="是否保存消息到数据库"),
                ):
     origin_query = query
-    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+    message_id = uuid.uuid4().hex
+    if un_format_online_llm_model(model_name):
         extra['question'] = query
         extra['stream'] = stream
+        apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=model_name)
+        if 'FastgptWorker' == apiModelParams.provider:
+            extra['conversation_id'] = conversation_id
+            extra['message_id'] = message_id
         query = json.dumps(extra)
 
     async def chat_iterator() -> AsyncIterable[str]:
@@ -55,11 +62,11 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         memory = None
 
         # 负责保存llm response到message db
-        message_id = add_message_to_db(chat_type=ChatType.LLM_CHAT.value, query=origin_query,
-                                       conversation_id=conversation_id, store=store_message)
+        add_message_to_db(chat_type=ChatType.LLM_CHAT.value, query=origin_query, conversation_id=conversation_id,
+                          store=store_message, message_id=message_id)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type=ChatType.LLM_CHAT.value,
-                                                            query=query)
+                                                            query=origin_query)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         callbacks.extend([conversation_callback, task_callback])
         # message_id = uuid.uuid4().hex
@@ -103,7 +110,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
             input_msg = History(role="user", content=prompt_template).to_msg_template(False)
             chat_prompt = ChatPromptTemplate.from_messages([input_msg])
 
-        if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+        if un_format_online_llm_model(model_name):
             chat_prompt = EMPTY_LLM_CHAT_PROMPT
 
         chain = LLMChain(prompt=chat_prompt, llm=model, memory=memory)

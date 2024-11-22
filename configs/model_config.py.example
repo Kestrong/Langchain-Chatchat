@@ -257,7 +257,22 @@ ONLINE_LLM_MODEL = {
         "api_key": "123",
         "secret_key": "123",
         "provider": "LingxiCutOverWorker",
-    }
+    },
+    "shaanxi-selfdev-api": {
+        "version": "fastgpt-v1",
+        "api_proxy": "http://133.64.164.134:3000/api/v1/chat/completions",
+        "api_key": "fastgpt-wUH4NY1Ncy7z7g0VgzDXcyiw4Ak0V5qvgOMoziyUYuIREX4q48KYDx0Fe",
+        "provider": "FastgptWorker",
+        "role_meta": {
+            "variables": {
+                "cTime": "2024-11-04 17:45:35 Monday"
+            },
+            "extra": {
+                "shareId": "n8qxl6xzwhyzr6d1mcv7susc",
+                "outLinkUid": "shareChat-1724985353013-xuLyWInCBpezzKEJ3n9ED4zP",
+            }
+        }
+    },
 }
 
 # 在以下字典中修改属性值，以指定本地embedding模型存储位置。支持3种设置方法：

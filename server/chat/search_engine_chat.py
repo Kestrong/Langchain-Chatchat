@@ -22,7 +22,7 @@ from server.callback_handler.conversation_callback_handler import ConversationCa
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
+from server.chat.utils import History, wrap_event_response, un_format_online_llm_model
 from server.db.repository import add_message_to_db
 from server.memory.message_i18n import Message_I18N
 from server.utils import BaseResponse, get_prompt_template
@@ -151,7 +151,7 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
     if search_engine_name == "bing" and not BING_SUBSCRIPTION_KEY:
         return BaseResponse(code=500, msg=f"要使用Bing搜索引擎，需要设置 `BING_SUBSCRIPTION_KEY`")
 
-    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+    if un_format_online_llm_model(model_name):
         return BaseResponse(code=500, msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(
             chat_type=ChatType.SEARCH_ENGINE_CHAT.value, model_name=model_name))
 

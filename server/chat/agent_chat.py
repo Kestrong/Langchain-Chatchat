@@ -20,7 +20,7 @@ from server.callback_handler.conversation_callback_handler import ConversationCa
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
+from server.chat.utils import History, wrap_event_response, un_format_online_llm_model
 from server.db.repository import add_message_to_db, get_assistant_simple_from_db, update_message
 from server.memory.message_i18n import Message_I18N
 from server.utils import wrap_done, get_ChatOpenAI, get_prompt_template, BaseResponse, get_tool_config
@@ -63,7 +63,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                      api_names: List[str] = Body([], description="api的名称"),
                      store_message: bool = Body(True, description="是否保存消息到数据库"),
                      ):
-    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+    if un_format_online_llm_model(model_name):
         return BaseResponse(code=500,
                             msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(chat_type=ChatType.AGENT_CHAT.value,
                                                                                     model_name=model_name))

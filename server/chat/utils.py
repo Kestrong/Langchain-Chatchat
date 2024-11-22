@@ -9,6 +9,7 @@ from common.exceptions import ChatBusinessException
 from configs import logger, log_verbose
 from server.db.repository import update_message
 from server.memory.message_i18n import Message_I18N
+from server.utils import get_model_worker_config
 
 
 class History(BaseModel):
@@ -53,12 +54,18 @@ class History(BaseModel):
 
 
 def parse_llm_token_inner_json(model_name: str, token: str):
-    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
-        mark = f'###[{model_name}]###'
-        if token.startswith(mark) and token.endswith(mark):
-            inner_json = json.loads(token.lstrip(mark).rstrip(mark))
-            return {"answer": inner_json.get('answer'), 'extra': {"conversation_id": inner_json.get('conversation_id'),
-                                                                  "message_id": inner_json.get('message_id')}}
+    mark = f'###[{model_name}]###'
+    if token.startswith(mark) and token.endswith(mark):
+        inner_json = json.loads(token.lstrip(mark).rstrip(mark))
+        d = {"answer": inner_json.get('answer')}
+        extra = {}
+        if 'conversation_id' in inner_json:
+            extra['conversation_id'] = inner_json['conversation_id']
+        if 'message_id' in inner_json:
+            extra['message_id'] = inner_json['message_id']
+        if len(extra) > 0:
+            d['extra'] = extra
+        return d
     return {"answer": token}
 
 
@@ -100,5 +107,12 @@ async def wrap_event_response(event_response: AsyncIterable[str]) -> AsyncIterab
 
 EMPTY_LLM_CHAT_PROMPT = PromptTemplate.from_template("{{ input }}", template_format="jinja2")
 
+
 # 特殊的在线大模型，不支持知识库、agent对话等模式
-UN_FORMAT_ONLINE_LLM_MODELS = ['qiming-api', 'iotqwen-api', 'lingxi-fault-api', 'lingxi-cutover-api']
+def un_format_online_llm_model(model_name: str):
+    config = get_model_worker_config(model_name)
+    worker_class = config.get("worker_class")
+    if worker_class:
+        worker = worker_class()
+        return not worker.format_online_llm()
+    return False

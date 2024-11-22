@@ -11,7 +11,7 @@ from server.chat.completion import completion
 from server.chat.file_chat import file_chat
 from server.chat.knowledge_base_chat import knowledge_base_chat
 from server.chat.search_engine_chat import search_engine_chat
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS
+from server.chat.utils import History, un_format_online_llm_model
 from server.db.repository import get_assistant_detail_from_db
 from server.memory.token_info_memory import get_token
 
@@ -53,7 +53,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                       api_names: List[str] = Body([], description="api的名称"),
                       ):
     origin_prompt_name = prompt_name
-    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+    if un_format_online_llm_model(model_name):
         extra["knowledge_id"] = knowledge_id
         extra["token"] = get_token()
     assistant = None
@@ -109,7 +109,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                 store_message=store_message, max_tokens=max_tokens, prompt_name=origin_prompt_name,
                                 api_names=api_names)
 
-    elif chat_type == ChatType.FILE_CHAT.value or (knowledge_id and model_name not in UN_FORMAT_ONLINE_LLM_MODELS):
+    elif chat_type == ChatType.FILE_CHAT.value or (knowledge_id and not un_format_online_llm_model(model_name)):
 
         return await file_chat(query=query, knowledge_id=knowledge_id, history=history, stream=stream,
                                model_name=model_name, temperature=temperature, max_tokens=max_tokens,

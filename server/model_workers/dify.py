@@ -6,11 +6,11 @@ from fastchat import conversation as conv
 from fastchat.conversation import Conversation
 
 from configs import logger
-from server.db.repository import get_assistant_simple_from_db
+from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
 from server.model_workers import ApiModelWorker, ApiChatParams
 
 
-class IotQwenWorker(ApiModelWorker):
+class DifyWorker(ApiModelWorker):
 
     def __init__(
             self,
@@ -24,6 +24,9 @@ class IotQwenWorker(ApiModelWorker):
         kwargs.update(model_names=model_names, controller_addr=controller_addr, worker_addr=worker_addr)
         super().__init__(**kwargs)
         self.version = version
+
+    def get_inputs(self, role_meta: dict):
+        return role_meta.get("inputs", {})
 
     def do_chat(self, params: ApiChatParams) -> Dict:
         params = params.load_config(self.model_names[0])
@@ -43,8 +46,7 @@ class IotQwenWorker(ApiModelWorker):
         response_mode = model_config.get('stream', contentObj.get('stream', True))
         headers = {"Authorization": f"Bearer {api_key}",
                    "Content-Type": "text/event-stream" if response_mode else "application/json"}
-        inputs = {"userId": role_meta.get('user_id'), "kb_name": role_meta.get('kb_name'),
-                  "topk": role_meta.get('topk'), "score_threshold": role_meta.get('score_threshold')}
+        inputs = self.get_inputs(role_meta)
         data = {
             "inputs": inputs,
             "query": contentObj.get('question', ''),
@@ -52,7 +54,7 @@ class IotQwenWorker(ApiModelWorker):
             "user": role_meta.get('user'),
             "conversation_id": contentObj.get('conversation_id'),
         }
-        logger.debug(f"请求物联网大模型接口参数：{data}")
+        logger.debug(f"请求dify接口参数：{data}")
         text = ""
         mark = f'###[{self.model_names[0]}]###'
         try:
@@ -95,7 +97,9 @@ class IotQwenWorker(ApiModelWorker):
         except Exception as e:
             logger.error(f"{e}")
             if text == '':
-                yield {"error_code": 0, "text": "调用物联网大模型失败或者物联网大模型没有任何回复内容。"}
+                model_label = (get_model_metadata_from_db(self.model_names[0]).get(self.model_names[0], {})
+                               .get('label', 'dify-api'))
+                yield {"error_code": 0, "text": f"调用{model_label}失败。"}
 
     def get_embeddings(self, params):
         print("get_embedding")
@@ -110,3 +114,12 @@ class IotQwenWorker(ApiModelWorker):
             sep="\n### ",
             stop_str="###",
         )
+
+    def format_online_llm(self):
+        return False
+
+
+class IotQwenWorker(DifyWorker):
+    def get_inputs(self, role_meta: dict):
+        return {"userId": role_meta.get('user_id'), "kb_name": role_meta.get('kb_name'),
+                "topk": role_meta.get('topk'), "score_threshold": role_meta.get('score_threshold')}
