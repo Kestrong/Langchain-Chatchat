@@ -8,6 +8,7 @@ from fastchat.conversation import Conversation
 
 from configs import logger, log_verbose
 from server.db.repository import get_model_metadata_from_db, get_assistant_simple_from_db
+from server.memory.message_i18n import Message_I18N
 from server.model_workers.base import *
 
 
@@ -63,30 +64,56 @@ class FastgptWorker(ApiModelWorker):
         text = ""
         mark = f'###[{self.model_names[0]}]###'
         app_id = role_meta.get("appId")
+        with_quote = role_meta.get('with_quote', True)
         try:
             with requests.post(url, stream=True, headers=headers, json=data,
                                timeout=role_meta.get("timeout", 30)) as response:
                 response.raise_for_status()
+                done = False
+                error = False
                 for chunk in response.iter_lines():
                     if chunk is None or len(chunk) == 0:
                         continue
-                    if chunk.startswith(b'data:'):
+                    if chunk.startswith(b'event:'):
+                        event = chunk.decode('utf-8')[6:].strip()
+                        if "flowResponses" == event:
+                            done = True
+                        elif "error" == event:
+                            error = True
+                    elif chunk.startswith(b'data:'):
+                        if error:
+                            raise ValueError(chunk)
                         json_str = chunk.decode('utf-8')[6:]
+                        if json_str == '[DONE]':
+                            continue
                         try:
-                            json_data = json.loads(json_str)
-                            if 'choices' in json_data:
-                                choices = json_data.get('choices', [])
-                                if choices and choices[0].get("finish_reason") == "stop":
-                                    break
-                                msg = ''
-                                for choice in choices:
-                                    msg += choice.get('delta', {}).get('content', '')
-                                if app_id:
-                                    inner_json = json.dumps({"appId": app_id, "answer": msg})
-                                    text += mark + inner_json + mark
-                                else:
-                                    text += msg
-                                yield {"error_code": 0, "text": text}
+                            if done:
+                                if with_quote:
+                                    json_data = json.loads(json_str)
+                                    sourceName = set()
+                                    for m in json_data:
+                                        if 'quoteList' in m:
+                                            quoteList = m.get('quoteList')
+                                            for q in quoteList:
+                                                sourceName.add(f"[{q.get('sourceName')}]()")
+                                    if len(sourceName) == 0:
+                                        sourceName.add("无")
+                                    text += (f'\n___\n**{Message_I18N.API_REFERENCE_NAME.value}：**\n'
+                                             + "\n".join(sourceName))
+                                    yield {"error_code": 0, "text": text}
+                            else:
+                                json_data = json.loads(json_str)
+                                if 'choices' in json_data:
+                                    choices = json_data.get('choices', [])
+                                    msg = ''
+                                    for choice in choices:
+                                        msg += choice.get('delta', {}).get('content', '')
+                                    if app_id:
+                                        inner_json = json.dumps({"appId": app_id, "answer": msg})
+                                        text += mark + inner_json + mark
+                                    else:
+                                        text += msg
+                                    yield {"error_code": 0, "text": text}
                         except json.JSONDecodeError:
                             pass
         except Exception as e:

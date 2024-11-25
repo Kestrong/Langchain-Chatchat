@@ -36,6 +36,7 @@ message_i18n_map = {
         "API_SEARCHENGINE_NOT_SUPPORT": "未支持搜索引擎:{search_engine_name}",
         "API_DOC_NOT_FOUND": "未找到相关文档,该回答为大模型自身能力解答！",
         "API_ARTICLE_NAME": "文章名称",
+        "API_REFERENCE_NAME": "参考文档",
         "API_TOOL_NOT_FOUND": "对不起，没有工具可以调用。",
     },
     "en": {
@@ -71,6 +72,7 @@ message_i18n_map = {
         "API_SEARCHENGINE_NOT_SUPPORT": "Search engine not supported:{search_engine_name}",
         "API_DOC_NOT_FOUND": "No relevant documents found, this answer is for the ability of the large model itself!",
         "API_ARTICLE_NAME": "Article name",
+        "API_REFERENCE_NAME": "Reference paper",
         "API_TOOL_NOT_FOUND": "Sorry, there are no tools available for calling.",
     }
 }
@@ -115,4 +117,5 @@ class Message_I18N(enum.Enum):
     API_SEARCHENGINE_NOT_SUPPORT = get_message_i18n("API_SEARCHENGINE_NOT_SUPPORT")
     API_DOC_NOT_FOUND = get_message_i18n("API_DOC_NOT_FOUND")
     API_ARTICLE_NAME = get_message_i18n("API_ARTICLE_NAME")
+    API_REFERENCE_NAME = get_message_i18n("API_REFERENCE_NAME")
     API_TOOL_NOT_FOUND = get_message_i18n("API_TOOL_NOT_FOUND")
