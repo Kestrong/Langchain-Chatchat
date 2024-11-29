@@ -1,13 +1,13 @@
-import urllib
+import urllib.parse
 
 from fastapi import Body, Query
+from shortuuid import uuid
 
 from configs import EMBEDDING_MODEL, logger, log_verbose, DEFAULT_VS_TYPE
 from server.db.repository.knowledge_base_repository import list_kbs_from_db
 from server.knowledge_base.kb_service.base import KBServiceFactory
 from server.knowledge_base.utils import validate_kb_name
 from server.memory.message_i18n import Message_I18N
-from server.memory.token_info_memory import is_english
 from server.utils import BaseResponse, PageResponse, Page
 
 
@@ -17,16 +17,12 @@ def list_kbs(page_size: int = Query(default=10, description="分页大小"),
              ) -> PageResponse:
     # Get List of Knowledge Base
     data, total = list_kbs_from_db(page_size=page_size, page_num=page_num, keyword=keyword)
-    if is_english():
-        for d in data:
-            d["kb_name_cn"] = d.get("kb_name")
     return PageResponse(data=Page(records=data, total=total))
 
 
-def create_kb(knowledge_base_name: str = Body(max_length=50, examples=["samples"],
+def create_kb(knowledge_base_name: str = Body(None, max_length=50, examples=["samples"],
                                               description="向量库的英文名称，只允许英文、数字和下划线"),
-              knowledge_base_name_cn: str = Body(max_length=50, examples=["samples知识库"],
-                                                 description="向量库的中文名称"),
+              knowledge_base_name_cn: str = Body(max_length=50, examples=["samples知识库"], description="知识库的名称"),
               knowledge_base_info: str = Body(None, max_length=200,
                                               description="向量库的介绍，方便对话时模型进行智能匹配"),
               vector_store_type: str = Body(DEFAULT_VS_TYPE, max_length=50, description="向量库类型"),
@@ -34,21 +30,18 @@ def create_kb(knowledge_base_name: str = Body(max_length=50, examples=["samples"
               ) -> BaseResponse:
     # Create selected knowledge base
     if knowledge_base_name is None or knowledge_base_name.strip() == "":
-        return BaseResponse(code=500, msg=Message_I18N.API_PARAM_NOT_PRESENT.value.format(
-            name="knowledge_base_name"))
+        knowledge_base_name = str(uuid())
     if not validate_kb_name(knowledge_base_name) or knowledge_base_name.lower() == 'temp':
         return BaseResponse(code=500, msg="Invalid Knowledge Base Name")
-
-    kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
-    if kb is not None:
-        return BaseResponse(code=500, msg=Message_I18N.API_KB_EXIST.value.format(kb_name=knowledge_base_name))
+    if knowledge_base_name_cn is None or knowledge_base_name_cn.strip() == "":
+        return BaseResponse(code=500, msg=Message_I18N.API_PARAM_NOT_PRESENT.value.format(
+            name="knowledge_base_name_cn"))
 
     kb = KBServiceFactory.get_service(knowledge_base_name, vector_store_type, embed_model)
     try:
         if knowledge_base_info is not None and knowledge_base_info.strip() != "":
             kb.kb_info = knowledge_base_info
-        if knowledge_base_name_cn is not None and knowledge_base_name_cn.strip() != "":
-            kb.kb_name_cn = knowledge_base_name_cn
+        kb.kb_name_cn = knowledge_base_name_cn
         kb.create_kb()
     except Exception as e:
         msg = f"创建知识库出错： {e}"

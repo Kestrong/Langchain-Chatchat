@@ -14,7 +14,7 @@ if OssType.MINIO.value in oss_base.oss_config and oss_base.oss_config[OssType.MI
 
 
 def default_oss() -> Base:
-    return oss_factory[oss_base.oss_config.get("default_type", OssType.FILESYSTEM)]
+    return oss_factory[oss_base.oss_config.get("default_type", OssType.FILESYSTEM.value)]
 
 
 def get_oss(type: OssType) -> Base:

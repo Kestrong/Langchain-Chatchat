@@ -62,7 +62,7 @@ class KBService(ABC):
                  ):
         self.kb_name = knowledge_base_name
         self.kb_name_cn = f"{knowledge_base_name}知识库"
-        self.kb_info = KB_INFO.get(knowledge_base_name, f"关于{knowledge_base_name}的知识库")
+        self.kb_info = KB_INFO.get(knowledge_base_name)
         self.embed_model = embed_model
         self.kb_path = get_kb_path(self.kb_name)
         self.doc_path = get_doc_path(self.kb_name)

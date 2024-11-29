@@ -7,7 +7,6 @@ from fastchat.conversation import Conversation
 
 from configs import logger
 from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
-from server.knowledge_base.oss import default_oss
 from server.model_workers import ApiModelWorker, ApiChatParams
 
 
@@ -32,7 +31,6 @@ class LingxiCutOverWorker(ApiModelWorker):
         content = params.messages[-1].get('content')
         contentObj = json.loads(content)
         assistant_id = contentObj.get('assistant_id')
-        knowledge_id = contentObj.get('knowledge_id')
         assistant = None
         if assistant_id and assistant_id >= 0:
             assistant = get_assistant_simple_from_db(assistant_id)
@@ -42,17 +40,24 @@ class LingxiCutOverWorker(ApiModelWorker):
             role_meta.update(model_config)
         url = model_config.get('api_proxy', params.api_proxy)
         headers = {"x-access-token": contentObj.get('token')}
-        data = {"question": contentObj.get('question', ''), "scene": contentObj.get('scene', '')}
+        data = {
+            "attachmentUrl": "string",
+            "endTime": 0,
+            "operatorList": [],
+            "question": "string",
+            "reviewerList": [],
+            "scene": "string",
+            "startTime": 0,
+            "deviceList": [],
+            "testLeaderList": [],
+            "supporterList": []
+        }
+        for k in data.keys():
+            if k in contentObj:
+                data[k] = contentObj[k]
         try:
-            attachment = []
-            if knowledge_id:
-                attachment_names = default_oss().list_objects(bucket_name="temp", object_name=knowledge_id)
-                if attachment_names:
-                    for a in attachment_names:
-                        o = default_oss().get_object(bucket_name="temp", object_name=f"{knowledge_id}/{a}")
-                        attachment.append(("attachment", (a, o)))
             with requests.post(url, stream=False, headers=headers, timeout=role_meta.get("timeout", 30),
-                               data=data, files=attachment) as response:
+                               json=data) as response:
                 if response.status_code != 200:
                     logger.error(response.text)
                     response.raise_for_status()

@@ -1,6 +1,9 @@
+from base64 import b64encode, b64decode
 from datetime import datetime
 
 import pydantic
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
 from pydantic import BaseModel
 from typing import List
 from fastapi import FastAPI
@@ -730,3 +733,29 @@ def get_temp_dir(id: str = None) -> Tuple[str, str]:
 
     path = tempfile.mkdtemp(dir=BASE_TEMP_DIR)
     return path, os.path.basename(path)
+
+
+def aes_encrypt(text: str, key: str) -> str:
+    key = bytes(key, encoding='utf-8')
+    cipher = AES.new(key, AES.MODE_CBC, key)
+    # 对消息进行填充
+    padded_message = pad(text.encode(), AES.block_size)
+    # 进行加密
+    encrypted_bytes = cipher.encrypt(padded_message)
+    # 将加密后的字节串转化为Base64编码的字符串
+    encoded_cipher_text = b64encode(encrypted_bytes).decode()
+    return encoded_cipher_text
+
+
+def aes_decrypt(text: str, key: str):
+    key = bytes(key, encoding='utf-8')
+    # 将Base64编码的字符串转化为字节串
+    decoded_cipher_text = b64decode(text)
+    cipher = AES.new(key, AES.MODE_CBC, key)
+    # 解密
+    decrypted_padded_bytes = cipher.decrypt(decoded_cipher_text)
+    # 去除填充
+    unpadded_decrypted_bytes = unpad(decrypted_padded_bytes, AES.block_size)
+    # 将字节串转化为字符串
+    decrypted_message = unpadded_decrypted_bytes.decode()
+    return decrypted_message

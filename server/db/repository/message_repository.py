@@ -4,13 +4,14 @@ from typing import Dict
 from sqlalchemy import func
 
 from server.db.models.message_model import MessageModel
+from server.db.repository import add_conversation_to_db
 from server.db.session import with_session
 from server.memory.token_info_memory import get_token_info
 
 
 @with_session
 def add_message_to_db(session, conversation_id: str, chat_type, query, response=None, message_id=None,
-                      metadata: Dict = {}, store: bool = True):
+                      assistant_id=None, metadata: Dict = {}, store: bool = True):
     """
     新增聊天记录
     """
@@ -18,6 +19,8 @@ def add_message_to_db(session, conversation_id: str, chat_type, query, response=
         message_id = uuid.uuid4().hex
     if not store:
         return message_id
+    conversation_id = add_conversation_to_db(chat_type=chat_type, conversation_id=conversation_id, name=query,
+                                             assistant_id=assistant_id)
     m = MessageModel(id=message_id, chat_type=chat_type, query=query, response=response,
                      conversation_id=conversation_id, create_by=get_token_info().get("userId"),
                      meta_data=metadata)

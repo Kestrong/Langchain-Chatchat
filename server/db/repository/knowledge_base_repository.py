@@ -2,9 +2,7 @@ from sqlalchemy import func
 
 from server.db.models.knowledge_base_model import KnowledgeBaseModel
 from server.db.session import with_session
-from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import get_token_info
-from common.exceptions import ChatBusinessException
 
 
 @with_session
@@ -12,24 +10,14 @@ def add_kb_to_db(session, kb_name, kb_name_cn, kb_info, vs_type, embed_model):
     # 创建知识库实例
     kb = session.query(KnowledgeBaseModel).filter(KnowledgeBaseModel.kb_name == kb_name).first()
     if not kb:
-        kb_cn = session.query(KnowledgeBaseModel).filter(KnowledgeBaseModel.kb_name_cn == kb_name_cn).first()
-        if kb_cn is not None:
-            raise ChatBusinessException(Message_I18N.API_KB_EXIST.value.format(kb_name=kb_name_cn))
         token_info = get_token_info()
         kb = KnowledgeBaseModel(kb_name=kb_name, kb_name_cn=kb_name_cn, kb_info=kb_info, vs_type=vs_type,
                                 embed_model=embed_model, create_by=token_info.get("userId"),
                                 tenant_id=token_info.get("tenantId"))
         session.add(kb)
     else:  # update kb with new vs_type and embed_model
-        if kb_name_cn is not None:
-            kb_cn = session.query(KnowledgeBaseModel).filter(KnowledgeBaseModel.kb_name_cn == kb_name_cn,
-                                                             KnowledgeBaseModel.id != kb.id).first()
-            if kb_cn is not None:
-                raise ChatBusinessException(Message_I18N.API_KB_EXIST.value.format(kb_name=kb_name_cn))
         kb.kb_info = kb_info if kb_info is not None else kb.kb_info
-        kb.vs_type = vs_type if vs_type is not None else kb.vs_type
         kb.kb_name_cn = kb_name_cn if kb_name_cn is not None else kb.kb_name_cn
-        kb.embed_model = embed_model if embed_model is not None else kb.embed_model
     return True
 
 
@@ -44,7 +32,7 @@ def list_kbs_from_db(session, page_size: int = 10, page_num: int = 1, keyword: s
     if tenant_id is not None and tenant_id != "":
         filters.append(KnowledgeBaseModel.tenant_id == tenant_id)
     if keyword is not None and keyword.strip() != "":
-        filters.append(KnowledgeBaseModel.kb_name.like(f"%{keyword}%"))
+        filters.append(KnowledgeBaseModel.kb_name_cn.like(f"%{keyword}%"))
     if not all_kbs:
         kbs = session.query(KnowledgeBaseModel).filter(*filters).offset(offset).limit(page_size).all()
         total = session.query(func.count(KnowledgeBaseModel.id)).filter(*filters).scalar()

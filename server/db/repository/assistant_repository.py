@@ -1,5 +1,4 @@
-import uuid
-
+from shortuuid import uuid
 from sqlalchemy import func, or_
 
 from server.db.models.assistant_model import AssistantModel
@@ -13,7 +12,7 @@ def add_assistant_to_db(session, name: str, name_en: str, code: str, avatar: str
                         prologue: str, history_len: int, top_k: int, score_threshold: float, knowledge_base_ids: str,
                         force_feedback: str, extra: dict, model_config: dict, tool_config: dict, sort_id: int):
     if not code:
-        code = str(uuid.uuid4()).upper()[:8]
+        code = str(uuid())
     c = AssistantModel(name=name, name_en=name_en, code=code, avatar=avatar, prompt=prompt, model_name=model_name,
                        prologue=prologue, knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback,
                        history_len=history_len, top_k=top_k, score_threshold=score_threshold,
@@ -36,7 +35,7 @@ def update_assistant_to_db(session, name: str, name_en: str, code: str, assistan
         if code and assistant.code != code:
             assistant.code = code
         if not assistant.code:
-            assistant.code = str(uuid.uuid4()).upper()[:8]
+            assistant.code = str(uuid())
         assistant.avatar = avatar
         assistant.prompt = prompt
         assistant.model_name = model_name
@@ -51,7 +50,7 @@ def update_assistant_to_db(session, name: str, name_en: str, code: str, assistan
         assistant.tool_config = tool_config if tool_config else assistant.tool_config
         assistant.sort_id = sort_id
     else:
-        raise ValueError("Assistant with id {} does not exist".format(assistant))
+        raise ValueError("Assistant with id {} does not exist".format(assistant_id))
     return assistant.id
 
 

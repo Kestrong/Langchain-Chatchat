@@ -122,6 +122,7 @@ async def lookup_search_engine(
 
 
 async def search_engine_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
+                             assistant_id: int = Body(-1, description="助手ID"),
                              conversation_id: str = Body("", description="对话框ID"),
                              search_engine_name: str = Body(..., description="搜索引擎名称", examples=["duckduckgo"]),
                              top_k: int = Body(SEARCH_ENGINE_TOP_K, description="检索结果数量"),
@@ -171,7 +172,7 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
 
         callbacks = [callback]
         message_id = add_message_to_db(chat_type=ChatType.SEARCH_ENGINE_CHAT.value, query=query,
-                                       conversation_id=conversation_id, store=store_message)
+                                       conversation_id=conversation_id, store=store_message, assistant_id=assistant_id)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, query=query,
                                                             chat_type=ChatType.SEARCH_ENGINE_CHAT.value, )

@@ -89,7 +89,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
             search_engine_name is not None and search_engine_name != ''):
 
         return await search_engine_chat(query=query, conversation_id=conversation_id, store_message=store_message,
-                                        search_engine_name=search_engine_name, top_k=top_k,
+                                        search_engine_name=search_engine_name, top_k=top_k, assistant_id=assistant_id,
                                         history=history, stream=stream, model_name=model_name, temperature=temperature,
                                         max_tokens=max_tokens, prompt_name=prompt_name, split_result=split_result)
 
@@ -102,22 +102,23 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                 if len(tool_names) == 1 and tool_config.get(tool_names[0], {}).get("call_direct", False):
                     return await tool_chat(query=query, knowledge_id=knowledge_id, conversation_id=conversation_id,
                                            extra=extra, tool_names=tool_names, api_names=api_names,
-                                           store_message=store_message)
+                                           store_message=store_message, assistant_id=assistant_id)
 
         return await agent_chat(query=query, history=history, stream=stream, model_name=model_name,
                                 temperature=temperature, tool_names=tool_names, conversation_id=conversation_id,
                                 store_message=store_message, max_tokens=max_tokens, prompt_name=origin_prompt_name,
-                                api_names=api_names)
+                                api_names=api_names, assistant_id=assistant_id)
 
     elif chat_type == ChatType.FILE_CHAT.value or (knowledge_id and not un_format_online_llm_model(model_name)):
 
         return await file_chat(query=query, knowledge_id=knowledge_id, history=history, stream=stream,
                                model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                               prompt_name=prompt_name, conversation_id=conversation_id, store_message=store_message, )
+                               prompt_name=prompt_name, conversation_id=conversation_id, store_message=store_message,
+                               assistant_id=assistant_id)
 
     elif chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or knowledge_base_names:
 
-        return await knowledge_base_chat(query=query, conversation_id=conversation_id,
+        return await knowledge_base_chat(query=query, conversation_id=conversation_id, assistant_id=assistant_id,
                                          knowledge_base_names=knowledge_base_names, top_k=top_k,
                                          score_threshold=score_threshold, history=history, stream=stream,
                                          model_name=model_name, temperature=temperature, max_tokens=max_tokens,
@@ -134,4 +135,4 @@ async def chat_router(query: str = Body(..., description="用户输入", example
         return await chat(query=query, extra=extra, conversation_id=conversation_id,
                           history_len=history_len, history=history, stream=stream,
                           model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                          prompt_name=prompt_name, store_message=store_message)
+                          prompt_name=prompt_name, store_message=store_message, assistant_id=assistant_id)
