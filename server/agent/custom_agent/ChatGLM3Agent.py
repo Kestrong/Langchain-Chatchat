@@ -160,7 +160,7 @@ class StructuredGLM3ChatAgent(Agent):
         return ChatPromptTemplate(
             input_variables=input_variables,
             input_types={
-                "chat_history": typing.List[
+                "history": typing.List[
                     typing.Union[
                         AIMessage,
                         HumanMessage,
@@ -178,7 +178,7 @@ class StructuredGLM3ChatAgent(Agent):
                     )
                 ),
                 langchain_core.prompts.MessagesPlaceholder(
-                    variable_name="chat_history", optional=True
+                    variable_name="history", optional=True
                 ),
                 langchain_core.prompts.HumanMessagePromptTemplate(
                     prompt=langchain_core.prompts.PromptTemplate(

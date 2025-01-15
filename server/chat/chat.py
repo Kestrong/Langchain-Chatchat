@@ -47,6 +47,8 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                ):
     origin_query = query
     message_id = uuid.uuid4().hex
+    if not conversation_id:
+        conversation_id = uuid.uuid4().hex
     if un_format_online_llm_model(model_name):
         extra['question'] = query
         extra['stream'] = stream
@@ -60,7 +62,6 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         nonlocal history, max_tokens
         callback = AsyncIteratorCallbackHandler()
         callbacks = [callback]
-        memory = None
 
         # 负责保存llm response到message db
         add_message_to_db(chat_type=ChatType.LLM_CHAT.value, query=origin_query, conversation_id=conversation_id,
@@ -92,29 +93,24 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
             callbacks=[callback],
         )
 
+        prompt_template = get_prompt_template("llm_chat", prompt_name)
+        input_msg = History(role="user", content=prompt_template).to_msg_template(False)
         if history:  # 优先使用前端传入的历史消息
             history = [History.from_data(h) for h in history]
-            prompt_template = get_prompt_template("llm_chat", prompt_name)
-            input_msg = History(role="user", content=prompt_template).to_msg_template(False)
-            chat_prompt = ChatPromptTemplate.from_messages(
-                [i.to_msg_template() for i in history] + [input_msg])
+            chat_prompt = ChatPromptTemplate.from_messages([i.to_msg_template() for i in history] + [input_msg])
         elif conversation_id and history_len > 0:  # 前端要求从数据库取历史消息
-            # 使用memory 时必须 prompt 必须含有memory.memory_key 对应的变量
-            prompt = get_prompt_template("llm_chat", "with_history")
-            chat_prompt = PromptTemplate.from_template(prompt, template_format="jinja2")
             # 根据conversation_id 获取message 列表进而拼凑 memory
             memory = ConversationBufferDBMemory(conversation_id=conversation_id,
                                                 llm=model,
                                                 message_limit=history_len)
+            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_msg])
         else:
-            prompt_template = get_prompt_template("llm_chat", prompt_name)
-            input_msg = History(role="user", content=prompt_template).to_msg_template(False)
             chat_prompt = ChatPromptTemplate.from_messages([input_msg])
 
         if un_format_online_llm_model(model_name):
             chat_prompt = EMPTY_LLM_CHAT_PROMPT
 
-        chain = LLMChain(prompt=chat_prompt, llm=model, memory=memory)
+        chain = LLMChain(prompt=chat_prompt, llm=model)
 
         # Begin a task that runs in the background.
         task = asyncio.create_task(wrap_done(

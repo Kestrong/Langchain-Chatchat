@@ -1,5 +1,6 @@
 import asyncio
 import json
+import uuid
 from typing import AsyncIterable
 from typing import List, Optional, Dict
 
@@ -24,6 +25,7 @@ from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, wrap_event_response, un_format_online_llm_model
 from server.db.repository import add_message_to_db
+from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
 from server.utils import BaseResponse, get_prompt_template
 from server.utils import wrap_done, get_ChatOpenAI
@@ -126,6 +128,7 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
                              conversation_id: str = Body("", description="对话框ID"),
                              search_engine_name: str = Body(..., description="搜索引擎名称", examples=["duckduckgo"]),
                              top_k: int = Body(SEARCH_ENGINE_TOP_K, description="检索结果数量"),
+                             history_len: int = Body(-1, description="从数据库中取历史消息的数量"),
                              history: List[History] = Body([],
                                                            description="历史对话",
                                                            examples=[[
@@ -157,6 +160,8 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
             chat_type=ChatType.SEARCH_ENGINE_CHAT.value, model_name=model_name))
 
     history = [History.from_data(h) for h in history]
+    if not conversation_id:
+        conversation_id = uuid.uuid4().hex
 
     async def search_engine_chat_iterator(query: str,
                                           search_engine_name: str,
@@ -208,9 +213,16 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
 
         prompt_template = get_prompt_template("search_engine_chat", prompt_name)
         input_msg = History(role="user", content=prompt_template).to_msg_template(False)
-        chat_prompt = ChatPromptTemplate.from_messages(
-            [i.to_msg_template() for i in history] + [input_msg])
-
+        if history:  # 优先使用前端传入的历史消息
+            chat_prompt = ChatPromptTemplate.from_messages([i.to_msg_template() for i in history] + [input_msg])
+        elif conversation_id and history_len > 0:  # 前端要求从数据库取历史消息
+            # 根据conversation_id 获取message 列表进而拼凑 memory
+            memory = ConversationBufferDBMemory(conversation_id=conversation_id,
+                                                llm=model,
+                                                message_limit=history_len)
+            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_msg])
+        else:
+            chat_prompt = ChatPromptTemplate.from_messages([input_msg])
         chain = LLMChain(prompt=chat_prompt, llm=model)
 
         # Begin a task that runs in the background.

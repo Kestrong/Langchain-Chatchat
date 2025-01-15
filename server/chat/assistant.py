@@ -28,6 +28,7 @@ def create_assistant(avatar: str = Body(None, description="头像图标"),
                      sort_id: int = Body(0, description="排序顺序,值越小越靠前"),
                      model_config: Dict[str, Any] = Body({}, description="模型附加配置"),
                      tool_config: Dict[str, Any] = Body({}, description="工具配置"),
+                     workflow_config: Dict[str, Any] = Body({}, description="流程配置"),
                      extra: Dict[str, Any] = Body({}, description="附加属性")) -> BaseResponse:
     try:
         assistant_id = add_assistant_to_db(name=name, name_en=name_en, code=code, avatar=avatar, prompt=prompt,
@@ -35,7 +36,7 @@ def create_assistant(avatar: str = Body(None, description="头像图标"),
                                            knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback,
                                            history_len=history_len, top_k=top_k, score_threshold=score_threshold,
                                            extra=extra, model_config=model_config,
-                                           tool_config=tool_config, sort_id=sort_id)
+                                           tool_config=tool_config, workflow_config=workflow_config, sort_id=sort_id)
     except Exception as e:
         msg = f"创建助手出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
@@ -60,6 +61,7 @@ def update_assistant(id: int = Body(description="助手id"),
                      sort_id: int = Body(0, description="排序顺序,值越小越靠前"),
                      model_config: Dict[str, Any] = Body(None, description="模型附加配置"),
                      tool_config: Dict[str, Any] = Body({}, description="工具配置"),
+                     workflow_config: Dict[str, Any] = Body({}, description="流程配置"),
                      extra: Dict[str, Any] = Body(None, description="附加属性")) -> BaseResponse:
     try:
         assistant_id = update_assistant_to_db(assistant_id=id, name=name, name_en=name_en, code=code, avatar=avatar,
@@ -67,7 +69,7 @@ def update_assistant(id: int = Body(description="助手id"),
                                               model_config=model_config, knowledge_base_ids=knowledge_base_ids,
                                               force_feedback=force_feedback, history_len=history_len, top_k=top_k,
                                               score_threshold=score_threshold, extra=extra,
-                                              tool_config=tool_config, sort_id=sort_id)
+                                              tool_config=tool_config, workflow_config=workflow_config, sort_id=sort_id)
     except Exception as e:
         msg = f"修改助手出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',

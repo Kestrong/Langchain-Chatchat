@@ -80,6 +80,7 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
     mount_model_routes(app=app)
     mount_server_routes(app=app)
     mount_tool_routes(app=app)
+    mount_workflow_routes(app=app)
 
     # 其它接口
     app.post("/other/completion", tags=["Other"], summary="要求llm模型补全(通过LLMChain)", )(completion)
@@ -93,6 +94,7 @@ def mount_chat_routes(app: FastAPI):
     from server.chat.knowledge_base_chat import knowledge_base_chat
     from server.chat.file_chat import file_chat
     from server.chat.agent_chat import agent_chat
+    from server.chat.workflow_chat import workflow_chat
     from server.chat.feedback import chat_feedback
     from server.chat.conversation import create_conversation, delete_conversation, update_conversation, filter_message, \
         filter_conversation, delete_message, delete_user_conversation
@@ -110,6 +112,7 @@ def mount_chat_routes(app: FastAPI):
     chat_router.post("/knowledge_base_chat", summary="与知识库对话")(knowledge_base_chat)
     chat_router.post("/file_chat", summary="文件对话")(file_chat)
     chat_router.post("/agent_chat", summary="与agent对话")(agent_chat)
+    chat_router.post("/workflow_chat", summary="工作流对话", )(workflow_chat)
     chat_router.post("/feedback", summary="返回llm模型对话评分", )(chat_feedback)
     chat_router.post("/stop", summary="停止llm模型对话", )(stop)
     chat_router.get("/conversations", summary="获取会话", )(filter_conversation)
@@ -225,6 +228,19 @@ def mount_server_routes(app: FastAPI):
 
     app.include_router(server_router)
     return server_router
+
+
+def mount_workflow_routes(app: FastAPI):
+    from server.workflow import components
+
+    workflow_router = APIRouter(prefix="/workflow", tags=["Workflow"])
+
+    @workflow_router.get("/components", summary="工作流组件信息")
+    def get_components() -> BaseResponse:
+        return BaseResponse(code=200, data=components)
+
+    app.include_router(workflow_router)
+    return workflow_router
 
 
 def run_api(host, port, **kwargs):
