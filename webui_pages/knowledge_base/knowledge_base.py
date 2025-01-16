@@ -145,6 +145,7 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
                 ret = api.create_knowledge_base(
                     knowledge_base_name=kb_name,
                     knowledge_base_name_cn=kb_name_cn,
+                    knowledge_base_info=kb_info,
                     vector_store_type=vs_type,
                     embed_model=embed_model,
                 )

@@ -31,7 +31,8 @@ class KnowledgeSearchInput(BaseModel):
 template = (
     "Use local knowledgebase from one or more of these:\n{KB_info}\n to get information, Only local data on "
     "this knowledge use this tool. The 'knowledgebase' param must be one of the above key."
-).format(KB_info="\n".join([kb["kb_name"] + ":" + kb["kb_info"] for kb in list_kbs_from_db(all_kbs=True)[0]]))
+).format(KB_info="\n".join(
+    [kb["kb_name"] + ":" + (kb["kb_info"] or kb["kb_name_cn"]) for kb in list_kbs_from_db(all_kbs=True)[0]]))
 
 
 @register_tool(title='知识库搜索',

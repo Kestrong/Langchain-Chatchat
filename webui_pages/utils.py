@@ -530,6 +530,7 @@ class ApiRequest:
             self,
             knowledge_base_name: str,
             knowledge_base_name_cn: str,
+            knowledge_base_info: str,
             vector_store_type: str = DEFAULT_VS_TYPE,
             embed_model: str = EMBEDDING_MODEL,
     ):
@@ -539,6 +540,7 @@ class ApiRequest:
         data = {
             "knowledge_base_name": knowledge_base_name,
             "knowledge_base_name_cn": knowledge_base_name_cn,
+            "knowledge_base_info": knowledge_base_info,
             "vector_store_type": vector_store_type,
             "embed_model": embed_model,
         }
