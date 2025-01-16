@@ -1,5 +1,6 @@
 import asyncio
 import json
+import uuid
 from typing import AsyncIterable
 from typing import List, Optional, Union
 
@@ -10,20 +11,22 @@ from langchain.prompts import PromptTemplate
 from langchain.prompts.chat import ChatPromptTemplate
 from sse_starlette.sse import EventSourceResponse
 
-from server.chat.task_manager import task_manager
 from configs import LLM_MODELS, TEMPERATURE
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
-    wrap_event_response
+from server.chat.task_manager import task_manager
+from server.chat.utils import History, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
+    wrap_event_response, un_format_online_llm_model
 from server.db.repository import add_message_to_db
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
+from server.model_workers import ApiModelParams
 from server.utils import get_prompt_template
 from server.utils import wrap_done, get_ChatOpenAI
 
 
 async def chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
+               assistant_id: int = Body(-1, description="助手ID"),
                extra: dict = Body({}, description="额外的属性"),
                conversation_id: str = Body("", description="对话框ID"),
                history_len: int = Body(-1, description="从数据库中取历史消息的数量"),
@@ -43,23 +46,29 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                store_message: bool = Body(True, description="是否保存消息到数据库"),
                ):
     origin_query = query
-    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+    message_id = uuid.uuid4().hex
+    if not conversation_id:
+        conversation_id = uuid.uuid4().hex
+    if un_format_online_llm_model(model_name):
         extra['question'] = query
         extra['stream'] = stream
+        apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=model_name)
+        if 'FastgptWorker' == apiModelParams.provider:
+            extra['conversation_id'] = conversation_id
+            extra['message_id'] = message_id
         query = json.dumps(extra)
 
     async def chat_iterator() -> AsyncIterable[str]:
         nonlocal history, max_tokens
         callback = AsyncIteratorCallbackHandler()
         callbacks = [callback]
-        memory = None
 
         # 负责保存llm response到message db
-        message_id = add_message_to_db(chat_type=ChatType.LLM_CHAT.value, query=origin_query,
-                                       conversation_id=conversation_id, store=store_message)
+        add_message_to_db(chat_type=ChatType.LLM_CHAT.value, query=origin_query, conversation_id=conversation_id,
+                          store=store_message, message_id=message_id, assistant_id=assistant_id)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type=ChatType.LLM_CHAT.value,
-                                                            query=query)
+                                                            query=origin_query)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         callbacks.extend([conversation_callback, task_callback])
         # message_id = uuid.uuid4().hex
@@ -84,29 +93,24 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
             callbacks=[callback],
         )
 
+        prompt_template = get_prompt_template("llm_chat", prompt_name)
+        input_msg = History(role="user", content=prompt_template).to_msg_template(False)
         if history:  # 优先使用前端传入的历史消息
             history = [History.from_data(h) for h in history]
-            prompt_template = get_prompt_template("llm_chat", prompt_name)
-            input_msg = History(role="user", content=prompt_template).to_msg_template(False)
-            chat_prompt = ChatPromptTemplate.from_messages(
-                [i.to_msg_template() for i in history] + [input_msg])
+            chat_prompt = ChatPromptTemplate.from_messages([i.to_msg_template() for i in history] + [input_msg])
         elif conversation_id and history_len > 0:  # 前端要求从数据库取历史消息
-            # 使用memory 时必须 prompt 必须含有memory.memory_key 对应的变量
-            prompt = get_prompt_template("llm_chat", "with_history")
-            chat_prompt = PromptTemplate.from_template(prompt, template_format="jinja2")
             # 根据conversation_id 获取message 列表进而拼凑 memory
             memory = ConversationBufferDBMemory(conversation_id=conversation_id,
                                                 llm=model,
                                                 message_limit=history_len)
+            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_msg])
         else:
-            prompt_template = get_prompt_template("llm_chat", prompt_name)
-            input_msg = History(role="user", content=prompt_template).to_msg_template(False)
             chat_prompt = ChatPromptTemplate.from_messages([input_msg])
 
-        if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+        if un_format_online_llm_model(model_name):
             chat_prompt = EMPTY_LLM_CHAT_PROMPT
 
-        chain = LLMChain(prompt=chat_prompt, llm=model, memory=memory)
+        chain = LLMChain(prompt=chat_prompt, llm=model)
 
         # Begin a task that runs in the background.
         task = asyncio.create_task(wrap_done(

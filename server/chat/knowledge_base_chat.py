@@ -1,5 +1,6 @@
 import asyncio
 import json
+import uuid
 from collections import OrderedDict
 from typing import AsyncIterable, List, Optional
 
@@ -21,18 +22,19 @@ from server.callback_handler.conversation_callback_handler import ConversationCa
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
+from server.chat.utils import History, wrap_event_response, un_format_online_llm_model
 from server.db.repository import add_message_to_db
 from server.knowledge_base.kb_doc_api import search_docs
 from server.knowledge_base.kb_service.base import KBServiceFactory
+from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
-from server.reranker.reranker import LangchainReranker
 from server.utils import BaseResponse, get_prompt_template
 from server.utils import embedding_device
 from server.utils import wrap_done, get_ChatOpenAI, get_model_path
 
 
 async def knowledge_base_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
+                              assistant_id: int = Body(-1, description="助手ID"),
                               conversation_id: str = Body("", description="对话框ID"),
                               knowledge_base_names: List[str] = Body([], description="知识库名称",
                                                                      examples=[["samples"]]),
@@ -43,6 +45,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                   ge=0,
                                   le=2
                               ),
+                              history_len: int = Body(-1, description="从数据库中取历史消息的数量"),
                               history: List[History] = Body(
                                   [],
                                   description="历史对话",
@@ -74,11 +77,14 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
 
     history = [History.from_data(h) for h in history]
 
-    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+    if un_format_online_llm_model(model_name):
         return BaseResponse(code=500,
                             msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(
                                 chat_type=ChatType.KNOWLEDGE_BASE_CHAT.value,
                                 model_name=model_name))
+
+    if not conversation_id:
+        conversation_id = uuid.uuid4().hex
 
     async def knowledge_base_chat_iterator(
             query: str,
@@ -91,6 +97,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         callback = AsyncIteratorCallbackHandler()
         # 负责保存llm response到message db
         message_id = add_message_to_db(chat_type=ChatType.KNOWLEDGE_BASE_CHAT.value, query=query,
+                                       assistant_id=assistant_id,
                                        conversation_id=conversation_id, store=store_message)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, query=query,
@@ -130,6 +137,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
 
         # 加入reranker
         if USE_RERANKER:
+            from server.reranker.reranker import LangchainReranker
             reranker_model_path = get_model_path(RERANKER_MODEL)
             reranker_model = LangchainReranker(top_n=max(top_k // 2, 3),
                                                device=embedding_device(),
@@ -165,7 +173,16 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
 
         prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
         input_msg = History(role="user", content=prompt_template).to_msg_template(False)
-        chat_prompt = ChatPromptTemplate.from_messages([i.to_msg_template() for i in history] + [input_msg])
+        if history:  # 优先使用前端传入的历史消息
+            chat_prompt = ChatPromptTemplate.from_messages([i.to_msg_template() for i in history] + [input_msg])
+        elif conversation_id and history_len > 0:  # 前端要求从数据库取历史消息
+            # 根据conversation_id 获取message 列表进而拼凑 memory
+            memory = ConversationBufferDBMemory(conversation_id=conversation_id,
+                                                llm=model,
+                                                message_limit=history_len)
+            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_msg])
+        else:
+            chat_prompt = ChatPromptTemplate.from_messages([input_msg])
 
         chain = LLMChain(prompt=chat_prompt, llm=model)
 

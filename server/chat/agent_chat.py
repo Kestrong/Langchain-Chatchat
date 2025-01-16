@@ -1,6 +1,7 @@
 import asyncio
 import json
-from typing import AsyncIterable, Optional, List, Dict, Any
+import uuid
+from typing import AsyncIterable, Optional, List, Dict, Any, Union
 
 from fastapi import Body
 from langchain.agents import AgentExecutor, LLMSingleActionAgent
@@ -10,7 +11,7 @@ from langchain.memory import ConversationBufferWindowMemory
 from sse_starlette.sse import EventSourceResponse
 
 from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, logger
-from server.agent import create_model_container, ModelContainer
+from server.agent import create_model_container
 from server.agent.callbacks import AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
 from server.agent.custom_agent.ChatGLM3Agent import initialize_glm3_agent
 from server.agent.custom_template import CustomOutputParser, CustomPromptTemplate
@@ -20,19 +21,19 @@ from server.callback_handler.conversation_callback_handler import ConversationCa
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
-from server.db.repository import add_message_to_db, get_assistant_simple_from_db
+from server.chat.utils import History, wrap_event_response, un_format_online_llm_model
+from server.db.repository import add_message_to_db, get_assistant_simple_from_db, update_message
+from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
 from server.utils import wrap_done, get_ChatOpenAI, get_prompt_template, BaseResponse, get_tool_config
 
 
-def get_available_tools(tool_names: List[str], api_names: List[str], model_container: ModelContainer, ):
+def get_available_tools(tool_names: List[str], api_names: List[str], tool_config: dict):
     if tool_names is not None and len(tool_names) > 0:
         available_tools = []
         for tool_name in tool_names:
             if tool_name == 'http_request':
-                apis = model_container.TOOL_CONFIG.get("http_request",
-                                                       get_tool_config().TOOL_CONFIG.get("http_request", {})).get(
+                apis = tool_config.get("http_request", get_tool_config().TOOL_CONFIG.get("http_request", {})).get(
                     "apis", [])
                 available_tools.extend([create_dynamic_tool(api, _http_request) for api in apis if
                                         not api_names or api.get("name") in api_names])
@@ -46,7 +47,9 @@ def get_available_tools(tool_names: List[str], api_names: List[str], model_conta
 
 
 async def agent_chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
+                     assistant_id: int = Body(-1, description="助手ID"),
                      conversation_id: str = Body("", description="对话框ID"),
+                     history_len: int = Body(-1, description="从数据库中取历史消息的数量"),
                      history: List[History] = Body([],
                                                    description="历史对话",
                                                    examples=[[
@@ -64,14 +67,16 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                      api_names: List[str] = Body([], description="api的名称"),
                      store_message: bool = Body(True, description="是否保存消息到数据库"),
                      ):
-    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+    if not conversation_id:
+        conversation_id = uuid.uuid4().hex
+    if un_format_online_llm_model(model_name):
         return BaseResponse(code=500,
                             msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(chat_type=ChatType.AGENT_CHAT.value,
                                                                                     model_name=model_name))
 
     history = [History.from_data(h) for h in history]
     model_container = create_model_container()
-    available_tools = get_available_tools(tool_names, api_names, model_container)
+    available_tools = get_available_tools(tool_names, api_names, model_container.TOOL_CONFIG)
 
     if not available_tools:
         return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
@@ -91,7 +96,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         callbacks = [callback]
         message_id = add_message_to_db(chat_type=ChatType.AGENT_CHAT.value, query=query,
                                        conversation_id=conversation_id,
-                                       store=store_message)
+                                       store=store_message, assistant_id=assistant_id)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type=ChatType.AGENT_CHAT.value,
                                                             query=query, agent=True)
@@ -119,22 +124,27 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             template=prompt_template,
             tools=available_tools,
             template_format='jinja2',
-            input_variables=["input", "intermediate_steps"]
+            input_variables=["input", "intermediate_steps", "history"]
         )
         llm_chain = LLMChain(llm=model, prompt=prompt_template_agent)
         memory = ConversationBufferWindowMemory(k=max(HISTORY_LEN * 2, len(history) if history else 0))
-        for message in history:
-            if message.role == 'user':
-                memory.chat_memory.add_user_message(message.content)
-            else:
-                memory.chat_memory.add_ai_message(message.content)
+        if history:
+            for message in history:
+                if message.role == 'user':
+                    memory.chat_memory.add_user_message(message.content)
+                else:
+                    memory.chat_memory.add_ai_message(message.content)
+        elif conversation_id and history_len > 0:
+            memory = ConversationBufferDBMemory(conversation_id=conversation_id,
+                                                llm=model,
+                                                message_limit=history_len)
         if "chatglm3" in model_name or "zhipu-api" in model_name:
             agent_executor = initialize_glm3_agent(
                 llm=model,
                 tools=available_tools,
                 callback_manager=None,
                 prompt=prompt_template,
-                input_variables=["input", "intermediate_steps"],
+                input_variables=["input", "intermediate_steps", "history"],
                 memory=memory,
                 verbose=True,
             )
@@ -231,11 +241,93 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                    ))
 
 
+async def do_call_tool_chain(walk_results: List[Any], tool_name: str, api_names: List[str],
+                             extra: Union[Dict[str, Any], Any]):
+    model_container = create_model_container()
+    tool_config = model_container.TOOL_CONFIG
+    a_tool_config = tool_config.get(tool_name, get_tool_config().TOOL_CONFIG.get(tool_name, {}))
+    available_tools = get_available_tools(tool_names=[tool_name], api_names=api_names,
+                                          tool_config=tool_config)
+    if len(available_tools) == 0:
+        return None
+    api_results = []
+    for a in available_tools:
+        tool_input = {}
+        for k, v in a_tool_config.get("default_args", {}).items():
+            if k not in tool_input:
+                tool_input[k] = v
+        if isinstance(extra, dict):
+            tool_input.update(extra)
+        else:
+            for k, v in a.args.items():
+                if k not in tool_input and isinstance(extra, type(v.get("type"))):
+                    tool_input[k] = extra
+                    break
+        result = await a.ainvoke(tool_input)
+        api_results.append(result)
+    if len(available_tools) == 1:
+        api_results = api_results[0]
+    child_tool_config = a_tool_config.get("tool_config", {})
+    if len(child_tool_config) > 0:
+        # todo condition to choose a tool
+        model_container.TOOL_CONFIG = child_tool_config
+        try:
+            results = await do_call_tool_chain(walk_results=walk_results,
+                                               tool_name=list(child_tool_config.keys())[0],
+                                               api_names=[],
+                                               extra=api_results)
+        finally:
+            model_container.TOOL_CONFIG = tool_config
+    else:
+        results = api_results
+    walk_results.append(api_results)
+    return results
+
+
+async def tool_chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
+                    assistant_id: int = Body(-1, description="助手ID"),
+                    knowledge_id: str = Body("", description="临时知识库ID"),
+                    extra: Dict[str, Any] = Body({}, description="额外的属性"),
+                    conversation_id: str = Body("", description="对话框ID"),
+                    tool_names: List[str] = Body([], description="工具的名称"),
+                    api_names: List[str] = Body([], description="api的名称"),
+                    store_message: bool = Body(True, description="是否保存消息到数据库"), ):
+    if not tool_names:
+        return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
+    if not conversation_id:
+        conversation_id = uuid.uuid4().hex
+
+    async def chat_iterator() -> AsyncIterable[str]:
+        message_id = add_message_to_db(chat_type=ChatType.AGENT_CHAT.value, query=query if query else f"{extra}",
+                                       metadata=extra if query else None, conversation_id=conversation_id,
+                                       store=store_message, assistant_id=assistant_id)
+        yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": ""},
+                         ensure_ascii=False)
+        result = None
+        try:
+            extra["knowledge_id"] = knowledge_id
+            extra["question"] = query
+            walk_results = []
+            result = await do_call_tool_chain(walk_results=walk_results,
+                                              tool_name=tool_names[0],
+                                              api_names=api_names,
+                                              extra=extra)
+            walk_results.reverse()
+            logger.debug(f"walk_results:{walk_results}")
+            yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": result},
+                             ensure_ascii=False)
+        finally:
+            if result:
+                update_message(message_id=message_id, response=result)
+
+    return EventSourceResponse(wrap_event_response(chat_iterator()))
+
+
 async def call_tool(
         assistant_id: int = Body(-1, description="助手ID"),
         tool_name: str = Body(examples=["calculate"], description="工具名称"),
         api_name: str = Body(default="", description="接口名称"),
-        tool_input: Dict[str, Any] = Body({}, examples=[{"query": "3+5/2"}]),
+        tool_input: Dict[str, Any] = Body({}, examples=[{"expression": "3+5/2"}]),
 ) -> BaseResponse:
     try:
         if not tool_name:
@@ -248,12 +340,12 @@ async def call_tool(
             tool_config = assistant.get("tool_config")
             if tool_config and len(tool_config) > 0:
                 model_container.TOOL_CONFIG.update(tool_config)
-        available_tools = get_available_tools(tool_names=[tool_name],
-                                              api_names=[api_name],
-                                              model_container=model_container)
-        if not available_tools:
-            return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
-        result = await available_tools[0].ainvoke(tool_input)
+        walk_results = []
+        result = await do_call_tool_chain(walk_results=walk_results,
+                                          tool_name=tool_name, api_names=[api_name],
+                                          extra=tool_input)
+        walk_results.reverse()
+        logger.debug(f"walk_results:{walk_results}")
         return BaseResponse(code=200, data=result)
     except Exception as e:
         logger.error(f"{e}")

@@ -3,8 +3,8 @@ import json
 from fastapi import Body
 from sse_starlette.sse import EventSourceResponse
 from configs import LLM_MODELS, TEMPERATURE
-from server.chat.utils import UN_FORMAT_ONLINE_LLM_MODELS, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
-    wrap_event_response
+from server.chat.utils import EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
+    wrap_event_response, un_format_online_llm_model
 from server.utils import wrap_done, get_ChatOpenAI
 from langchain.chains import LLMChain
 from langchain.callbacks import AsyncIteratorCallbackHandler
@@ -26,7 +26,7 @@ async def completion(query: str = Body(..., description="用户输入", examples
                                              description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                      ):
     # todo 因ApiModelWorker 默认是按chat处理的，会对params["prompt"] 解析为messages，因此ApiModelWorker 使用时需要有相应处理
-    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+    if un_format_online_llm_model(model_name):
         extra['question'] = query
         extra['stream'] = stream
         query = json.dumps(extra)
@@ -46,7 +46,7 @@ async def completion(query: str = Body(..., description="用户输入", examples
             max_tokens=max_tokens,
             callbacks=[callback]
         )
-        if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+        if un_format_online_llm_model(model_name):
             prompt = EMPTY_LLM_CHAT_PROMPT
         else:
             prompt_template = get_prompt_template("completion", prompt_name)

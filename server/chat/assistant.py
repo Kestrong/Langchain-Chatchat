@@ -7,7 +7,7 @@ from configs import LLM_MODELS, HISTORY_LEN
 from configs.basic_config import logger, log_verbose
 from server.db.repository import get_model_metadata_from_db
 from server.db.repository.assistant_repository import add_assistant_to_db, update_assistant_to_db, \
-    delete_assistant_from_db, get_assistant_from_db, get_assistant_detail_from_db
+    delete_assistant_from_db, get_assistants_from_db, get_assistant_detail_from_db
 from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import is_english
 from server.utils import BaseResponse
@@ -16,7 +16,7 @@ from server.utils import BaseResponse
 def create_assistant(avatar: str = Body(None, description="头像图标"),
                      name: str = Body(description="助手名称"),
                      name_en: str = Body(default="", description="助手英文名称"),
-                     code: str = Body(description="助手编码"),
+                     code: str = Body(default=None, description="助手编码"),
                      prompt: str = Body(None, description="提示词模板"),
                      model_name: str = Body(LLM_MODELS[0], description="LLM 模型名称。"),
                      prologue: str = Body(None, description="开场白"),
@@ -28,6 +28,7 @@ def create_assistant(avatar: str = Body(None, description="头像图标"),
                      sort_id: int = Body(0, description="排序顺序,值越小越靠前"),
                      model_config: Dict[str, Any] = Body({}, description="模型附加配置"),
                      tool_config: Dict[str, Any] = Body({}, description="工具配置"),
+                     workflow_config: Dict[str, Any] = Body({}, description="流程配置"),
                      extra: Dict[str, Any] = Body({}, description="附加属性")) -> BaseResponse:
     try:
         assistant_id = add_assistant_to_db(name=name, name_en=name_en, code=code, avatar=avatar, prompt=prompt,
@@ -35,7 +36,7 @@ def create_assistant(avatar: str = Body(None, description="头像图标"),
                                            knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback,
                                            history_len=history_len, top_k=top_k, score_threshold=score_threshold,
                                            extra=extra, model_config=model_config,
-                                           tool_config=tool_config, sort_id=sort_id)
+                                           tool_config=tool_config, workflow_config=workflow_config, sort_id=sort_id)
     except Exception as e:
         msg = f"创建助手出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
@@ -47,7 +48,7 @@ def create_assistant(avatar: str = Body(None, description="头像图标"),
 def update_assistant(id: int = Body(description="助手id"),
                      name: str = Body(description="助手名称"),
                      name_en: str = Body(default="", description="助手英文名称"),
-                     code: str = Body(description="助手编码"),
+                     code: str = Body(default=None, description="助手编码"),
                      avatar: str = Body(None, description="头像图标"),
                      prompt: str = Body(None, description="提示词模板"),
                      model_name: str = Body(LLM_MODELS[0], description="LLM 模型名称。"),
@@ -60,6 +61,7 @@ def update_assistant(id: int = Body(description="助手id"),
                      sort_id: int = Body(0, description="排序顺序,值越小越靠前"),
                      model_config: Dict[str, Any] = Body(None, description="模型附加配置"),
                      tool_config: Dict[str, Any] = Body({}, description="工具配置"),
+                     workflow_config: Dict[str, Any] = Body({}, description="流程配置"),
                      extra: Dict[str, Any] = Body(None, description="附加属性")) -> BaseResponse:
     try:
         assistant_id = update_assistant_to_db(assistant_id=id, name=name, name_en=name_en, code=code, avatar=avatar,
@@ -67,7 +69,7 @@ def update_assistant(id: int = Body(description="助手id"),
                                               model_config=model_config, knowledge_base_ids=knowledge_base_ids,
                                               force_feedback=force_feedback, history_len=history_len, top_k=top_k,
                                               score_threshold=score_threshold, extra=extra,
-                                              tool_config=tool_config, sort_id=sort_id)
+                                              tool_config=tool_config, workflow_config=workflow_config, sort_id=sort_id)
     except Exception as e:
         msg = f"修改助手出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
@@ -90,8 +92,9 @@ def delete_assistant(id: int = Query(description="助手id")) -> BaseResponse:
 def get_assistants(page: int = Query(default=1, description="页码"),
                    size: int = Query(default=100, description="分页大小"),
                    group: bool = Query(default=False, description="是否按模型进行分组"),
+                   code: str = Query(default=None, description="助手code"),
                    keyword: str = Query(default=None, description="关键字搜索")) -> BaseResponse:
-    assistants, total = get_assistant_from_db(page=page, size=size, keyword=keyword)
+    assistants, total = get_assistants_from_db(page=page, size=size, keyword=keyword, code=code)
     result = OrderedDict()
     english = is_english()
     MODEL_METADATA = get_model_metadata_from_db()

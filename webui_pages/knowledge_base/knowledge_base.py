@@ -54,6 +54,8 @@ def file_exists(kb: str, selected_rows: List) -> Tuple[str, str]:
 def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
     try:
         kb_list = {x["kb_name"]: x for x in get_kb_details()}
+        if "temp" in kb_list:
+            del kb_list["temp"]
     except Exception as e:
         st.error(
             "获取知识库信息错误，请检查是否已按照 `README.md` 中 `4 知识库初始化与迁移` 步骤完成初始化或迁移，或是否为数据库连接错误。")
@@ -143,6 +145,7 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
                 ret = api.create_knowledge_base(
                     knowledge_base_name=kb_name,
                     knowledge_base_name_cn=kb_name_cn,
+                    knowledge_base_info=kb_info,
                     vector_store_type=vs_type,
                     embed_model=embed_model,
                 )

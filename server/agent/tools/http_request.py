@@ -1,4 +1,3 @@
-# LangChain 的 ArxivQueryRun 工具
 import json
 
 from langchain_core.prompts.string import DEFAULT_FORMATTER_MAPPING
@@ -27,8 +26,8 @@ def _http_request(api_info: dict, args: dict):
     with get_httpx_client(follow_redirects=True, timeout=api_info.get("timeout", 5)) as client:
         method = api_info.get("method", "POST")
         url = api_info.get("url")
-        headers = {k: decrypt_placeholder(v) for k, v in api_info.get("headers", {})}
-        cookies = {k: decrypt_placeholder(v) for k, v in api_info.get("cookies", {})}
+        headers = {k: decrypt_placeholder(v) if not callable(v) else v() for k, v in api_info.get("headers", {})}
+        cookies = {k: decrypt_placeholder(v) if not callable(v) else v() for k, v in api_info.get("cookies", {})}
 
         if api_info.get("request_template"):
             args = json.loads(DEFAULT_FORMATTER_MAPPING["jinja2"](api_info.get("request_template"), **args).strip())

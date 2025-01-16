@@ -6,7 +6,7 @@ import os
 MODEL_ROOT_PATH = os.environ.get("MODEL_ROOT_PATH", "")
 
 # 选用的 Embedding 名称
-EMBEDDING_MODEL = "bge-large-zh-v1.5"
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "bge-large-zh-v1.5")
 
 # Embedding 模型运行设备。设为 "auto" 会自动检测(会有警告)，也可手动设定为 "cuda","mps","cpu","xpu" 其中之一。
 EMBEDDING_DEVICE = os.environ.get("EMBEDDING_DEVICE", "auto")
@@ -91,10 +91,13 @@ ONLINE_LLM_MODEL = {
 
     # 阿里云通义千问 API，文档参考 https://help.aliyun.com/zh/dashscope/developer-reference/api-details
     "qwen-api": {
+        "api_proxy": "",
         "version": "qwen-max",
-        "api_key": "",
+        "api_key": "EMPTY",
         "provider": "QwenWorker",
-        "embed_model": "text-embedding-v1"  # embedding 模型名称
+        "max_tokens": 4096,
+        "top_p": 0.8,
+        "embed_model": "bge-large-zh-v1.5"  # embedding 模型名称
     },
 
     # 百川 API，申请方式请参考 https://www.baichuan-ai.com/home#api-enter
@@ -139,6 +142,115 @@ ONLINE_LLM_MODEL = {
         "model_name":"claude-3-opus-20240229",
         "provider": "ClaudeWorker",
     },
+    "iotqwen-api": {
+        "version": "iotqwen-v1",
+        "api_proxy": "http://172.25.45.173:20163/v1/chat-messages",
+        "api_key": "app-8HT8uhvcwkIRhmrkQ4HKQn1N",
+        "feedbackUrl": "http://132.246.24.47/v1/messages/{message_id}/feedbacks",
+        "provider": "IotQwenWorker",
+        "role_meta": {
+            "user_id": "100113",
+            "user": "1980ba7b-56d1-47d0-a1ca-2c895cce82fd",
+            "kb_name": "IT",
+            "topk": 5,
+            "score_threshold": "0.5"
+        }
+    },
+    "qiming-api": {
+        "api_proxy": "ws://10.130.154.233:30000/serviceAgent/rest/ws/qiming_scene_v2",
+        "version": "MaaS-Ws-v2",
+        "api_key": "47ea65c645a4b35a63755582208bd49f",
+        "secret_key": "2a619251d61ffa1d6cab5e0683a98c1b",
+        "feedbackUrl": "http://10.128.86.64:8000/serviceAgent/rest/wsc/qimingmaas/feedback",
+        "provider": "QimingWorker",
+        "role_meta": {
+            "prov": "611000000000001824854982",
+            "scene": [
+                {
+                    "name": "规章制度",
+                    "value": "8"
+                },
+                {
+                    "name": "综维问答",
+                    "value": "2"
+                },
+                {
+                    "name": "无线网优",
+                    "value": "3"
+                },
+                {
+                    "name": "装维问答",
+                    "value": "7"
+                },
+                {
+                    "name": "故障复盘",
+                    "value": "6"
+                },
+                {
+                    "name": "传输故障处置",
+                    "value": "1"
+                },
+                {
+                    "name": "IT运维知识助手",
+                    "value": "9"
+                },
+                {
+                    "name": "天翼云知识助手",
+                    "value": "13"
+                }
+            ],
+            "role": [
+                {
+                    "name": "装维一线"
+                },
+                {
+                    "name": "客支"
+                },
+                {
+                    "name": "客调"
+                },
+                {
+                    "name": "客服"
+                },
+                {
+                    "name": "客户"
+                }
+            ],
+            "iTSubScene": [
+                {
+                    "name": "变更操作管控",
+                    "value": "bgczgk"
+                },
+                {
+                    "name": "安全漏洞修复",
+                    "value": "aqldxf"
+                },
+                {
+                    "name": "故障诊断",
+                    "value": "gzzd"
+                },
+                {
+                    "name": "故障自愈",
+                    "value": "gzzy"
+                },
+                {
+                    "name": "运维规范问答",
+                    "value": "ywgfwd"
+                },
+                {
+                    "name": "服务台/翼问赋能",
+                    "value": "fwt"
+                }
+            ]
+        }
+    },
+    "lingxi-fault-api": {
+        "api_proxy": "http://10.10.40.102:8555/openapi/Analysis",
+        "version": "lingxi-fault-v1",
+        "api_key": "123",
+        "secret_key": "123",
+        "provider": "LingxiFaultWorker",
+    }
 }
 
 # 在以下字典中修改属性值，以指定本地embedding模型存储位置。支持3种设置方法：

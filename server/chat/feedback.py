@@ -6,13 +6,13 @@ from configs import logger, log_verbose, LLM_MODELS
 from server.db.repository import feedback_message_to_db, get_message_by_id
 from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import get_token_info
-from server.model_workers.base import ApiChatQimingParams
+from server.model_workers.base import ApiChatWithFeedbackParams
 from server.utils import BaseResponse, get_httpx_client
 
 
 def post_feedback_to_qiming(model_name: str, score: int, reason: str, extra: dict):
     if model_name == 'qiming-api':
-        params = ApiChatQimingParams(messages=[]).load_config(worker_name=model_name)
+        params = ApiChatWithFeedbackParams(messages=[]).load_config(worker_name=model_name)
         headers = {"X-APP-ID": params.api_key, "X-APP-KEY": params.secret_key}
         extra['feedbackProvice'] = params.role_meta['prov']
         feedbackProvider = get_token_info().get('staffName')
@@ -32,9 +32,9 @@ def post_feedback_to_qiming(model_name: str, score: int, reason: str, extra: dic
                 raise Exception('调用启明赞踩接口失败！')
 
 
-def post_feedback_to_iotqwen(message_id: str, model_name: str, score: int, reason: str):
-    if model_name == 'iotqwen-api':
-        params = ApiChatQimingParams(messages=[]).load_config(worker_name=model_name)
+def post_feedback_to_dify(message_id: str, model_name: str, score: int, reason: str):
+    params = ApiChatWithFeedbackParams(messages=[]).load_config(worker_name=model_name)
+    if (model_name == 'iotqwen-api' or 'DifyWorker' == params.provider) and params.feedbackUrl:
         api_key = params.api_key
         data = {
             "rating": 'like' if score >= 0 else 'dislike',
@@ -64,7 +64,35 @@ def post_feedback_to_iotqwen(message_id: str, model_name: str, score: int, reaso
             json_data = response.json()
             if str(json_data.get('result')) != "success":
                 logger.error(json_data)
-                raise Exception('调用物联网大模型赞踩接口失败！')
+                raise Exception('调用dify赞踩接口失败！')
+
+
+def post_feedback_to_fastgpt(message_id: str, model_name: str, score: int, reason: str):
+    params = ApiChatWithFeedbackParams(messages=[]).load_config(worker_name=model_name)
+    if 'FastgptWorker' == params.provider and params.feedbackUrl:
+        api_key = params.api_key
+        data = {
+            "appId": "appId",
+            "chatId": "chatId",
+            "dataId": message_id,
+            "userGoodFeedback": reason
+        }
+        message = get_message_by_id(message_id=message_id)
+        if message:
+            data['chatId'] = message.get('conversation_id')
+            meta_data = message.get('meta_data', {})
+            if 'appId' in meta_data:
+                data['appId'] = meta_data.get('appId')
+        headers = {"Authorization": api_key, "Content-Type": "application/json"}
+        with get_httpx_client(timeout=5) as client:
+            response = client.post(url=params.feedbackUrl, json=data, headers=headers)
+            if response.status_code != 200:
+                logger.error(response.text)
+                response.raise_for_status()
+            json_data = response.json()
+            if str(json_data.get('code')) != "200":
+                logger.error(json_data)
+                raise Exception('调用fastgpt赞踩接口失败！')
 
 
 def chat_feedback(message_id: str = Body(..., max_length=32, description="聊天记录id"),
@@ -75,7 +103,8 @@ def chat_feedback(message_id: str = Body(..., max_length=32, description="聊天
                   ):
     try:
         post_feedback_to_qiming(model_name, score, reason, extra)
-        post_feedback_to_iotqwen(message_id, model_name, score, reason)
+        post_feedback_to_dify(message_id, model_name, score, reason)
+        post_feedback_to_fastgpt(message_id, model_name, score, reason)
         feedback_message_to_db(message_id, score, reason)
     except Exception as e:
         msg = f"反馈聊天记录出错： {e}"

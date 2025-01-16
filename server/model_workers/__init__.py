@@ -10,3 +10,5 @@ from .azure import AzureWorker
 from .tiangong import TianGongWorker
 from .gemini import GeminiWorker
 from .claude import ClaudeWorker
+from .dify import DifyWorker
+from .fastgpt import FastgptWorker

@@ -389,6 +389,8 @@ def recreate_vector_store(
     by default, get_service_by_name only return knowledge base in the info.db and having document files in it.
     set allow_empty_kb to True make it applied on empty knowledge base which it not in the info.db or having no documents.
     """
+    if not validate_kb_name(knowledge_base_name) or knowledge_base_name.lower() == 'temp':
+        return BaseResponse(code=500, msg="Invalid Knowledge Base Name")
 
     def output():
         kb = KBServiceFactory.get_service(knowledge_base_name, vs_type, embed_model)

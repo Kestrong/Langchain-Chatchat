@@ -14,10 +14,11 @@ from server.callback_handler.conversation_callback_handler import ConversationCa
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, UN_FORMAT_ONLINE_LLM_MODELS, wrap_event_response
+from server.chat.utils import History, wrap_event_response, un_format_online_llm_model
 from server.db.repository import add_message_to_db
 from server.knowledge_base.oss import default_oss, OssType, oss_factory
 from server.knowledge_base.utils import KnowledgeFile, get_file_path
+from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
 from server.utils import (wrap_done, get_ChatOpenAI,
                           BaseResponse, get_prompt_template, run_in_thread_pool)
@@ -58,14 +59,39 @@ def _parse_files_in_thread(
         yield result
 
 
+def is_generator_empty(generator):
+    try:
+        next(generator)
+        return False
+    except StopIteration:
+        return True
+
+
+def delete_temp_docs(files: List[str] = Body([], description="删除临时知识库文件"),
+                     prev_id: str = Body("", description="前知识库ID"), ) -> BaseResponse:
+    failed_files = []
+    if prev_id:
+        if files:
+            for f in files:
+                try:
+                    default_oss().delete_object("temp", f"{prev_id}/{f}")
+                except:
+                    failed_files.append(f)
+        if not files or is_generator_empty(default_oss().list_objects(bucket_name="temp", object_name=prev_id)):
+            default_oss().delete_object(bucket_name="temp", object_name=prev_id)
+
+    return BaseResponse(data={"failed_files": failed_files})
+
+
 def upload_temp_docs(
         files: List[UploadFile] = File([], description="上传文件，支持多文件"),
         prev_id: str = Form("", description="前知识库ID"),
+        delete_prev: bool = Form(False, description="是否清空之前上传的文件"),
 ) -> BaseResponse:
     '''
     将文件保存到临时目录，并返回切片文档。
     '''
-    if prev_id:
+    if prev_id and delete_prev:
         default_oss().delete_object(bucket_name="temp", object_name=prev_id)
 
     if not files:
@@ -91,8 +117,10 @@ def upload_temp_docs(
 
 
 async def file_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
+                    assistant_id: int = Body(-1, description="助手ID"),
                     conversation_id: str = Body("", description="对话框ID"),
                     knowledge_id: str = Body("", description="临时知识库ID"),
+                    history_len: int = Body(-1, description="从数据库中取历史消息的数量"),
                     history: List[History] = Body([],
                                                   description="历史对话",
                                                   examples=[[
@@ -109,7 +137,7 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
                                             description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                     store_message: bool = Body(True, description="是否保存消息到数据库"),
                     ):
-    if model_name in UN_FORMAT_ONLINE_LLM_MODELS:
+    if un_format_online_llm_model(model_name):
         return BaseResponse(code=500,
                             msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(chat_type=ChatType.FILE_CHAT.value,
                                                                                     model_name=model_name))
@@ -119,6 +147,8 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
         return BaseResponse(code=500, msg=Message_I18N.API_FILE_NOT_EXIST.value)
 
     history = [History.from_data(h) for h in history]
+    if not conversation_id:
+        conversation_id = uuid.uuid4().hex
 
     async def knowledge_base_chat_iterator() -> AsyncIterable[str]:
         nonlocal max_tokens
@@ -127,7 +157,7 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
             max_tokens = None
 
         callbacks = [callback]
-        message_id = add_message_to_db(chat_type=ChatType.FILE_CHAT.value, query=query,
+        message_id = add_message_to_db(chat_type=ChatType.FILE_CHAT.value, query=query, assistant_id=assistant_id,
                                        conversation_id=conversation_id, store=store_message)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type=ChatType.FILE_CHAT.value,
@@ -171,9 +201,16 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
 
         prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
         input_msg = History(role="user", content=prompt_template).to_msg_template(False)
-        chat_prompt = ChatPromptTemplate.from_messages(
-            [i.to_msg_template() for i in history] + [input_msg])
-
+        if history:  # 优先使用前端传入的历史消息
+            chat_prompt = ChatPromptTemplate.from_messages([i.to_msg_template() for i in history] + [input_msg])
+        elif conversation_id and history_len > 0:  # 前端要求从数据库取历史消息
+            # 根据conversation_id 获取message 列表进而拼凑 memory
+            memory = ConversationBufferDBMemory(conversation_id=conversation_id,
+                                                llm=model,
+                                                message_limit=history_len)
+            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_msg])
+        else:
+            chat_prompt = ChatPromptTemplate.from_messages([input_msg])
         chain = LLMChain(prompt=chat_prompt, llm=model)
 
         # Begin a task that runs in the background.

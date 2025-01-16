@@ -1,4 +1,4 @@
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from server.db.models.chat_menu_model import ChatMenuModel
 from server.db.session import with_session
@@ -52,7 +52,8 @@ def get_menu_from_db(session, page: int = 1, size: int = 10, keyword: str = None
         auth_level = 1
     filters.append(ChatMenuModel.auth_level <= auth_level)
     if keyword is not None and keyword.strip() != '':
-        filters.append(ChatMenuModel.menu_name.ilike('%{}%'.format(keyword)))
+        filters.append(or_(ChatMenuModel.menu_name.ilike('%{}%'.format(keyword)),
+                           ChatMenuModel.menu_name_en.ilike('%{}%'.format(keyword))))
     menus = (session.query(ChatMenuModel).filter(*filters).order_by(ChatMenuModel.sort_id.asc()).offset(offset)
              .limit(page_size).all())
     total = session.query(func.count(ChatMenuModel.id)).filter(*filters).scalar()
