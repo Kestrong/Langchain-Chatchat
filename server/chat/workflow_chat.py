@@ -158,13 +158,16 @@ async def do_workflow_chat(query: str,
                 async for a in iter_node_result(queue, event):
                     response_all_nodes.append(a)
                     db_message_response = a.get("outputs")
-                    yield {"message_id": message_id, "conversation_id": conversation_id, "result": a}
+                    yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": a},
+                                     ensure_ascii=False)
             else:
                 async for a in iter_node_result(queue, event):
                     response_all_nodes.append(a)
                 if response_all_nodes:
                     db_message_response = response_all_nodes[-1].get("outputs")
-                yield {"message_id": message_id, "conversation_id": conversation_id, "result": response_all_nodes}
+                yield json.dumps(
+                    {"message_id": message_id, "conversation_id": conversation_id, "answer": response_all_nodes},
+                    ensure_ascii=False)
             await task
         except BaseException as ex:
             msg = Message_I18N.WORKER_CHAT_CANCELLED.value if isinstance(ex, CancelledError) else f"{ex}"
@@ -172,6 +175,9 @@ async def do_workflow_chat(query: str,
                 msg = type(ex).__name__
             logger.error(msg)
             db_message_response = {"error_info": msg}
+            yield json.dumps(
+                {"message_id": message_id, "conversation_id": conversation_id, "answer": db_message_response},
+                ensure_ascii=False)
         finally:
             try:
                 if (task and not task.done()) or not event.is_set():

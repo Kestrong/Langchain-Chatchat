@@ -1,10 +1,40 @@
+import base64
+import io
+
+from PIL import Image
 from shortuuid import uuid
 from sqlalchemy import func, or_
 
-from server.db.models.assistant_model import AssistantModel
+from server.db.models.assistant_model import AssistantModel, WorkflowAssistantModel
 from server.db.models.knowledge_base_model import KnowledgeBaseModel
 from server.db.session import with_session
 from server.memory.token_info_memory import get_token_info
+
+
+def compress_base64_image(base64_string, output_format='PNG', output_quality=85):
+    if not base64_string:
+        return None
+    # 解码Base64字符串为二进制数据
+    base64_data = base64.b64decode(base64_string.split(',')[1] if ',' in base64_string else base64_string)
+
+    # 将二进制数据加载为图像对象
+    image = Image.open(io.BytesIO(base64_data))
+    image = image.resize((24, 24))
+
+    # 创建一个内存中的文件对象用于保存压缩后的图像
+    compressed_image_io = io.BytesIO()
+
+    # 压缩图像并保存到内存文件对象中
+    image.save(compressed_image_io, format=output_format, quality=output_quality, optimize=True)
+
+    # 获取压缩后的图像的二进制数据
+    compressed_image_io.seek(0)
+    compressed_image_data = compressed_image_io.read()
+
+    # 将压缩后的图像二进制数据编码为Base64字符串
+    compressed_image_b64 = base64.b64encode(compressed_image_data).decode('utf-8')
+
+    return f"data:image/{output_format.lower()};base64,{compressed_image_b64}"
 
 
 @with_session
@@ -14,12 +44,14 @@ def add_assistant_to_db(session, name: str, name_en: str, code: str, avatar: str
                         sort_id: int):
     if not code:
         code = str(uuid())
-    c = AssistantModel(name=name, name_en=name_en, code=code, avatar=avatar, prompt=prompt, model_name=model_name,
-                       prologue=prologue, knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback,
-                       history_len=history_len, top_k=top_k, score_threshold=score_threshold,
-                       create_by=get_token_info().get("userId"), extra=extra,
-                       model_config=model_config, tool_config=tool_config, workflow_config=workflow_config,
-                       sort_id=sort_id)
+    c = WorkflowAssistantModel(name=name, name_en=name_en, code=code, avatar=compress_base64_image(avatar),
+                               prompt=prompt,
+                               model_name=model_name,
+                               prologue=prologue, knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback,
+                               history_len=history_len, top_k=top_k, score_threshold=score_threshold,
+                               create_by=get_token_info().get("userId"), extra=extra,
+                               model_config=model_config, tool_config=tool_config, workflow_config=workflow_config,
+                               sort_id=sort_id)
     session.add(c)
     session.flush()
     return c.id
@@ -30,7 +62,8 @@ def update_assistant_to_db(session, name: str, name_en: str, code: str, assistan
                            model_name: str, history_len: int, top_k: int, score_threshold: float, prologue: str,
                            knowledge_base_ids: str, force_feedback: str, extra: dict, model_config: dict,
                            tool_config: dict, workflow_config: dict, sort_id: int):
-    assistant: AssistantModel = session.query(AssistantModel).filter(AssistantModel.id == assistant_id).first()
+    assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(
+        WorkflowAssistantModel.id == assistant_id).first()
     if assistant is not None:
         assistant.name = name
         assistant.name_en = name_en
@@ -38,7 +71,7 @@ def update_assistant_to_db(session, name: str, name_en: str, code: str, assistan
             assistant.code = code
         if not assistant.code:
             assistant.code = str(uuid())
-        assistant.avatar = avatar
+        assistant.avatar = avatar if avatar == assistant.avatar else compress_base64_image(avatar)
         assistant.prompt = prompt
         assistant.model_name = model_name
         assistant.prologue = prologue
@@ -85,7 +118,8 @@ def get_assistants_from_db(session, page: int = 1, size: int = 100, keyword: str
 
 @with_session
 def get_assistant_detail_from_db(session, assistant_id: int):
-    assistant: AssistantModel = session.query(AssistantModel).filter(AssistantModel.id == assistant_id).first()
+    assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(
+        WorkflowAssistantModel.id == assistant_id).first()
     if assistant is None:
         return None
     data = assistant.dict()
@@ -103,7 +137,8 @@ def get_assistant_detail_from_db(session, assistant_id: int):
 
 @with_session
 def get_assistant_simple_from_db(session, assistant_id: int) -> dict:
-    assistant: AssistantModel = session.query(AssistantModel).filter(AssistantModel.id == assistant_id).first()
+    assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(
+        WorkflowAssistantModel.id == assistant_id).first()
     if assistant is None:
         return {}
     data = assistant.dict()

@@ -6,6 +6,7 @@ import nltk
 from fastapi.security import APIKeyHeader
 from starlette.requests import Request
 
+from common.custom_gzip_middleware import CustomGZipMiddleware
 from server.memory.token_info_memory import set_token, i18n_context
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -53,6 +54,8 @@ def add_middleware(app: FastAPI):
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
+    app.add_middleware(CustomGZipMiddleware, minimum_size=1024)
 
     @app.middleware("http")
     async def set_thread_local_variable(request: Request, call_next):
