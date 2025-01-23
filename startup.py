@@ -29,7 +29,7 @@ from configs import (
     FSCHAT_MODEL_WORKERS,
     API_SERVER,
     WEBUI_SERVER,
-    HTTPX_DEFAULT_TIMEOUT,
+    HTTPX_DEFAULT_TIMEOUT, MAX_TOKENS_INPUT,
 )
 from server.utils import (fschat_controller_address, fschat_model_worker_address,
                           fschat_openai_api_address, get_httpx_client, get_model_worker_config,
@@ -242,6 +242,7 @@ def create_model_worker_app(log_level: str = "INFO", **kwargs) -> FastAPI:
                 stream_interval=args.stream_interval,
                 conv_template=args.conv_template,
                 embed_in_truncate=args.embed_in_truncate,
+                context_len=MAX_TOKENS_INPUT,
             )
             sys.modules["fastchat.serve.model_worker"].args = args
             sys.modules["fastchat.serve.model_worker"].gptq_config = gptq_config
