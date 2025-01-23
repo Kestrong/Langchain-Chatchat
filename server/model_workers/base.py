@@ -1,7 +1,7 @@
 import fastchat.constants
 from fastchat.conversation import Conversation
 
-from configs import LOG_PATH, TEMPERATURE
+from configs import LOG_PATH, TEMPERATURE, MAX_TOKENS_INPUT
 
 fastchat.constants.LOGDIR = LOG_PATH
 from fastchat.serve.base_model_worker import BaseModelWorker
@@ -101,7 +101,7 @@ class ApiModelWorker(BaseModelWorker):
             model_names: List[str],
             controller_addr: str = None,
             worker_addr: str = None,
-            context_len: int = 2048,
+            context_len: int = MAX_TOKENS_INPUT,
             no_register: bool = False,
             **kwargs,
     ):
