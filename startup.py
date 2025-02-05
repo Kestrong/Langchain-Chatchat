@@ -176,6 +176,7 @@ def create_model_worker_app(log_level: str = "INFO", **kwargs) -> FastAPI:
                 llm_engine=engine,
                 conv_template=args.conv_template,
             )
+            worker.context_len = MAX_TOKENS_INPUT
             sys.modules["fastchat.serve.vllm_worker"].engine = engine
             sys.modules["fastchat.serve.vllm_worker"].worker = worker
             sys.modules["fastchat.serve.vllm_worker"].logger.setLevel(log_level)
