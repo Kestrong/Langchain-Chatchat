@@ -28,7 +28,7 @@ def embed_texts(
         if embed_model in list_online_embed_models():  # 使用在线API
             config = get_model_worker_config(embed_model)
             worker_class = config.get("worker_class")
-            worker = worker_class() if worker_class else QwenWorker(model_names=[embed_model])
+            worker = worker_class(model_names=[embed_model]) if worker_class else QwenWorker(model_names=[embed_model])
             embed_model = config.get("embed_model")
             if worker.can_embedding():
                 params = ApiEmbeddingsParams(texts=texts, to_query=to_query, embed_model=embed_model)
