@@ -47,6 +47,7 @@ def get_available_tools(tool_names: List[str], api_names: List[str], tool_config
 
 
 async def agent_chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
+                     extra: Dict[str, Any] = Body({}, description="额外的属性"),
                      assistant_id: int = Body(-1, description="助手ID"),
                      conversation_id: str = Body("", description="对话框ID"),
                      history_len: int = Body(-1, description="从数据库中取历史消息的数量"),
@@ -76,6 +77,9 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
 
     history = [History.from_data(h) for h in history]
     model_container = create_model_container()
+    if extra:
+        model_container.TOOL_ARGS.update(extra)
+    model_container.TOOL_ARGS["query"] = query
     available_tools = get_available_tools(tool_names, api_names, model_container.TOOL_CONFIG)
 
     if not available_tools:
@@ -296,6 +300,8 @@ async def tool_chat(query: str = Body(..., description="用户输入", examples=
         return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
     if not conversation_id:
         conversation_id = uuid.uuid4().hex
+    if extra:
+        create_model_container().TOOL_ARGS.update(extra)
 
     async def chat_iterator() -> AsyncIterable[str]:
         message_id = add_message_to_db(chat_type=ChatType.AGENT_CHAT.value, query=query if query else f"{extra}",
@@ -335,6 +341,8 @@ async def call_tool(
         if tool_name == 'http_request' and not api_name:
             return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
         model_container = create_model_container()
+        if tool_input:
+            model_container.TOOL_ARGS.update(tool_input)
         if assistant_id >= 0:
             assistant = get_assistant_simple_from_db(assistant_id=assistant_id)
             tool_config = assistant.get("tool_config")

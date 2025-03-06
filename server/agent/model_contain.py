@@ -5,6 +5,7 @@ class ModelContainer:
     def __init__(self):
         self.MODEL = None
         self.TOOL_CONFIG: dict = {}
+        self.TOOL_ARGS: dict = {}
 
 
 # 创建一个线程本地变量
