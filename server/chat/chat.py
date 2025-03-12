@@ -142,22 +142,17 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
 def recommend_question(query: str = Body(..., description="用户输入", examples=["今天天气很好"]),
                        context: Dict[str, Any] = Body({}, description="额外的属性帮助大模型理解问题和生成内容"),
                        model_name: str = Body(LLM_MODELS[0], description="LLM模型名称"),
-                       prompt: str = Body("", description="使用的prompt，为空使用默认的")) -> BaseResponse:
+                       prompt: str = Body("default", description="使用的prompt，为空使用默认的")) -> BaseResponse:
     model = get_ChatOpenAI(
         model_name=model_name,
         temperature=TEMPERATURE,
         streaming=True,
     )
     if prompt is None or prompt.strip() == '':
-        prompt = """
-            You are an expert at perform query expansion. Given the question and context, if there are multiple common ways of phrasing a user question 
-            or common synonyms for key words in the question, make sure to return multiple versions of the query with the different phrasings.
-            Question: {{ query }}
-            Context: {{ context }}
-            Return only 3 versions of the question in Chinese. Just output a json list without other words directly:
-            """
-    template = PromptTemplate(input_variables=["query", "context"], template=prompt, template_format="jinja2")
+        prompt = 'default'
+    prompt = get_prompt_template('recommend_question', prompt)
+    template = PromptTemplate(input_variables=["question", "context"], template=prompt, template_format="jinja2")
     chain = LLMChain(llm=model, prompt=template)
-    result = chain.predict_and_parse(**{"query": query, "context": context})
+    result = chain.predict_and_parse(**{"question": query, "context": context})
 
     return BaseResponse(code=200, data=json.loads(parse_json_md(result)))
