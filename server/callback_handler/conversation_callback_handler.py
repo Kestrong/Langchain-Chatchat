@@ -42,7 +42,18 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             **kwargs: Any,
     ) -> Any:
         if self.agent and not self.updated:
-            self.update_message(finish.return_values.get('output'))
+            final_answer = finish.return_values["output"]
+            metadata = None
+            if final_answer.startswith("{") and final_answer.endswith("}"):
+                try:
+                    f = json.loads(final_answer)
+                    if 'metadata' in f:
+                        metadata = f['metadata']
+                        del f['metadata']
+                    final_answer = json.dumps(f, ensure_ascii=False)
+                except Exception:
+                    pass
+            self.update_message(final_answer, metadata=metadata)
             self.generated_tokens = []
             self.updated = True
 
@@ -64,9 +75,10 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         if not self.agent:
             self.generated_tokens.append(token)
 
-    def update_message(self, answer: str, error: str = None):
+    def update_message(self, answer: str, metadata: dict = None, error: str = None):
         mark = f'###[{self.model_name}]###'
-        metadata = {}
+        if metadata is None:
+            metadata = {}
         if answer.startswith(mark) and answer.endswith(mark):
             parts = answer.split(mark)
             answer = ''

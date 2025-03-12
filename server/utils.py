@@ -1,3 +1,4 @@
+import re
 from base64 import b64encode, b64decode
 from datetime import datetime
 
@@ -482,9 +483,7 @@ def get_prompt_template(type: str, name: str) -> Optional[str]:
     from configs import prompt_config
     import importlib
     importlib.reload(prompt_config)
-    if name.startswith('[*safe_prompt*]') and name.endswith('[*safe_prompt*]'):
-        return name.lstrip('[*safe_prompt*]').rstrip('[*safe_prompt*]')
-    return prompt_config.PROMPT_TEMPLATES[type].get(name)
+    return prompt_config.PROMPT_TEMPLATES.get(type, {}).get(name, name)
 
 
 def get_tool_config():
@@ -759,3 +758,21 @@ def aes_decrypt(text: str, key: str):
     # 将字节串转化为字符串
     decrypted_message = unpadded_decrypted_bytes.decode()
     return decrypted_message
+
+
+def parse_sql_md(command):
+    if "```" in command:
+        # 使用正则表达式匹配```sql```和紧接着的结束```之间的内容
+        match = re.search(r'```(sql)?(.*?)```', command, re.DOTALL)
+        if match:
+            command = match.group(2)
+    return command
+
+
+def parse_json_md(command):
+    if "```" in command:
+        # 使用正则表达式匹配```json```和紧接着的结束```之间的内容
+        match = re.search(r'```(json)?(.*?)```', command, re.DOTALL)
+        if match:
+            command = match.group(2)
+    return command

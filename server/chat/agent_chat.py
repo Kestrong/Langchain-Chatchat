@@ -230,7 +230,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                         input_str=str(data.get("input_str")),
                         output_str=str(data.get("output_str")))
                 elif data["status"] == AgentStatus.agent_finish:
-                    answer = data["final_answer"]
+                    answer += data["final_answer"]
                 else:
                     thought += data["llm_token"]
 

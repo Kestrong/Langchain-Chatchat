@@ -113,9 +113,8 @@ async def do_chat_router(query: str,
                 if kbs:
                     knowledge_base_names = [kb["kb_name"] for kb in kbs]
             prompt = assistant.get('prompt')
-            if prompt is not None and prompt.strip() != '' and not prompt_name.startswith(
-                    '[*safe_prompt*]') and not prompt_name.endswith('[*safe_prompt*]'):
-                prompt_name = '[*safe_prompt*]' + prompt + '[*safe_prompt*]'
+            if prompt is not None and prompt.strip() != '':
+                prompt_name = prompt
             config_history_len: int = assistant.get('history_len', HISTORY_LEN)
             if history:
                 if 0 < config_history_len < len(history):

@@ -106,8 +106,6 @@ class LocalLLMComponent(Component):
         stream = False
         store_message = False
         prompt = inputs.get("prompt") or state.get("prompt")
-        if prompt is not None and prompt.strip() != '':
-            prompt = '[*safe_prompt*]' + prompt + '[*safe_prompt*]'
         if not prompt:
             prompt = "default"
         model_name = inputs.get("model_name")
