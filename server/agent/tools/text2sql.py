@@ -688,7 +688,10 @@ def text2sql(query: str):
                  "summarize": summarize, "metadata": {"table_info": table_info}},
                 default=complex_handler, ensure_ascii=False)
         return Message_I18N.TOOL_SQL_DETAIL_PRODUCE.value.format(sql=parse_sql_md(sql),
-                                                                 records=json.dumps(records, default=complex_handler),
+                                                                 records=json.dumps(
+                                                                     {"chart_type": judge_chart_type(origin_query),
+                                                                      "column_map": column_map, "records": records, },
+                                                                     default=complex_handler),
                                                                  summarize=summarize)
     except Exception as e:
         logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
