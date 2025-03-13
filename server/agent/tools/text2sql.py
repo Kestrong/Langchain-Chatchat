@@ -1,16 +1,437 @@
+import json
+from copy import copy
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Dict, Any, Optional, Union, Literal, Sequence, List
+
+from langchain.chains import LLMChain
+from langchain.chains.sql_database.prompt import PROMPT, PROMPT_SUFFIX
+from langchain_community.tools.sql_database.prompt import QUERY_CHECKER
 from langchain_community.utilities import SQLDatabase
-from langchain_experimental.sql import SQLDatabaseSequentialChain
+from langchain_community.utilities.sql_database import truncate_word, _format_index
+from langchain_core.callbacks import CallbackManagerForChainRun
+from langchain_core.language_models import BaseLanguageModel
+from langchain_core.prompts import PromptTemplate, BasePromptTemplate
+from langchain_experimental.sql import SQLDatabaseSequentialChain, SQLDatabaseChain
+from langchain_experimental.sql.base import SQL_QUERY, INTERMEDIATE_STEPS_KEY
 from pydantic import BaseModel, Field
-from sqlalchemy import event
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import event, Executable, Result, Table, select, quoted_name
+from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.sql.ddl import CreateTable
+from sqlalchemy.sql.sqltypes import NullType
 
 from configs import logger, log_verbose
-from server.agent import get_model_container
-from server.agent.tools.aes import decrypt_placeholder
+from server.agent import get_model_container, ModelContainer
 from server.agent.tools_select import register_tool
 from server.db.base import create_engine_wrapper
+from server.knowledge_base.kb_doc_api import search_docs
 from server.memory.message_i18n import Message_I18N
-from server.utils import get_ChatOpenAI, get_tool_config
+from server.utils import get_ChatOpenAI, get_tool_config, parse_json_md, parse_sql_md
+
+# _DECIDER_TEMPLATE = """Given the below input question and map of potential tables with comment.
+# Let's think step by step, every table maybe has same relevant tables, make sure you don't miss them.
+# Question: {query}
+# Table Name And Comment Map: {table_names}
+# Pay attention to do not use more than 3 tables unless it is necessary.
+# Please only output a json list of the table names that may be necessary to answer this question directly: """
+
+_DECIDER_TEMPLATE = """Given a question and a JSON map where the key is the table name and the value is the table comment. 
+Let's think step by step, there must be a clear logical connection between the question and the chosen table, every table maybe has same relevant tables, make sure you don't miss them. 
+Please only output a json list of the table names(wrap with double quote "") that may be necessary to answer this question directly. If no table is relevant according to the question, output an empty list []. 
+You are not allowed to output anything else outside of this specification. Only a list of table name in map or [] can return.
+Pay attention to do not use more than 3 tables unless it is necessary.
+Question: {query}
+Table Map: {table_names}
+Output:[your answer here]
+"""
+
+DECIDER_PROMPT = PromptTemplate(input_variables=["query", "table_names"], template=_DECIDER_TEMPLATE, )
+
+_DECIDER_DB_TEMPLATE = """Given a question and a JSON map where the key is the database name and the value is the database description, determine which database is most relevant to the question. 
+There must be a clear logical connection between the question and the chosen database. 
+If a relevant database is found, output its name directly. If no database is relevant according to the question, output an empty string "". 
+You are not allowed to output anything else outside of this specification. Only the key in map or "" can return.
+Question: {query}
+Database Map: {database_names}
+Output:[your answer here]
+"""
+
+DECIDER_DB_PROMPT = PromptTemplate(input_variables=["query", "database_names"], template=_DECIDER_DB_TEMPLATE, )
+
+_mysql_prompt = """You are a MySQL expert. Given an input question, create a syntactically correct SQL query to run. Let's think step by step. Ensure that:
+1. Use `LIMIT {top_k}` to limit the number of returned results.
+2. Apply an `ORDER BY` clause to retrieve the most informative data.
+3. Assign a unique alias for each table and prefix each column with its table alias to avoid ambiguity.
+4. Only select columns necessary to answer the question; do not use `SELECT *`. Make sure at least one column from each involved table is queried.
+5. For questions involving "today", utilize the `CURDATE()` function to get the current date.
+6. Do not use `LIKE` in JOIN conditions to maintain query performance.
+7. Carefully verify that all referenced column names exist within the specified tables.
+
+Follow this format strictly:
+Question: [Your question here]
+SQLQuery: [Your SQL query here, crafted following the above guidelines]
+"""
+
+MYSQL_PROMPT = PromptTemplate(
+    input_variables=["input", "table_info", "top_k"],
+    template=_mysql_prompt + PROMPT_SUFFIX,
+)
+
+_postgres_prompt = """You are a PostgreSQL expert. Given an input question, create a syntactically correct SQL query to run. Let's think step by step. Ensure that:
+1. Use `LIMIT {top_k}` to limit the number of returned results.
+2. Apply an `ORDER BY` clause to retrieve the most informative data.
+3. Assign a unique alias for each table and prefix each column with its table alias to avoid ambiguity.
+4. Only select columns necessary to answer the question; do not use `SELECT *`. Make sure at least one column from each involved table is queried.
+5. For questions involving "today", utilize the `CURRENT_DATE` function to get the current date.
+6. Do not use `LIKE` in JOIN conditions to maintain query performance.
+7. Carefully verify that all referenced column names exist within the specified tables.
+
+Follow this format strictly:
+Question: [Your question here]
+SQLQuery: [Your SQL query here, crafted following the above guidelines]
+"""
+
+POSTGRES_PROMPT = PromptTemplate(
+    input_variables=["input", "table_info", "top_k"],
+    template=_postgres_prompt + PROMPT_SUFFIX,
+)
+
+SQL_PROMPTS = {
+    "mysql": MYSQL_PROMPT,
+    "postgresql": POSTGRES_PROMPT,
+}
+
+SQL_WRAPPER = {"mysql": "`"}
+
+
+class CustomSQLDatabaseChain(SQLDatabaseChain):
+
+    def _call(
+            self,
+            inputs: Dict[str, Any],
+            run_manager: Optional[CallbackManagerForChainRun] = None,
+    ) -> Dict[str, Any]:
+        _run_manager = run_manager or CallbackManagerForChainRun.get_noop_manager()
+        input_text = f"{inputs[self.input_key]}, only return {self.top_k} records, \n{SQL_QUERY}"
+        _run_manager.on_text(input_text, verbose=self.verbose)
+        # If not present, then defaults to None which is all tables.
+        table_names_to_use = inputs.get("table_names_to_use")
+        intermediate_steps: List = []
+        if not table_names_to_use:
+            return {}
+        table_info = self.database.get_table_info(table_names=table_names_to_use)
+        llm_inputs = {
+            "input": input_text,
+            "top_k": str(self.top_k),
+            "dialect": self.database.dialect,
+            "table_info": table_info,
+            "stop": ["\nSQLResult:"],
+        }
+        if self.memory is not None:
+            for k in self.memory.memory_variables:
+                llm_inputs[k] = inputs[k]
+        try:
+            intermediate_steps.append(llm_inputs.copy())  # input: sql generation
+            sql_cmd = inputs["sql_cmd"] if inputs["sql_cmd"] else self.llm_chain.predict(
+                callbacks=_run_manager.get_child(),
+                **llm_inputs,
+            ).strip()
+            if self.return_sql:
+                return {self.output_key: sql_cmd}
+            if not self.use_query_checker:
+                _run_manager.on_text(sql_cmd, color="green", verbose=self.verbose)
+                intermediate_steps.append(
+                    sql_cmd
+                )  # output: sql generation (no checker)
+                intermediate_steps.append({"sql_cmd": sql_cmd})  # input: sql exec
+                if SQL_QUERY in sql_cmd:
+                    sql_cmd = sql_cmd.split(SQL_QUERY)[1].strip()
+                result = self.database.run(command=sql_cmd, include_columns=True)
+                intermediate_steps.append(result)  # output: sql exec
+            else:
+                query_checker_prompt = self.query_checker_prompt or PromptTemplate(
+                    template=QUERY_CHECKER, input_variables=["query", "dialect"]
+                )
+                query_checker_chain = LLMChain(
+                    llm=self.llm_chain.llm, prompt=query_checker_prompt
+                )
+                query_checker_inputs = {
+                    "query": sql_cmd,
+                    "dialect": self.database.dialect,
+                }
+                checked_sql_command: str = query_checker_chain.predict(
+                    callbacks=_run_manager.get_child(), **query_checker_inputs
+                ).strip()
+                intermediate_steps.append(
+                    checked_sql_command
+                )  # output: sql generation (checker)
+                _run_manager.on_text(
+                    checked_sql_command, color="green", verbose=self.verbose
+                )
+                intermediate_steps.append(
+                    {"sql_cmd": checked_sql_command}
+                )  # input: sql exec
+                result = self.database.run(command=checked_sql_command, include_columns=True)
+                intermediate_steps.append(result)  # output: sql exec
+                sql_cmd = checked_sql_command
+
+            _run_manager.on_text("\nSQLResult: ", verbose=self.verbose)
+            _run_manager.on_text(result, color="yellow", verbose=self.verbose)
+            # If return direct, we just set the final result equal to
+            # the result of the sql query result, otherwise try to get a human readable
+            # final answer
+            if self.return_direct:
+                final_result = result
+            else:
+                _run_manager.on_text("\nAnswer:", verbose=self.verbose)
+                input_text += f"{sql_cmd}\nSQLResult: {result}\nAnswer:"
+                llm_inputs["input"] = input_text
+                intermediate_steps.append(llm_inputs.copy())  # input: final answer
+                final_result = self.llm_chain.predict(
+                    callbacks=_run_manager.get_child(),
+                    **llm_inputs,
+                ).strip()
+                intermediate_steps.append(final_result)  # output: final answer
+                _run_manager.on_text(final_result, color="green", verbose=self.verbose)
+            chain_result: Dict[str, Any] = {self.output_key: final_result}
+            if self.return_intermediate_steps:
+                chain_result[INTERMEDIATE_STEPS_KEY] = intermediate_steps
+            return chain_result
+        except Exception as exc:
+            # Append intermediate steps to exception, to aid in logging and later
+            # improvement of few shot prompt seeds
+            exc.intermediate_steps = intermediate_steps  # type: ignore
+            raise exc
+
+
+class CustomSQLDatabaseSequentialChain(SQLDatabaseSequentialChain):
+    fill_table_in_prompt: bool = True
+
+    @classmethod
+    def from_llm(
+            cls,
+            llm: BaseLanguageModel,
+            db: SQLDatabase,
+            query_prompt: BasePromptTemplate = PROMPT,
+            decider_prompt: BasePromptTemplate = DECIDER_PROMPT,
+            **kwargs: Any,
+    ) -> SQLDatabaseSequentialChain:
+        """Load the necessary chains."""
+        sql_chain = CustomSQLDatabaseChain.from_llm(llm, db, prompt=query_prompt, **kwargs)
+        decider_chain = LLMChain(
+            llm=llm, prompt=decider_prompt, output_key="table_names"
+        )
+        return cls(sql_chain=sql_chain, decider_chain=decider_chain, **kwargs)
+
+    def _call(
+            self,
+            inputs: Dict[str, Any],
+            run_manager: Optional[CallbackManagerForChainRun] = None,
+    ) -> Dict[str, Any]:
+        _run_manager = run_manager or CallbackManagerForChainRun.get_noop_manager()
+        _table_names = self.sql_chain.database.get_usable_table_names()
+        llm_inputs = {
+            "query": inputs[self.input_key],
+            "table_names": "[]",
+        }
+        if self.fill_table_in_prompt:
+            _table_comments = {}
+            table_comments = self.sql_chain.database.__getattribute__('table_comments')
+            for a in self.sql_chain.database._metadata.sorted_tables:
+                if table_comments and table_comments.get(a.name):
+                    a.comment = table_comments.get(a.name)
+                _table_comments[a.name] = a.comment
+            table_names_comment_map = {t: _table_comments.get(t) or "" for t in _table_names}
+            llm_inputs["table_names"] = f"{table_names_comment_map}"
+        _lowercased_table_names = [name.lower() for name in _table_names]
+        table_names_predict = self.decider_chain.predict(**llm_inputs)
+        table_names_predict = [t for t in json.loads(parse_json_md(table_names_predict).replace("'", '"'))]
+        table_names_to_use = [
+            name
+            for name in table_names_predict
+            if name.lower() in _lowercased_table_names
+        ]
+        _run_manager.on_text("Table names to use:", end="\n", verbose=self.verbose)
+        _run_manager.on_text(
+            str(table_names_to_use), color="yellow", verbose=self.verbose
+        )
+        new_inputs = {
+            self.sql_chain.input_key: inputs[self.input_key],
+            "table_names_to_use": table_names_to_use,
+            "sql_cmd": inputs["sql_cmd"]
+        }
+        return self.sql_chain(
+            new_inputs, callbacks=_run_manager.get_child(), return_only_outputs=True
+        )
+
+
+class CustomSQLDatabase(SQLDatabase):
+    table_comments: dict = {}
+
+    def _get_sample_rows(self, table: Table) -> str:
+        # build the select command
+        name_parts = table.name.split(".")
+        if len(name_parts) == 2:
+            copy_table = copy(table)
+            copy_table.name = quoted_name.construct(name_parts[1].replace(SQL_WRAPPER.get(self.dialect, ""), ""),
+                                                    True)
+            copy_table.schema = quoted_name.construct(name_parts[0].replace(SQL_WRAPPER.get(self.dialect, ""), ""),
+                                                      True)
+            for a in copy_table.c:
+                a.table.name = copy_table.name
+                a.table.schema = copy_table.schema
+        else:
+            copy_table = table
+        command = select(copy_table).limit(self._sample_rows_in_table_info)
+        # save the columns in string format
+        columns_str = "\t".join([col.name for col in table.columns])
+
+        try:
+            # get the sample rows
+            with self._engine.connect() as connection:
+                sample_rows_result = connection.execute(command)  # type: ignore
+                # shorten values in the sample rows
+                sample_rows = list(
+                    map(lambda ls: [str(i)[:100] for i in ls], sample_rows_result)
+                )
+            if not sample_rows:
+                return ""
+            # save the sample rows in string format
+            sample_rows_str = "\n".join(["\t".join(row) for row in sample_rows])
+
+        # in some dialects when there are no rows in the table a
+        # 'ProgrammingError' is returned
+        except ProgrammingError as e:
+            return ""
+
+        return (
+            f"{self._sample_rows_in_table_info} rows from {table.name} table:\n"
+            f"{columns_str}\n"
+            f"{sample_rows_str}"
+        )
+
+    def get_table_info(self, table_names: Optional[List[str]] = None) -> str:
+        all_table_names = self.get_usable_table_names()
+        if table_names is not None:
+            missing_tables = set(table_names).difference(all_table_names)
+            if missing_tables:
+                raise ValueError(f"table_names {missing_tables} not found in database")
+            all_table_names = table_names
+
+        meta_tables = [
+            tbl
+            for tbl in self._metadata.sorted_tables
+            if tbl.name in set(all_table_names)
+               and not (self.dialect == "sqlite" and tbl.name.startswith("sqlite_"))
+        ]
+
+        tables = []
+        for table in meta_tables:
+            if self._custom_table_info and table.name in self._custom_table_info:
+                tables.append(self._custom_table_info[table.name])
+                continue
+
+            # Ignore JSON datatyped columns
+            for k, v in table.columns.items():
+                if type(v.type) is NullType:
+                    table._columns.remove(v)
+
+            # add create table command
+            name_parts = table.name.split(".")
+            if len(name_parts) == 2:
+                copy_table = copy(table)
+                copy_table.name = name_parts[1]
+                copy_table.schema = quoted_name.construct(name_parts[0].replace(SQL_WRAPPER.get(self.dialect, ""), ""),
+                                                          True)
+                create_table = str(CreateTable(copy_table).compile(self._engine))
+            else:
+                create_table = str(CreateTable(table).compile(self._engine))
+            comment_stmt = ""
+            if self.dialect == 'postgresql':
+                if table.comment:
+                    comment_stmt += f"COMMENT ON TABLE {table.name} IS '{table.comment}';\n"
+                for column in table.columns:
+                    if column.comment:
+                        comment_stmt += f"COMMENT ON COLUMN {table.name}.{column.name} IS '{column.comment}';\n"
+            table_info = f"{create_table.rstrip()};{comment_stmt}"
+            has_extra_info = (
+                    self._indexes_in_table_info or self._sample_rows_in_table_info
+            )
+            extra_info = ""
+            if self._indexes_in_table_info:
+                index_info = self._get_table_indexes(table)
+                if index_info:
+                    extra_info += f"\n{index_info}\n"
+            if self._sample_rows_in_table_info:
+                sample_rows_info = self._get_sample_rows(table)
+                if sample_rows_info:
+                    extra_info += f"\n{sample_rows_info}\n"
+            if has_extra_info and extra_info:
+                table_info += f"\n\n/*{extra_info}*/"
+            tables.append(table_info)
+        tables.sort()
+        final_str = "\n\n".join(tables)
+        return final_str
+
+    def _get_table_indexes(self, table: Table) -> str:
+        indexes = [{"unique": i.unique, "name": i.name, "column_names": [a.name for a in i.columns]} for i in
+                   table.indexes]
+        indexes_formatted = "\n".join(map(_format_index, indexes))
+        return f"Table Indexes:\n{indexes_formatted}"
+
+    def run(
+            self,
+            command: Union[str, Executable],
+            fetch: Literal["all", "one", "cursor"] = "all",
+            include_columns: bool = False,
+            *,
+            parameters: Optional[Dict[str, Any]] = None,
+            execution_options: Optional[Dict[str, Any]] = None,
+    ) -> Union[str, Sequence[Dict[str, Any]], Result[Any]]:
+        """Execute a SQL command and return a string representing the results.
+
+        If the statement returns rows, a string of the results is returned.
+        If the statement returns no rows, an empty string is returned.
+        """
+        result = self._execute(
+            command, fetch, parameters=parameters, execution_options=execution_options
+        )
+
+        if fetch == "cursor":
+            return result
+
+        res = [
+            {
+                column: truncate_word(value, length=self._max_string_length)
+                for column, value in r.items()
+            }
+            for r in result
+        ]
+
+        if not include_columns:
+            res = [tuple(row.values()) for row in res]  # type: ignore[misc]
+
+        if not res:
+            return []
+        else:
+            return res
+
+    def _execute(
+            self,
+            command: Union[str, Executable],
+            fetch: Literal["all", "one", "cursor"] = "all",
+            *,
+            parameters: Optional[Dict[str, Any]] = None,
+            execution_options: Optional[Dict[str, Any]] = None,
+    ) -> Union[Sequence[Dict[str, Any]], Result]:
+        if isinstance(command, str):
+            command = parse_sql_md(command)
+        return super()._execute(
+            command,
+            fetch=fetch,
+            parameters=parameters,
+            execution_options=execution_options,
+        )
 
 
 # 定义一个拦截器函数来检查SQL语句，以支持read-only,可修改下面的write_operations，以匹配你使用的数据库写操作关键字
@@ -35,85 +456,244 @@ def intercept_sql(conn, cursor, statement, parameters, context, executemany):
         )
 
 
+def complex_handler(obj):
+    if isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, date):
+        return obj.isoformat()
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    else:
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+
+def judge_chart_type(query: str):
+    if "折线图" in query:
+        return "line"
+    elif "饼图" in query:
+        return "pie"
+    elif "柱状图" in query:
+        return "bar"
+    elif "表格" in query:
+        return "table"
+    else:
+        return "table"
+
+
 class Text2SqlInput(BaseModel):
     query: str = Field(description="user input")
 
 
 @register_tool(title="文本转SQL",
-               description="Use this tool to chat with database,Input natural language, then it will convert it into SQL(remind to clean up ```sql```) and execute it in the database, then return the execution result.",
+               description="Use this tool to chat with database,Input natural language, then it will convert it into SQL and execute it in the database, then return the execution result.",
                args_schema=Text2SqlInput)
 def text2sql(query: str):
+    model_container = get_model_container() or ModelContainer()
+    model_container.TOOL_RERUN = False
+    if model_container.TOOL_ARGS.get("query"):
+        query = model_container.TOOL_ARGS.get("query")
     origin_query = query
-    model_container = get_model_container()
 
     text2sql_config_bak = get_tool_config().TOOL_CONFIG.get("text2sql", {})
     text2sql_config: dict = model_container.TOOL_CONFIG.get('text2sql', {})
     model_name = text2sql_config.get('model_name', text2sql_config_bak.get('model_name'))
-    table_names = text2sql_config.get('table_names', text2sql_config_bak.get('table_names'))
-    table_comments = text2sql_config.get('table_comments', text2sql_config_bak.get('table_names'))
-
-    sqlalchemy_connect_str = decrypt_placeholder(text2sql_config.get('sqlalchemy_connect_str',
-                                                 text2sql_config_bak.get('sqlalchemy_connect_str')))
-    sqlalchemy_schema = text2sql_config.get('sqlalchemy_schema', text2sql_config_bak.get('sqlalchemy_schema'))
+    db_infos = text2sql_config.get('db_infos', text2sql_config_bak.get('db_infos', {}))
     read_only = text2sql_config_bak.get('read_only', True)
     return_sql = text2sql_config.get('return_sql', text2sql_config_bak.get('return_sql', False))
-    return_intermediate_steps = text2sql_config.get('return_intermediate_steps',
-                                                    text2sql_config_bak.get('return_intermediate_steps', True))
-    top_k = min(text2sql_config.get("top_k", text2sql_config_bak.get("top_k", 3)), 10)
+    return_format = text2sql_config.get('return_format', text2sql_config_bak.get('return_format', 'str'))
+    top_k = text2sql_config.get("top_k", text2sql_config_bak.get("top_k", 3))
+    max_string_length = text2sql_config.get("max_string_length", text2sql_config_bak.get("max_string_length", 100))
+    sample_rows_in_table_info = text2sql_config.get("sample_rows_in_table_info",
+                                                    text2sql_config_bak.get("sample_rows_in_table_info", 0))
+    indexes_in_table_info = text2sql_config.get("indexes_in_table_info",
+                                                text2sql_config_bak.get("indexes_in_table_info", False))
+    use_vector_sample = text2sql_config.get('use_vector_sample', text2sql_config_bak.get('use_vector_sample', False))
+    vector_score_threshold = text2sql_config.get('vector_score_threshold',
+                                                 text2sql_config_bak.get('vector_score_threshold'))
+    vector_search_top_k = text2sql_config.get('vector_search_top_k', text2sql_config_bak.get('vector_search_top_k'))
     engine = None
 
     try:
-        engine = create_engine_wrapper(uri=sqlalchemy_connect_str, pool_size=1)
-        db = SQLDatabase(engine=engine, schema=sqlalchemy_schema, sample_rows_in_table_info=1, max_string_length=500,
-                         include_tables=table_names)
-
-        if table_comments:
-            TABLE_COMMENT_PROMPT = (
-                "\n\nI will provide some special notes for a few tables:\n\n"
-            )
-            table_comments_str = "\n".join([f"{k}:{v}" for k, v in table_comments.items()])
-            query = query + TABLE_COMMENT_PROMPT + table_comments_str + "\n\n"
-
-        if read_only:
-            event.listen(engine, "before_cursor_execute", intercept_sql)
-
         llm = get_ChatOpenAI(
             model_name=model_name,
             temperature=0.1,
             streaming=True,
             verbose=True,
         )
+        database_comments = {k: v.get("description") for k, v in db_infos.items()}
+        if len(db_infos) > 1:
+            db_name_from_chain = model_container.TOOL_ARGS.get("db_name")
+            if db_name_from_chain not in db_infos:
+                decider_db_chain = LLMChain(llm=llm, prompt=DECIDER_DB_PROMPT)
+                db_name_from_chain = decider_db_chain.predict(
+                    **{"query": query, "database_names": f"{database_comments}"})
+                if db_name_from_chain:
+                    db_name_from_chain = db_name_from_chain.replace("'", "").replace('"', "")
+            if db_name_from_chain not in db_infos:
+                logger.error(
+                    f"query: {query}, database {db_name_from_chain} not found, available dbs:{list(db_infos.keys())}.")
+                return Message_I18N.TOOL_SQL_NOT_CLEAR.value.format(database_comments=database_comments)
+            db_info = db_infos.get(db_name_from_chain)
+            db_name = db_name_from_chain
+            knowledgebase = db_name
+        else:
+            db_info = next(iter(db_infos.values()))
+            db_name = next(iter(db_infos.keys()))
+            knowledgebase = db_name
 
-        db_chain = SQLDatabaseSequentialChain.from_llm(
+        engine = create_engine_wrapper(uri=db_info.get("sqlalchemy_connect_str"), pool_size=1)
+        db = CustomSQLDatabase(engine=engine, schema=db_info.get("sqlalchemy_schema"),
+                               sample_rows_in_table_info=sample_rows_in_table_info,
+                               indexes_in_table_info=indexes_in_table_info,
+                               max_string_length=max_string_length, view_support=db_info.get("view_support", False),
+                               include_tables=db_info.get("table_names"))
+        # 对于mysql等数据库可以使用{{ 库名.表名 }}的形式实现跨库sql查询，所以这边做了个hack
+        if db_info.get("ref_dbs"):
+            sql_wrapper = SQL_WRAPPER.get(db.dialect, "")
+            rename_func = lambda a, b: f"{sql_wrapper}{a}{sql_wrapper}.{b}"
+            db._all_tables = [rename_func(db_name, a) for a in db._all_tables]
+            db._include_tables = [rename_func(db_name, a) for a in db._include_tables]
+            db._ignore_tables = [rename_func(db_name, a) for a in db._ignore_tables]
+            db._usable_tables = [rename_func(db_name, a) for a in db._usable_tables]
+            if db._custom_table_info:
+                db._custom_table_info = {rename_func(db_name, k): v for k, v in db._custom_table_info}
+            tables = copy(db._metadata.tables)
+            for a, b in tables.items():
+                db._metadata._remove_table(name=b.name, schema=b.schema)
+                b.name = rename_func(db_name, b.name)
+                db._metadata._add_table(name=b.name, table=b, schema=b.schema)
+            table_comments = {}
+            for table_name, table_comment in db_info.get("table_comments", {}).items():
+                table_comments[rename_func(db_name, table_name)] = table_comment
+            ref_dbs: dict = db_info.get("ref_dbs")
+            for k, v in ref_dbs.items():
+                ref_engine = create_engine_wrapper(uri=v.get("sqlalchemy_connect_str"), pool_size=1)
+                ref_db = CustomSQLDatabase(engine=ref_engine, schema=v.get("sqlalchemy_schema"),
+                                           sample_rows_in_table_info=1,
+                                           max_string_length=max_string_length,
+                                           view_support=v.get("view_support", False),
+                                           include_tables=v.get("table_names"))
+                db._all_tables += [rename_func(k, a) for a in ref_db._all_tables]
+                db._include_tables += [rename_func(k, a) for a in ref_db._include_tables]
+                db._ignore_tables += [rename_func(k, a) for a in ref_db._ignore_tables]
+                db._usable_tables += [rename_func(k, a) for a in ref_db._usable_tables]
+                if ref_db._custom_table_info:
+                    for kk, vv in ref_db._custom_table_info:
+                        db._custom_table_info[rename_func(k, kk)] = vv
+                for a, b in ref_db._metadata.tables.items():
+                    b.name = rename_func(k, b.name)
+                    db._metadata._add_table(name=b.name, table=b, schema=b.schema)
+                ref_db_table_comments = v.get("table_comments", {})
+                for table_name, table_comment in ref_db_table_comments.items():
+                    table_comments[rename_func(k, table_name)] = table_comment
+        else:
+            table_comments = db_info.get("table_comments", {})
+        db.table_comments = table_comments
+
+        if read_only:
+            event.listen(engine, "before_cursor_execute", intercept_sql)
+
+        db_chain = CustomSQLDatabaseSequentialChain.from_llm(
             llm,
             db,
+            decider_prompt=DECIDER_PROMPT,
+            query_prompt=SQL_PROMPTS.get(db.dialect),
             verbose=True,
             top_k=top_k,
             return_sql=return_sql,
+            return_direct=True,
             use_query_checker=True,
-            return_intermediate_steps=return_intermediate_steps
+            return_intermediate_steps=True,
         )
-        result = db_chain.invoke({"query": query})
-        context = result['result'] + "\n\n"
-        if return_sql:
-            logger.debug(f"query:{origin_query},\nsql:{context}")
-            return Message_I18N.TOOL_SQL_PRODUCE.value.format(result=context)
-        intermediate_steps = result["intermediate_steps"]
-        # 如果存在intermediate_steps，且这个数组的长度大于2，则保留最后两个元素，因为前面几个步骤存在示例数据，容易引起误解
-        if intermediate_steps:
-            if len(intermediate_steps) > 2:
-                sql_detail = intermediate_steps[-2:-1][0]["input"]
-                # sql_detail截取从SQLQuery到Answer:之间的内容
-                sql_detail = sql_detail[
-                             sql_detail.find("SQLQuery:") + 9: sql_detail.find("Answer:")
-                             ]
-                logger.debug(f"query:{origin_query},\nsql:{sql_detail}")
-                context = context + sql_detail + "\n\n"
-        return context
 
+        sql_cmd = model_container.TOOL_ARGS.get("sql_cmd")
+        report_prompt = model_container.TOOL_ARGS.get("report_prompt")
+        if not report_prompt:
+            report_prompt = text2sql_config.get('report_prompt', text2sql_config_bak.get('report_prompt'))
+
+        if sql_cmd:
+            db_chain.fill_table_in_prompt = False
+            sql_few_shot_prompt = f"\n\nYou must use this SQL directly for the question:{sql_cmd}\n\n"
+            query += sql_few_shot_prompt
+        elif use_vector_sample:
+            docs = search_docs(
+                query=origin_query,
+                knowledge_base_name=knowledgebase,
+                top_k=vector_search_top_k,
+                score_threshold=vector_score_threshold,
+                file_name="",
+                metadata={},
+            )
+            if docs:
+                sql_few_shot_prompt = "\n\nSome SQL examples with notes that correspond to question:\n\n"
+                sql_few_shot_prompt += "\n".join([d.page_content for d in docs])
+                query += sql_few_shot_prompt
+
+        result = db_chain.invoke({"query": query, "sql_cmd": sql_cmd})
+        if not result:
+            logger.error(f"SQL generate can not accomplish, query:{origin_query}, database:{db_name}")
+            return Message_I18N.TOOL_SQL_NOT_CLEAR.value.format(database_comments=list(database_comments.values()))
+        if return_sql:
+            sql = result['result']
+            logger.debug(f"knowledgebase:{knowledgebase},\n query:{origin_query},\n sql:{sql}")
+            if return_format == "json":
+                return json.dumps({"sql": parse_sql_md(sql)}, ensure_ascii=False)
+            return Message_I18N.TOOL_SQL_PRODUCE.value.format(sql=parse_sql_md(sql))
+        # 0:输入参数 1:sql 2:{"sql_cmd":sql} 3:execute_result
+        intermediate_steps = result["intermediate_steps"]
+        sql = intermediate_steps[1]
+        records = intermediate_steps[3]
+        table_info = intermediate_steps[0]['table_info']
+        logger.debug(f"knowledgebase:{knowledgebase},\n query:{origin_query},\n sql:{sql}")
+        column_map = {}
+        if isinstance(records, list) and len(records) > 0:
+            translate_prompt = """
+                        You are a helpful assistant, given the below sql and table info:
+                        SQL:{{ sql }},
+                        Table Info:{{ table_info }},
+                        Let's think step by step, please translate these columns:{{ columns }} into chinese.
+                        Out put a json map with the format: {"column": "column_in_chinese"}, column_in_chinese only contains Chinese characters and letters, shorter is better.
+                    """
+            translate_template = PromptTemplate(input_variables=["sql", "table_info", "columns"],
+                                                template=translate_prompt, template_format="jinja2")
+            translate_chain = LLMChain(llm=llm, prompt=translate_template)
+            try:
+                p = translate_chain.predict(
+                    **{"sql": sql, "table_info": table_info, "columns": records[0].keys()})
+                column_map = json.loads(parse_json_md(p).replace("'", '"'))
+            except Exception as e:
+                logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
+        summarize_prompt = """
+        You are a helpful assistant, given the question ,sql and records below,
+        Question: {{ query }}, 
+        SQL: {{ sql }},
+        Records: {{ records }},
+        let's think step by step, deeply understand the question and explore the potential value of these records, and provide a comprehensive summary.
+        you can use column_map for translate the key(column_name) in records into chinese, 
+        column_map: {{ column_map }},
+        Just output the summary directly without other words, you must follow this format:{{ report_prompt }}
+        """
+        summarize_template = PromptTemplate(input_variables=["query", "sql", "column_map", "records", "report_prompt"],
+                                            template=summarize_prompt, template_format="jinja2")
+        summarize_chain = LLMChain(llm=llm, prompt=summarize_template)
+        summarize = summarize_chain.predict(
+            **{"query": origin_query, "sql": sql, "column_map": column_map,
+               "records": json.dumps(records[0:35], default=complex_handler),
+               "report_prompt": report_prompt})
+
+        if return_format == "json":
+            return json.dumps(
+                {"sql": parse_sql_md(sql), "column_map": column_map, "records": records,
+                 "chart_type": judge_chart_type(origin_query),
+                 "summarize": summarize, "metadata": {"table_info": table_info}},
+                default=complex_handler, ensure_ascii=False)
+        return Message_I18N.TOOL_SQL_DETAIL_PRODUCE.value.format(sql=parse_sql_md(sql),
+                                                                 records=json.dumps(records, default=complex_handler),
+                                                                 summarize=summarize)
     except Exception as e:
         logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
-        return f'{e}'
+        model_container.TOOL_RERUN = True
+        return Message_I18N.TOOL_SQL_ERROR.value.format(error=e)
     finally:
         if engine:
             try:
@@ -121,3 +701,8 @@ def text2sql(query: str):
                 engine.pool.dispose()
             except:
                 pass
+
+
+if __name__ == '__main__':
+    r = text2sql("查询最近10年的告警信息以及关联的告警操作人名称、部门信息")
+    print(r)

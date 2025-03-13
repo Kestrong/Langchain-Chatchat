@@ -98,10 +98,10 @@ def parse_json(json_string: str, fallback: bool = True) -> Union[str, dict]:
             logger.error(f"{e}")
             json_string = remove_newlines_from_json(json_string)
             try:
+                json_input = json.loads(json_string)
+            except:
                 json_string_escape_quotes = escape_quotes_in_values(json_string)
                 json_input = json.loads(json_string_escape_quotes)
-            except:
-                json_input = json.loads(json_string)
     except:
         # ollama部署的qwen，返回的json键值可能为单引号，可能缺少最后的引号和括号
         if not json_string.endswith('"}'):
