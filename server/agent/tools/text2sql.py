@@ -28,13 +28,6 @@ from server.knowledge_base.kb_doc_api import search_docs
 from server.memory.message_i18n import Message_I18N
 from server.utils import get_ChatOpenAI, get_tool_config, parse_json_md, parse_sql_md
 
-# _DECIDER_TEMPLATE = """Given the below input question and map of potential tables with comment.
-# Let's think step by step, every table maybe has same relevant tables, make sure you don't miss them.
-# Question: {query}
-# Table Name And Comment Map: {table_names}
-# Pay attention to do not use more than 3 tables unless it is necessary.
-# Please only output a json list of the table names that may be necessary to answer this question directly: """
-
 _DECIDER_TEMPLATE = """Given a question and a JSON map where the key is the table name and the value is the table comment. 
 Let's think step by step, there must be a clear logical connection between the question and the chosen table, every table maybe has same relevant tables, make sure you don't miss them. 
 Please only output a json list of the table names(wrap with double quote "") that may be necessary to answer this question directly. If no table is relevant according to the question, output an empty list []. 
@@ -691,7 +684,7 @@ def text2sql(query: str):
                                                                  records=json.dumps(
                                                                      {"chart_type": judge_chart_type(origin_query),
                                                                       "column_map": column_map, "records": records, },
-                                                                     default=complex_handler),
+                                                                     default=complex_handler, indent=4),
                                                                  summarize=summarize)
     except Exception as e:
         logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
