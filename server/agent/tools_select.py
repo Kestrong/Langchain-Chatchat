@@ -4,6 +4,7 @@ from typing import Optional, Type, Callable, Union, Dict, Any, Tuple
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Extra, Field, create_model
 
+from server.agent import get_model_container
 from server.utils import get_tool_config, BaseResponse
 
 _TOOLS_REGISTRY = {}
@@ -67,6 +68,7 @@ def create_dynamic_tool(api: dict, func: Callable):
     t = StructuredTool.from_function(func=func_wrapper, name=api.get("name"),
                                      description=api.get("description"), return_direct=api.get("return_direct", True),
                                      args_schema=args_schema, infer_schema=False)
+    t._return_direct = api.get("return_direct", True)
     t.title = api.get("title") or t.name
     return t
 
@@ -122,6 +124,12 @@ def _new_to_args_and_kwargs(self, tool_input: Union[str, Dict]) -> Tuple[Tuple, 
         return (), tool_input
 
 
+def return_direct(self):
+    model_container = get_model_container()
+    return self._return_direct and (model_container is None or not model_container.TOOL_RERUN)
+
+
+StructuredTool.return_direct = property(fget=return_direct)
 StructuredTool._parse_input = _new_parse_input
 StructuredTool._to_args_and_kwargs = _new_to_args_and_kwargs
 
@@ -142,6 +150,7 @@ def register_tool(
                                          description=description,
                                          args_schema=args_schema, return_direct=_return_direct,
                                          infer_schema=infer_schema)
+        t._return_direct = _return_direct
         t.title = title
         enable_tools = get_tool_config().ENABLE_TOOLS
         if enable_tools:

@@ -136,9 +136,18 @@ class AgentExecutorAsyncIteratorCallbackHandler(AsyncIteratorCallbackHandler):
                 "Thought:", ""
             )
         # 返回最终答案
+        final_answer = finish.return_values["output"]
+        if final_answer.startswith("{") and final_answer.endswith("}"):
+            try:
+                f = json.loads(final_answer)
+                if 'metadata' in f:
+                    del f['metadata']
+                final_answer = dumps(f)
+            except Exception:
+                pass
         self.cur_tool.update(
             status=AgentStatus.agent_finish,
-            final_answer=finish.return_values["output"],
+            final_answer=final_answer,
         )
         self.queue.put_nowait(dumps(self.cur_tool))
         self.cur_tool = {}

@@ -1,6 +1,10 @@
 # prompt模板使用Jinja2语法，简单点就是用双大括号代替f-string的单大括号
 # 本配置文件支持热加载，修改prompt模板后无需重启服务。
 
+# 推荐问题列表支持的变量：
+#   - context: 上下文信息
+#   - question: 用户提出的问题
+
 # LLM对话支持的变量：
 #   - input: 用户输入内容
 
@@ -17,6 +21,26 @@
 #   - agent_scratchpad: Agent的思维记录
 
 PROMPT_TEMPLATES = {
+    "recommend_question": {
+        "default": """
+            You are a helpful assistant trained to expand on given question to generate a more comprehensive list of related questions.
+            Your task is to take the following input question and create exactly three additional questions that explore the topic from different dimensions or angles.
+            The output must be formatted as a JSON array, containing only three elements, each of which is a string representing a unique question related to the input.
+            Example: ["question1", "question2", "question3"], you must follow the format like example strictly, not allowed other format, please in Chinese.
+            Context: {{ context }}\n
+            Question: {{ question }}
+        """,
+        "sql": """
+            Given the following natural language question and the provided context information, expand the question by identifying relevant query scopes and conditions to better capture the user's intent. Consider different aspects that might be of interest based on the question and context. Then, formulate the most pertinent related question that the user might be asking, aiming for greater detail and specificity. Finally, generate an appropriate SQL query that could be executed against a database to retrieve the desired information.
+            Context: {{ context }}\n
+            Question: {{ question }}\n
+            Expand on this question by addressing possible areas of interest, such as time frames, categories, specific metrics, or comparisons, ensuring comprehensive coverage of potential user queries.
+            The output must be formatted as a JSON array, containing only three elements, each of which is a string representing a unique question related to the input.
+            Example: ["question1", "question2", "question3"], you must follow the format like example strictly, not allowed other format, please in Chinese.
+            Context: {{ context }}\n
+            Question: {{ question }}
+        """,
+    },
     "llm_chat": {
         "default":
             '{{ input }}',

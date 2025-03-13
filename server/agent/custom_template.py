@@ -78,6 +78,17 @@ def remove_newlines_from_json(json_str):
             .replace("\r", "\\r").replace("\t", "\\t"))
 
 
+def escape_quotes_in_values(json_str):
+    pattern = r'("(?:[^"]|\\")*")\s*:\s*"((?:[^"]|\\").*?)"(,|})'
+    matches = re.findall(pattern, json_str)
+    results = []
+    for match in matches:
+        key = match[0]
+        value = match[1].replace('"', "'")
+        results.append(f'{key}: "{value}"')
+    return "{" + ",".join(results) + "}"
+
+
 def parse_json(json_string: str, fallback: bool = True) -> Union[str, dict]:
     json_input = None
     try:
@@ -86,7 +97,11 @@ def parse_json(json_string: str, fallback: bool = True) -> Union[str, dict]:
         except Exception as e:
             logger.error(f"{e}")
             json_string = remove_newlines_from_json(json_string)
-            json_input = json.loads(json_string)
+            try:
+                json_input = json.loads(json_string)
+            except:
+                json_string_escape_quotes = escape_quotes_in_values(json_string)
+                json_input = json.loads(json_string_escape_quotes)
     except:
         # ollama部署的qwen，返回的json键值可能为单引号，可能缺少最后的引号和括号
         if not json_string.endswith('"}'):

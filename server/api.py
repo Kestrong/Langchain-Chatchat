@@ -92,7 +92,7 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
 
 def mount_chat_routes(app: FastAPI):
     from server.chat.chat_router import chat_router as chats
-    from server.chat.chat import chat
+    from server.chat.chat import chat, recommend_question
     from server.chat.search_engine_chat import search_engine_chat
     from server.chat.knowledge_base_chat import knowledge_base_chat
     from server.chat.file_chat import file_chat
@@ -116,6 +116,7 @@ def mount_chat_routes(app: FastAPI):
     chat_router.post("/file_chat", summary="文件对话")(file_chat)
     chat_router.post("/agent_chat", summary="与agent对话")(agent_chat)
     chat_router.post("/workflow_chat", summary="工作流对话", )(workflow_chat)
+    chat_router.post("/recommend_question", summary="返回建议的问题列表", )(recommend_question)
     chat_router.post("/feedback", summary="返回llm模型对话评分", )(chat_feedback)
     chat_router.post("/stop", summary="停止llm模型对话", )(stop)
     chat_router.get("/conversations", summary="获取会话", )(filter_conversation)

@@ -1,14 +1,14 @@
 import asyncio
 import json
 import uuid
-from typing import AsyncIterable
+from typing import AsyncIterable, Dict, Any
 from typing import List, Optional, Union
 
 from fastapi import Body
 from langchain.callbacks import AsyncIteratorCallbackHandler
 from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
 from langchain.prompts.chat import ChatPromptTemplate
+from langchain_core.prompts import PromptTemplate
 from sse_starlette.sse import EventSourceResponse
 
 from configs import LLM_MODELS, TEMPERATURE
@@ -21,7 +21,7 @@ from server.chat.utils import History, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_in
 from server.db.repository import add_message_to_db
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.model_workers import ApiModelParams
-from server.utils import get_prompt_template
+from server.utils import get_prompt_template, BaseResponse, parse_json_md
 from server.utils import wrap_done, get_ChatOpenAI
 
 
@@ -137,3 +137,22 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         await task
 
     return EventSourceResponse(wrap_event_response(chat_iterator()))
+
+
+def recommend_question(query: str = Body(..., description="用户输入", examples=["今天天气很好"]),
+                       context: Dict[str, Any] = Body({}, description="额外的属性帮助大模型理解问题和生成内容"),
+                       model_name: str = Body(LLM_MODELS[0], description="LLM模型名称"),
+                       prompt: str = Body("default", description="使用的prompt，为空使用默认的")) -> BaseResponse:
+    model = get_ChatOpenAI(
+        model_name=model_name,
+        temperature=TEMPERATURE,
+        streaming=True,
+    )
+    if prompt is None or prompt.strip() == '':
+        prompt = 'default'
+    prompt = get_prompt_template('recommend_question', prompt)
+    template = PromptTemplate(input_variables=["question", "context"], template=prompt, template_format="jinja2")
+    chain = LLMChain(llm=model, prompt=template)
+    result = chain.predict_and_parse(**{"question": query, "context": context})
+
+    return BaseResponse(code=200, data=json.loads(parse_json_md(result)))

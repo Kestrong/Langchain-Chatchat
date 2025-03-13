@@ -10,8 +10,10 @@ message_i18n_map = {
 
         "TOOL_CALCULATE_ERROR": "```{query}```表达式无法被numexpr解析执行",
         "TOOL_SEARCH_KNOWLEDGEBASE_EMPTY": "没有找到相关文档,请更换关键词或者知识库重试",
-        "TOOL_SQL_ERROR": "生成SQL失败，可能是数据库无法访问或者您描述的内容大模型无法理解。",
-        "TOOL_SQL_PRODUCE": "生成的SQL如下：{result}",
+        "TOOL_SQL_ERROR": "生成SQL失败，请根据异常信息调整SQL后重新调用工具，异常信息：{error}。",
+        "TOOL_SQL_NOT_CLEAR": "该问题无法用sql解决，请修改您的提问满足以下数据库的内容:```json {database_comments} ```，并完善问题，例如：提供更详细的查询主体、范围和条件等信息。",
+        "TOOL_SQL_DETAIL_PRODUCE": "生成的SQL如下：\n```sql\n{sql}\n```\n数据库查询结果如下：\n```json\n{records}\n```\n总结：\n{summarize}\n",
+        "TOOL_SQL_PRODUCE": "生成的SQL如下：\n```sql\n{sql}\n```\n",
         "TOOL_SEARCH_RESULT": "查询结果：{result}",
         "TOOL_SHELL_REJECT": "请停止执行shell命令：<{query}>",
         "TOOL_AES_CYPHER_MODE_ERROR": "不支持该加密模式：{cypher_mode}, 你只能从下面的列表中选择['encrypt', 'decrypt']",
@@ -46,8 +48,10 @@ message_i18n_map = {
 
         "TOOL_CALCULATE_ERROR": "The expression ```{query}``` cannot be parsed and executed by numuxpr",
         "TOOL_SEARCH_KNOWLEDGEBASE_EMPTY": "No relevant documents found, please change keywords or knowledge base and try again",
-        "TOOL_SQL_ERROR": "Failed to generate SQL, possibly due to database unavailability or inability of the large model to understand the content you described.",
-        "TOOL_SQL_PRODUCE": "The generated SQL is as follows:{result}",
+        "TOOL_SQL_ERROR": "Failed to generate SQL, please correct your SQL according to error info and rerun this tool, error info: {error}.",
+        "TOOL_SQL_NOT_CLEAR": "The question cannot be solved with SQL, please modify your question to fit the content of the following database: ```json {database_comments} ```, and improve your question by providing more detailed query subjects, scope, conditions, etc.",
+        "TOOL_SQL_DETAILS_PRODUCE": "The generated SQL is as follows:\n```sql\n{sql}\n```\nrecords:\n```json\n{records}\n```\nsummarize:\n{summarize}\n",
+        "TOOL_SQL_PRODUCE": "The generated SQL is as follows:\n```sql\n{sql}\n```\n",
         "TOOL_SEARCH_RESULT": "Search result:{result}",
         "TOOL_SHELL_REJECT": "Stop! You couldn't execute this command <{query}>.",
         "TOOL_AES_CYPHER_MODE_ERROR": "cypher_mode {cypher_mode} not supported, optional ['encrypt', 'decrypt']",
@@ -92,7 +96,9 @@ class Message_I18N(enum.Enum):
     TOOL_CALCULATE_ERROR = get_message_i18n("TOOL_CALCULATE_ERROR")
     TOOL_SEARCH_KNOWLEDGEBASE_EMPTY = get_message_i18n("TOOL_SEARCH_KNOWLEDGEBASE_EMPTY")
     TOOL_SQL_ERROR = get_message_i18n("TOOL_SQL_ERROR")
+    TOOL_SQL_NOT_CLEAR = get_message_i18n("TOOL_SQL_NOT_CLEAR")
     TOOL_SQL_PRODUCE = get_message_i18n("TOOL_SQL_PRODUCE")
+    TOOL_SQL_DETAIL_PRODUCE = get_message_i18n("TOOL_SQL_DETAIL_PRODUCE")
     TOOL_SHELL_REJECT = get_message_i18n("TOOL_SHELL_REJECT")
     TOOL_SEARCH_RESULT = get_message_i18n("TOOL_SEARCH_RESULT")
     TOOL_AES_CYPHER_MODE_ERROR = get_message_i18n("TOOL_AES_CYPHER_MODE_ERROR")

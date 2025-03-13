@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import func
-
+from dateutil import parser
 from server.db.models.conversation_model import ConversationModel
 from server.db.models.message_model import MessageModel
 from server.db.session import with_session
@@ -61,7 +61,8 @@ def delete_user_conversation_from_db(session, assistant_id: int):
 
 
 @with_session
-def get_conversation_from_db(session, assistant_id: int = -1, page: int = 1, limit: int = 10, keyword: str = None):
+def get_conversation_from_db(session, assistant_id: int = -1, page: int = 1, limit: int = 10, start_time: str = None,
+                             end_time: str = None, keyword: str = None):
     userId = get_token_info().get("userId")
     if userId is None or userId == "":
         return [], 0
@@ -73,6 +74,10 @@ def get_conversation_from_db(session, assistant_id: int = -1, page: int = 1, lim
         filters.append(ConversationModel.name.ilike('%{}%'.format(keyword)))
     if assistant_id >= 0:
         filters.append(ConversationModel.assistant_id == assistant_id)
+    if start_time is not None and start_time != '':
+        filters.append(ConversationModel.create_time >= parser.parse(start_time))
+    if end_time is not None and end_time != '':
+        filters.append(ConversationModel.create_time <= parser.parse(end_time))
     conversations = (session.query(ConversationModel).filter(*filters)
                      .order_by(ConversationModel.create_time.desc()).offset(offset).limit(page_size).all())
     total = session.query(func.count(ConversationModel.id)).filter(*filters).scalar()
