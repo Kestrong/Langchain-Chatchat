@@ -129,7 +129,7 @@ class CustomSQLDatabaseChain(SQLDatabaseChain):
             ).strip()
             if self.return_sql:
                 return {self.output_key: sql_cmd, INTERMEDIATE_STEPS_KEY: None}
-            if not self.use_query_checker:
+            if not self.use_query_checker or inputs["sql_cmd"]:
                 _run_manager.on_text(sql_cmd, color="green", verbose=self.verbose)
                 intermediate_steps.append(
                     sql_cmd
@@ -302,7 +302,8 @@ class CustomSQLDatabase(SQLDatabase):
         )
 
     def get_table_info(self, table_names: Optional[List[str]] = None) -> str:
-        all_table_names = self.get_usable_table_names()
+        table_names = [a.lower() for a in table_names]
+        all_table_names = [a.lower() for a in self.get_usable_table_names()]
         if table_names is not None:
             missing_tables = set(table_names).difference(all_table_names)
             if missing_tables:
@@ -312,7 +313,7 @@ class CustomSQLDatabase(SQLDatabase):
         meta_tables = [
             tbl
             for tbl in self._metadata.sorted_tables
-            if tbl.name in set(all_table_names)
+            if tbl.name.lower() in set(all_table_names)
                and not (self.dialect == "sqlite" and tbl.name.startswith("sqlite_"))
         ]
 
