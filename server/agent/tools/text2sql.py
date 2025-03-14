@@ -52,13 +52,12 @@ Output:[your answer here]
 DECIDER_DB_PROMPT = PromptTemplate(input_variables=["query", "database_names"], template=_DECIDER_DB_TEMPLATE, )
 
 _mysql_prompt = """You are a MySQL expert. Given an input question, create a syntactically correct SQL query to run. Let's think step by step. Ensure that:
-1. Use `LIMIT {top_k}` to limit the number of returned results.
-2. Apply an `ORDER BY` clause to retrieve the most informative data.
-3. Assign a unique alias for each table and prefix each column with its table alias to avoid ambiguity.
-4. Only select columns necessary to answer the question; do not use `SELECT *`. Make sure at least one column from each involved table is queried.
-5. For questions involving "today", utilize the `CURDATE()` function to get the current date.
-6. Do not use `LIKE` in JOIN conditions to maintain query performance.
-7. Carefully verify that all referenced column names exist within the specified tables.
+1. Only return {top_k} results using the LIMIT clause as per SQL. You can order the results to return the most informative data in the database.
+2. Assign a unique alias for each table and prefix each column with its table alias to avoid ambiguity.
+3. Only select columns necessary to answer the question; do not use `SELECT *`. Make sure at least one column from each involved table is queried.
+4. For questions involving "today", utilize the `CURDATE()` function to get the current date.
+5. Do not use `LIKE` in JOIN conditions to maintain query performance.
+6. Carefully verify that all referenced column names exist within the specified tables.
 
 Follow this format strictly:
 Question: [Your question here]
@@ -71,13 +70,12 @@ MYSQL_PROMPT = PromptTemplate(
 )
 
 _postgres_prompt = """You are a PostgreSQL expert. Given an input question, create a syntactically correct SQL query to run. Let's think step by step. Ensure that:
-1. Use `LIMIT {top_k}` to limit the number of returned results.
-2. Apply an `ORDER BY` clause to retrieve the most informative data.
-3. Assign a unique alias for each table and prefix each column with its table alias to avoid ambiguity.
-4. Only select columns necessary to answer the question; do not use `SELECT *`. Make sure at least one column from each involved table is queried.
-5. For questions involving "today", utilize the `CURRENT_DATE` function to get the current date.
-6. Do not use `LIKE` in JOIN conditions to maintain query performance.
-7. Carefully verify that all referenced column names exist within the specified tables.
+1. Only return {top_k} results using the LIMIT clause as per SQL. You can order the results to return the most informative data in the database.
+2. Assign a unique alias for each table and prefix each column with its table alias to avoid ambiguity.
+3. Only select columns necessary to answer the question; do not use `SELECT *`. Make sure at least one column from each involved table is queried.
+4. For questions involving "today", utilize the `CURRENT_DATE` function to get the current date.
+5. Do not use `LIKE` in JOIN conditions to maintain query performance.
+6. Carefully verify that all referenced column names exist within the specified tables.
 
 Follow this format strictly:
 Question: [Your question here]
@@ -111,7 +109,7 @@ class CustomSQLDatabaseChain(SQLDatabaseChain):
         table_names_to_use = inputs.get("table_names_to_use")
         intermediate_steps: List = []
         if not table_names_to_use:
-            return {}
+            return {self.output_key: None, INTERMEDIATE_STEPS_KEY: None}
         table_info = self.database.get_table_info(table_names=table_names_to_use)
         llm_inputs = {
             "input": input_text,
@@ -130,7 +128,7 @@ class CustomSQLDatabaseChain(SQLDatabaseChain):
                 **llm_inputs,
             ).strip()
             if self.return_sql:
-                return {self.output_key: sql_cmd}
+                return {self.output_key: sql_cmd, INTERMEDIATE_STEPS_KEY: None}
             if not self.use_query_checker:
                 _run_manager.on_text(sql_cmd, color="green", verbose=self.verbose)
                 intermediate_steps.append(
@@ -623,7 +621,7 @@ def text2sql(query: str):
                 query += sql_few_shot_prompt
 
         result = db_chain.invoke({"query": query, "sql_cmd": sql_cmd})
-        if not result:
+        if not result or not result.get('result'):
             logger.error(f"SQL generate can not accomplish, query:{origin_query}, database:{db_name}")
             return Message_I18N.TOOL_SQL_NOT_CLEAR.value.format(database_comments=list(database_comments.values()))
         if return_sql:
