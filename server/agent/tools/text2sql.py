@@ -621,7 +621,7 @@ def text2sql(query: str):
                 query += sql_few_shot_prompt
 
         result = db_chain.invoke({"query": query, "sql_cmd": sql_cmd})
-        if not result or not result.get('result'):
+        if not result or result.get('result') is None:
             logger.error(f"SQL generate can not accomplish, query:{origin_query}, database:{db_name}")
             return Message_I18N.TOOL_SQL_NOT_CLEAR.value.format(database_comments=list(database_comments.values()))
         if return_sql:
