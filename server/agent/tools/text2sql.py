@@ -108,7 +108,7 @@ class CustomSQLDatabaseChain(SQLDatabaseChain):
         # If not present, then defaults to None which is all tables.
         table_names_to_use = inputs.get("table_names_to_use")
         intermediate_steps: List = []
-        if not table_names_to_use:
+        if not table_names_to_use and not inputs.get("sql_cmd"):
             return {self.output_key: None, INTERMEDIATE_STEPS_KEY: None}
         table_info = self.database.get_table_info(table_names=table_names_to_use)
         llm_inputs = {
