@@ -154,5 +154,7 @@ def recommend_question(query: str = Body(..., description="用户输入", exampl
     template = PromptTemplate(input_variables=["question", "context"], template=prompt, template_format="jinja2")
     chain = LLMChain(llm=model, prompt=template)
     result = chain.predict_and_parse(**{"question": query, "context": context})
-
+    if result and isinstance(result, list):
+        if isinstance(result[0], list):
+            result = result[0]
     return BaseResponse(code=200, data=json.loads(parse_json_md(result)))

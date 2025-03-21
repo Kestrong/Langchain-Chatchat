@@ -48,9 +48,17 @@ class QwenWorker(ApiModelWorker):
                         top_p=params.top_p
                 ) as responses:
                     text = ''
+                    mark = True
+                    think_mark = params.role_meta.get('think_mark')
                     for resp in responses:
                         if resp.choices and resp.choices[0].delta and resp.choices[0].delta.content:
                             text += resp.choices[0].delta.content
+                            if mark and think_mark:
+                                if not text.endswith(think_mark):
+                                    continue
+                                else:
+                                    text = ''
+                                    mark = False
                             yield {
                                 "error_code": 0,
                                 "text": text,

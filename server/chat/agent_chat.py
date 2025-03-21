@@ -20,6 +20,7 @@ from server.agent.tools_select import get_all_tools, get_tool, create_dynamic_to
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
+from server.chat.customize_agent.customize_agent_type import customize_agent_types
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, wrap_event_response, un_format_online_llm_model
 from server.db.repository import add_message_to_db, get_assistant_simple_from_db, update_message
@@ -74,7 +75,15 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         return BaseResponse(code=500,
                             msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(chat_type=ChatType.AGENT_CHAT.value,
                                                                                     model_name=model_name))
-
+    customize_agent_type = extra.get("customize_agent_type") if extra else None
+    if customize_agent_type and customize_agent_type in customize_agent_types:
+        return await customize_agent_types.get(customize_agent_type)(query=query, history_len=history_len,
+                                                                     history=history, tool_names=tool_names,
+                                                                     stream=stream, model_name=model_name, extra=extra,
+                                                                     temperature=temperature, assistant_id=assistant_id,
+                                                                     conversation_id=conversation_id,
+                                                                     store_message=store_message, max_tokens=max_tokens,
+                                                                     prompt_name=prompt_name, api_names=api_names, )
     history = [History.from_data(h) for h in history]
     model_container = create_model_container()
     if extra:
@@ -165,6 +174,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                                 tools=available_tools,
                                                                 verbose=True,
                                                                 memory=memory,
+                                                                max_iterations=3
                                                                 )
         while True:
             try:
