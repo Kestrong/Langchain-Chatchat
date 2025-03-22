@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, Union, Literal, Sequence, List
 
 from langchain.chains import LLMChain
 from langchain.chains.sql_database.prompt import PROMPT
+from langchain_community.chat_models import ChatOpenAI
 from langchain_community.tools.sql_database.prompt import QUERY_CHECKER
 from langchain_community.utilities import SQLDatabase
 from langchain_community.utilities.sql_database import truncate_word, _format_index
@@ -41,7 +42,7 @@ Output:[your answer here]
 DECIDER_PROMPT = PromptTemplate(input_variables=["query", "table_names"], template=_DECIDER_TEMPLATE, )
 
 _DECIDER_DB_TEMPLATE = """Given a question and a JSON map where the key is the database name and the value is the database description, determine which database is most relevant to the question. 
-There must be a clear logical connection between the question and the chosen database. 
+Let's think step by step, if you want to convert the question into SQL query which database can you choose. There must be a clear logical connection between the question and the chosen database. 
 If a relevant database is found, output its name directly. If no database is relevant according to the question, output an empty string "". 
 You are not allowed to output anything else outside of this specification. Only the key in map or "" can return.
 Database Map: {database_names}
@@ -472,17 +473,52 @@ def complex_handler(obj):
         raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
-def judge_chart_type(query: str):
+def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
+    chart_types = {"line": "折线图", "pie": "饼图", "bar": "柱状图", "table": "表格"}
+    chart_json_example = {
+        "line": '{"title":{"text":"折线图示例"},"tooltip":{"trigger":"axis"},"legend":{"data":["邮件营销","联盟广告"]},"grid":{"left":"3%","right":"4%","bottom":"3%","containLabel":true},"toolbox":{"feature":{"saveAsImage":{}}},"xAxis":{"type":"category","boundaryGap":false,"data":["周一","周二","周三","周四","周五","周六","周日"]},"yAxis":{"type":"value"},"series":[{"name":"邮件营销","type":"line","stack":"总量","data":[120,132,101,134,90,230,210]},{"name":"联盟广告","type":"line","stack":"总量","data":[220,182,191,234,290,330,310]}]}',
+        "pie": '{"title":{"text":"饼图示例","left":"center"},"tooltip":{"trigger":"item"},"legend":{"orient":"vertical","left":"left"},"series":[{"name":"访问来源","type":"pie","radius":"50%","data":[{"value":1048,"name":"搜索引擎"},{"value":735,"name":"直接访问"}],"emphasis":{"itemStyle":{"shadowBlur":10,"shadowOffsetX":0,"shadowColor":"rgba(0, 0, 0, 0.5)"}}}]}',
+        "bar": '{"title":{"text":"柱状图示例"},"tooltip":{},"xAxis":{"data":["衬衫","羊毛衫","雪纺衫","裤子","高跟鞋","袜子"]},"yAxis":{},"series":[{"name":"销量","type":"bar","data":[5,20,36,10,10,20]}]}'
+    }
     if "折线图" in query:
-        return "line"
+        chart_type = "line"
     elif "饼图" in query:
-        return "pie"
+        chart_type = "pie"
     elif "柱状图" in query:
-        return "bar"
+        chart_type = "bar"
     elif "表格" in query:
-        return "table"
+        chart_type = "table"
     else:
-        return "table"
+        chart_type = "table"
+    chart_json = {}
+    if records and chart_type in chart_json_example:
+        prompt = """
+        你是一个专业的数据可视化工程师，给定以下数据:
+        数据集: {records}
+        图表类型: {chart_type}
+        请你深呼吸，然后让我们一步一步来思考。 
+        1. 请充分理解给定的数据集的每一个维度每一个数值的含义。
+        2. 然后从数据里面的选取合适的维度并在echart图表里面展示出来，即使为0或者空值也允许展示。
+        3. 请直接输出一个符合echart图表规范的json对象，不允许包含其他文字内容。
+        你可以参考以下例子的格式: {chart_json_example}
+        """
+        try:
+            template = PromptTemplate(input_variables=["records", "chart_type", "chart_json_example"],
+                                      template=prompt)
+            chain = LLMChain(llm=llm, prompt=template)
+            chart_json = chain.run(records=json.dumps(records, default=complex_handler),
+                                   chart_type=chart_types[chart_type],
+                                   chart_json_example=chart_json_example[chart_type])
+            chart_json = json.loads(parse_json_md(chart_json))
+            if 'tooltip' not in chart_json:
+                chart_json['tooltip'] = {}
+            if chart_type == 'pie':
+                chart_json['tooltip'] = {"trigger": "item"}
+            else:
+                chart_json['tooltip'] = {"trigger": "axis"}
+        except Exception as e:
+            logger.error(f"generate echart json error, error:{e}, json:{chart_json}")
+    return chart_type, chart_json
 
 
 class Text2SqlInput(BaseModel):
@@ -670,11 +706,11 @@ def text2sql(query: str):
         column_map = {}
         if isinstance(records, list) and len(records) > 0:
             translate_prompt = """You are a helpful assistant, given the below sql and table info:
-SQL:{{ sql }},
-Table Info:{{ table_info }},
-Let's think step by step, please translate these columns:{{ columns }} into chinese.
-Out put a json map with the format: {"column": "column_in_chinese"}, column_in_chinese only contains Chinese characters and letters, shorter is better.
-"""
+            SQL:{{ sql }},
+            Table Info:{{ table_info }},
+            Let's think step by step, please translate these columns:{{ columns }} into chinese.
+            Out put a json map with the format: {"column": "column_in_chinese"}, column_in_chinese only contains Chinese characters and letters, shorter is better.
+            """
             translate_template = PromptTemplate(input_variables=["sql", "table_info", "columns"],
                                                 template=translate_prompt, template_format="jinja2")
             translate_chain = LLMChain(llm=llm, prompt=translate_template)
@@ -684,33 +720,42 @@ Out put a json map with the format: {"column": "column_in_chinese"}, column_in_c
                 column_map = json.loads(parse_json_md(p).replace("'", '"'))
             except Exception as e:
                 logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
-        summarize_prompt = """You are a helpful assistant, given the question ,sql and records below,
-Question: {{ query }}, 
-SQL: {{ sql }},
-Records: {{ records }},
-let's think step by step, deeply understand the question and explore the potential value of these records, and provide a comprehensive summary.
-you can use column_map for translate the key(column_name) in records into chinese, 
-column_map: {{ column_map }},
-Just output the summary directly without other words, you must follow this format:{{ report_prompt }}
-"""
-        summarize_template = PromptTemplate(input_variables=["query", "sql", "column_map", "records", "report_prompt"],
+        if not records:
+            summarize_prompt = """将以下问题转换成sql在数据库执行后查不到数据，请针对sql中的查询条件对如何修改问题给出建议，
+            问题: {query}, 
+            SQL: {sql},
+            建议只针对问题本身，不要涉及sql相关的，如何修改问题的自然语言描述才能更精确的查找到数据，直接给出建议。
+            """.format(query=origin_query, sql=sql_cmd)
+        else:
+            summarize_prompt = """You are a helpful assistant, given the question and records below,
+            Question: {{ query }}, 
+            Records: {{ records }},
+            let's think step by step, deeply understand the question and explore the potential value of these records, and provide a comprehensive summary.
+            Just output the summary directly without other words, you must follow this format:{{ report_prompt }}
+            """
+        summarize_template = PromptTemplate(input_variables=["query", "records", "report_prompt"],
                                             template=summarize_prompt, template_format="jinja2")
         summarize_chain = LLMChain(llm=llm, prompt=summarize_template)
         summarize = summarize_chain.predict(
-            **{"query": origin_query, "sql": sql, "column_map": column_map,
-               "records": json.dumps(records, default=complex_handler)[0:MAX_TOKENS_INPUT - 5000],
+            **{"query": origin_query,
+               "records": f"{shorter_records(records)}",
                "report_prompt": report_prompt})
-
+        summarize = f"本次查询没有返回数据。{summarize}" if not records else summarize
+        translate_records = [{column_map.get(k, k): v for k, v in rec.items()} for rec in records]
+        chart_type, chart_json = judge_chart_type(origin_query, translate_records, llm)
         if return_format == "json":
             return json.dumps(
                 {"column_map": column_map, "records": records,
-                 "chart_type": judge_chart_type(origin_query),
-                 "summarize": summarize, "metadata": {"sql": parse_sql_md(sql), "table_info": table_info,
-                                                      "fix_sql": True if sql_cmd else False}},
+                 "chart_type": chart_type,
+                 "chart_json": chart_json,
+                 "summarize": summarize,
+                 "metadata": {"sql": parse_sql_md(sql), "table_info": table_info,
+                              "fix_sql": True if sql_cmd else False}},
                 default=complex_handler, ensure_ascii=False)
         return Message_I18N.TOOL_SQL_DETAIL_PRODUCE.value.format(sql=parse_sql_md(sql),
                                                                  records=json.dumps(
-                                                                     {"chart_type": judge_chart_type(origin_query),
+                                                                     {"chart_type": chart_type,
+                                                                      "chart_json": chart_json,
                                                                       "column_map": column_map, "records": records, },
                                                                      default=complex_handler, indent=4),
                                                                  summarize=summarize)
@@ -724,8 +769,8 @@ Just output the summary directly without other words, you must follow this forma
         if model_container.TOOL_ARGS.get("sql_cmd"):
             return Message_I18N.TOOL_SQL_ERROR.value.format(error=error_info.split("\n")[0])
         retry = model_container.TOOL_ARGS.get("retry", 0)
+        retry -= 1
         if retry > 0:
-            retry -= 1
             model_container.TOOL_RERUN = True
             model_container.TOOL_ARGS['retry'] = retry
             return Message_I18N.TOOL_SQL_ERROR_RETRY.value.format(error=error_info.split("\n")[0])
@@ -737,6 +782,18 @@ Just output the summary directly without other words, you must follow this forma
                 engine.pool.dispose()
             except:
                 pass
+
+
+def shorter_records(records: list):
+    result = []
+    length = 0
+    for rr in records:
+        r_str = json.dumps(rr, default=complex_handler)
+        length += len(r_str)
+        if length > MAX_TOKENS_INPUT - 5000:
+            break
+        result.append(r_str)
+    return result
 
 
 if __name__ == '__main__':

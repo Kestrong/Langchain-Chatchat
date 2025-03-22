@@ -100,7 +100,6 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                 model_name=model_name,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                callbacks=[callback],
             )
 
             def parse_history_message(content: str):
@@ -129,41 +128,27 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                     else:
                         memory.chat_memory.add_ai_message(parse_history_message(a.content))
                         history_var.append({"role": a.type, "content": parse_history_message(a.content)})
-            step_prompt0 = """你是一个资深的数据库专家，请根据以下输入的问题并联系历史对话上下文，判断该问题是否跟sql查询或者数据查询分析有关。
+            step_prompt0 = """你是一个资深的数据库专家，请根据以下输入的问题并联系历史对话上下文，请严格按照以下步骤一步步判断：
+1. 判断该问题是否跟sql查询或者数据查询分析有关，如果无关请直接返回“否”，否则返回“是”；
+2. 如果要将该问题转换成SQL查询并在数据库里面执行，假设你已经知道要查询哪些表以及对应的表结构，请判断问题是否有给出查询条件，例如：时间范围、员工姓名、省份其中一个条件，如果没有请直接返回“否”，否则返回“是”；
 历史对话内容: {{ history }}
 问题: {{ input }}
-如果是请直接输出“是”，否则输出“否”，你的答案只能为“是”或“否”其中的一个，不允许输出其他任何文字。"""
+你的答案只能为“是”或“否”其中的一个，不允许输出其他任何文字。"""
             step_template0 = PromptTemplate(input_variables=["input", "history"],
                                             template=textwrap.dedent(step_prompt0).strip(),
                                             template_format="jinja2")
             step_chain0 = LLMChain(llm=model, prompt=step_template0)
             continue_flag = True
             flag = step_chain0.predict(input=query, history=f"{history_var}")
-            if flag in ["\"否\"", "“否”", "否", "NO", "no", "No"] and '告警' not in query and '调度单' not in query:
+            if flag in ["\"否\"", "“否”", "否", "NO", "no", "No"]:
                 continue_flag = False
                 d = {"message_id": message_id, "conversation_id": conversation_id,
-                     "answer": "请确保您的提问跟数据库的查询与分析有关，您可以提问有关告警或者调度单查询方面的问题。"}
+                     "answer": "请确保您的提问跟数据库的查询与分析有关，您可以提问有关告警或者调度单查询方面的问题。请确保您提供了明确的查询条件，例如：\n1. 查询某人上周的告警信息；\n2. 查询某区域本月的调度单明细。"}
                 update_message(message_id=message_id, response=d.get("answer"), metadata=None)
                 yield json.dumps(d, ensure_ascii=False)
-            if continue_flag:
-                step_prompt1 = """你是一个资深的数据库专家，请根据输入的问题并联系历史对话上下文，如果要将该问题转换成SQL查询并在数据库里面执行，假设你已经知道要查询哪些表以及对应的表结构，请判断问题是否有给出查询条件，例如：时间范围、员工姓名、省份其中一个条件。
-历史对话内容: {{ history }}
-问题: {{ input }}
-如果是请直接输出“是”，否则输出“否”，你的答案只能为“是”或“否”其中的一个，不允许输出其他任何文字。
-"""
-                step_template1 = PromptTemplate(input_variables=["input", "history"],
-                                                template=textwrap.dedent(step_prompt1).strip(),
-                                                template_format="jinja2")
-                step_chain1 = LLMChain(llm=model, prompt=step_template1)
-                flag = step_chain1.predict(**{"input": query, "history": f"{history_var}"})
-                if flag in ["\"否\"", "“否”", "否", "NO", "no", "No"]:
-                    continue_flag = False
-                    flag = """为了更好的回答您的问题，您将问题描述得越清晰和详细对我的理解就更有帮助。例如：\n1. 当您想查询某个人的告警数据时，您可以提问“查询姓名为XXX的告警数据”，强调出“姓名”二字有助于我识别哪些内容才是真实的姓名；\n2. 当您想查询某个时间范围的告警数据时，您可以提问“我想查询X年X月X日的告警数据”或者“我想查询X年X月X日至X年X月X日的告警数据”，规范时间表达，时间跨度不要超过1周，避免使用本周、本年等用语；\n3. 当您想查询某个地区的调度单数据时可以提问“我想查询XX省份的调度单数据”。\n"""
-                    d = {"message_id": message_id, "conversation_id": conversation_id, "answer": flag}
-                    update_message(message_id=message_id, response=d.get("answer"), metadata=None)
-                    yield json.dumps(d, ensure_ascii=False)
 
             if continue_flag:
+                model.callbacks = [callback]
                 prompt_template = get_prompt_template("agent_chat", prompt_name)
                 prompt_template_agent = CustomPromptTemplate(
                     template=prompt_template,
