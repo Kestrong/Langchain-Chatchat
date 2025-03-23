@@ -30,44 +30,60 @@ from server.knowledge_base.kb_doc_api import search_docs
 from server.memory.message_i18n import Message_I18N
 from server.utils import get_ChatOpenAI, get_tool_config, parse_json_md, parse_sql_md
 
-_DECIDER_TEMPLATE = """Given a question and a JSON map where the key is the table name and the value is the table comment. 
-Let's think step by step, there must be a clear logical connection between the question and the chosen table, every table maybe has same relevant tables, make sure you don't miss them. 
-Please only output a json list of the table names(wrap with double quote "") that may be necessary to answer this question directly. If no table is relevant according to the question, output an empty list []. 
-You are not allowed to output anything else outside of this specification. Only a list of table name in map or [] can return.
+_DECIDER_TEMPLATE = """Given a question and a JSON map below where the key is the table name and the value is the table description. 
 Table Map: {table_names}
 Question: {query}
-Output:[your answer here]
+Let's think step by step. 
+1. Deeply understand the description of each table, determine which tables are most relevant to the question.
+2. If you want to convert the question into SQL query which tables you should choose. 
+3. There must be a clear logical connection between the question and the chosen table, every table maybe has same relevant tables, make sure you don't miss them. 
+Please only output a json list of the table names that may be necessary to answer this question directly. If no table is relevant according to the question, output an empty list []. 
+You are not allowed to output anything else outside of this specification. Only a list of table name in map or [] can return.
+Output:your answer here
 """
 
 DECIDER_PROMPT = PromptTemplate(input_variables=["query", "table_names"], template=_DECIDER_TEMPLATE, )
 
-_DECIDER_DB_TEMPLATE = """Given a question and a JSON map where the key is the database name and the value is the database description, determine which database is most relevant to the question. 
-Let's think step by step, if you want to convert the question into SQL query which database can you choose. There must be a clear logical connection between the question and the chosen database. 
-If a relevant database is found, output its name directly. If no database is relevant according to the question, output an empty string "". 
-You are not allowed to output anything else outside of this specification. Only the key in map or "" can return.
+_DECIDER_DB_TEMPLATE = """Given a question and a JSON map below where the key is the database name and the value is the database description.
 Database Map: {database_names}
 Question: {query}
-Output:[your answer here]
+let's think step by step.
+1. Deeply understand the description of each database, determine which database is most relevant to the question. 
+2. If you want to convert the question into SQL query which database can you choose. There must be a clear logical connection or keywords between the question and the chosen database. 
+3. If a relevant database is found, output its name directly. If no database is relevant according to the question, output an empty string "". 
+You are not allowed to output anything else outside of this specification. Only the key in map or "" can return.
+Output:your answer here
 """
 
 DECIDER_DB_PROMPT = PromptTemplate(input_variables=["query", "database_names"], template=_DECIDER_DB_TEMPLATE, )
 
-_mysql_prompt = """Only use the following tables:
-{table_info}\n
-You are a MySQL expert. Given an input question, create a syntactically correct SQL query to run. Let's think step by step. Ensure that:
+_mysql_prompt = """
+You are a data science expert. Below, you are provided with a database schema and a natural language question. Your task is to understand the schema and generate a valid SQL query to answer the question.
+
+Database Engine:
+{dialect}
+
+Database Schema:
+{table_info}
+This schema describes the database's structure, including tables, columns, primary keys, foreign keys, and any relevant relationships or constraints.
+
+Question:
+{input}
+
+Instructions:
 1. Only return {top_k} results using the LIMIT clause as per SQL. You can order the results to return the most informative data in the database.
 2. Generate an unique alias for each table and use it to prefix each column in the table to avoid ambiguity.
 3. Only select columns necessary to answer the question; do not use `SELECT *`. Make sure at least one column from each involved table is queried.
 4. Pay attention to use only the column names from which table you have use in SQL. Be careful to not query for columns that do not exist. Also, pay attention to which column is in which table.
-5. For questions involving "today", utilize the `CURDATE()` function to get the current date. 
-6. Prefer using the IN clause over chaining OR conditions for better readability and performance.
+5. For questions involving "today", utilize the `CURRENT_DATE` function to get the current date. 
+6. Not allowed to use LIKE in JOIN conditions. Use the IN clause instead of multiple OR conditions for better readability and performance.
 7. If no time column specify in this question, and create time column exist in SQL prefer to use create time.
 
-Question: {input}
-
 Follow this format strictly:
-Question: [Your question here]
-SQLQuery: [Your SQL query here]
+Question: Your question here
+SQLQuery: Your SQL query here
+
+Before generating the final SQL query, please think through the steps of how to write the query. Take a deep breath and think step by step to find the correct SQL query.
 """
 
 MYSQL_PROMPT = PromptTemplate(
@@ -75,23 +91,7 @@ MYSQL_PROMPT = PromptTemplate(
     template=_mysql_prompt,
 )
 
-_postgres_prompt = """Only use the following tables:
-{table_info}\n
-You are a PostgreSQL expert. Given an input question, create a syntactically correct SQL query to run. Let's think step by step. Ensure that:
-1. Only return {top_k} results using the LIMIT clause as per SQL. You can order the results to return the most informative data in the database.
-2. Generate an unique alias for each table and use it to prefix each column in the table to avoid ambiguity.
-3. Only select columns necessary to answer the question; do not use `SELECT *`. Make sure at least one column from each involved table is queried.
-4. Pay attention to use only the column names from which table you have use in SQL. Be careful to not query for columns that do not exist. Also, pay attention to which column is in which table.
-5. For questions involving "today", utilize the `CURRENT_DATE` function to get the current date.
-6. Prefer using the IN clause over chaining OR conditions for better readability and performance.
-7. If no time column specify in this question, and create time column exist in SQL prefer to use create time.
-
-Question: {input}
-
-Follow this format strictly:
-Question: [Your question here]
-SQLQuery: [Your SQL query here]
-"""
+_postgres_prompt = _mysql_prompt
 
 POSTGRES_PROMPT = PromptTemplate(
     input_variables=["input", "table_info", "top_k"],
@@ -247,6 +247,7 @@ class CustomSQLDatabaseSequentialChain(SQLDatabaseSequentialChain):
             llm_inputs["table_names"] = f"{table_names_comment_map}"
         _lowercased_table_names = [name.lower() for name in _table_names]
         table_names_predict = self.decider_chain.predict(**llm_inputs)
+        _run_manager.on_text(f"Table names predict:{table_names_predict}", end="\n", verbose=self.verbose)
         table_names_predict = [t for t in json.loads(parse_json_md(table_names_predict).replace("'", '"'))]
         table_names_to_use = []
         for name in table_names_predict:
@@ -682,10 +683,8 @@ def text2sql(query: str):
                 metadata={},
             )
             if docs:
-                sql_few_shot_prompt = "，你必须严格参考以下SQL，并根据问题的内容调整参数值:\n"
-                sql_few_shot_prompt += "\n".join(
-                    [d.page_content[d.page_content.find('\n') + 1:] for d in docs])
-                query += sql_few_shot_prompt
+                sql_few_shot_prompt = "\n".join([d.page_content for d in docs])
+                query = f"\n你可以参考以下问题及对应的SQL，注意学习查询条件跟问题之间的关系以及如何调整参数值和选择合适的函数:\n{sql_few_shot_prompt}\n好了，现在让我们来解决这个问题：{query}"
 
         result = db_chain.invoke({"query": query, "sql_cmd": sql_cmd})
         if not result or result.get('result') is None:
@@ -720,12 +719,8 @@ def text2sql(query: str):
                 column_map = json.loads(parse_json_md(p).replace("'", '"'))
             except Exception as e:
                 logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
-        if not records:
-            summarize_prompt = """将以下问题转换成sql在数据库执行后查不到数据，请针对sql中的查询条件对如何修改问题给出建议，
-            问题: {query}, 
-            SQL: {sql},
-            建议只针对问题本身，不要涉及sql相关的，如何修改问题的自然语言描述才能更精确的查找到数据，直接给出建议。
-            """.format(query=origin_query, sql=sql_cmd)
+        if not records and not sql_cmd:
+            summarize = "很抱歉，本次查询没有返回数据。请检查您提供的查询条件是否准确，例如：\n1. 姓名的拼写是否正确和完整；2. 区域的命名是否跟业务上一致；3. 查询时间是否明确上周、本月或者完整的年月日；4. 其他可能影响查询的条件或语法上造成的歧义等。\n如果您已经检查过以上几点并确保无误，可以重新提问一次或者换个问题尝试。"
         else:
             summarize_prompt = """You are a helpful assistant, given the question and records below,
             Question: {{ query }}, 
@@ -733,14 +728,13 @@ def text2sql(query: str):
             let's think step by step, deeply understand the question and explore the potential value of these records, and provide a comprehensive summary.
             Just output the summary directly without other words, you must follow this format:{{ report_prompt }}
             """
-        summarize_template = PromptTemplate(input_variables=["query", "records", "report_prompt"],
-                                            template=summarize_prompt, template_format="jinja2")
-        summarize_chain = LLMChain(llm=llm, prompt=summarize_template)
-        summarize = summarize_chain.predict(
-            **{"query": origin_query,
-               "records": f"{shorter_records(records)}",
-               "report_prompt": report_prompt})
-        summarize = f"本次查询没有返回数据。{summarize}" if not records else summarize
+            summarize_template = PromptTemplate(input_variables=["query", "records", "report_prompt"],
+                                                template=summarize_prompt, template_format="jinja2")
+            summarize_chain = LLMChain(llm=llm, prompt=summarize_template)
+            summarize = summarize_chain.predict(
+                **{"query": origin_query,
+                   "records": f"{shorter_records(records)}",
+                   "report_prompt": report_prompt})
         translate_records = [{column_map.get(k, k): v for k, v in rec.items()} for rec in records]
         chart_type, chart_json = judge_chart_type(origin_query, translate_records, llm)
         if return_format == "json":
