@@ -117,12 +117,14 @@ async def do_chat_router(query: str,
                 prompt_name = prompt
             config_history_len: int = assistant.get('history_len', HISTORY_LEN)
             if history:
-                if 0 < config_history_len < len(history):
-                    history = history[-config_history_len:]
-                elif config_history_len <= 0:
+                if config_history_len == 0:
                     history.clear()
+                elif 0 < config_history_len < len(history):
+                    history = history[-config_history_len:]
             elif history_len > 0:
-                history_len = min(history_len, config_history_len)
+                history_len = min(history_len, config_history_len) if config_history_len >= 0 else history_len
+            elif config_history_len > 0:
+                history_len = config_history_len
             top_k = assistant.get("top_k") if assistant.get("top_k", -1) > 0 else top_k
             if assistant.get("score_threshold", -1) > 0:
                 score_threshold = assistant.get("score_threshold")

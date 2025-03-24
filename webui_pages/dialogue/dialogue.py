@@ -10,6 +10,7 @@ from streamlit_modal import Modal
 
 from configs import (HISTORY_LEN, PROMPT_TEMPLATES, DEFAULT_KNOWLEDGE_BASE, DEFAULT_SEARCH_ENGINE, SUPPORT_AGENT_MODEL)
 from server.agent.tools_select import get_all_tools
+from server.chat.customize_agent.customize_agent_type import customize_agent_types
 from server.knowledge_base.utils import LOADER_DICT
 from server.memory.message_i18n import Message_I18N
 from server.utils import get_tool_config
@@ -298,6 +299,12 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                         format_func=lambda x: api_name_map[x],
                         placeholder="无"
                     )
+                selected_customize_agent_type = st.selectbox(
+                    "请选择自定义agent类型：",
+                    [None] + list(customize_agent_types.keys()),
+                    key="selected_customize_agent_type",
+                    placeholder="无"
+                )
 
     # Display chat messages from history on app rerun
     chat_box.output_messages()
@@ -372,6 +379,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                 text = ""
                 ans = ""
                 for d in api.agent_chat(prompt,
+                                        extra={"customize_agent_type": selected_customize_agent_type, },
                                         history=history,
                                         conversation_id=conversation_id,
                                         model=llm_model,

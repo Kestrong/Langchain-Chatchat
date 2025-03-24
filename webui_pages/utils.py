@@ -328,6 +328,7 @@ class ApiRequest:
     def agent_chat(
             self,
             query: str,
+            extra: Dict[str, Any] = {},
             conversation_id: str = None,
             history: List[Dict] = [],
             stream: bool = True,
@@ -343,6 +344,7 @@ class ApiRequest:
         '''
         data = {
             "query": query,
+            "extra": extra,
             "conversation_id": conversation_id,
             "history": history,
             "stream": stream,

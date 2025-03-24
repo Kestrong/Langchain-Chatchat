@@ -5,7 +5,8 @@ from decimal import Decimal
 from typing import Dict, Any, Optional, Union, Literal, Sequence, List
 
 from langchain.chains import LLMChain
-from langchain.chains.sql_database.prompt import PROMPT, PROMPT_SUFFIX
+from langchain.chains.sql_database.prompt import PROMPT
+from langchain_community.chat_models import ChatOpenAI
 from langchain_community.tools.sql_database.prompt import QUERY_CHECKER
 from langchain_community.utilities import SQLDatabase
 from langchain_community.utilities.sql_database import truncate_word, _format_index
@@ -16,11 +17,12 @@ from langchain_experimental.sql import SQLDatabaseSequentialChain, SQLDatabaseCh
 from langchain_experimental.sql.base import SQL_QUERY, INTERMEDIATE_STEPS_KEY
 from pydantic import BaseModel, Field
 from sqlalchemy import event, Executable, Result, Table, select, quoted_name
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.sql.ddl import CreateTable
 from sqlalchemy.sql.sqltypes import NullType
 
-from configs import logger, log_verbose
+from common.exceptions import ChatBusinessException
+from configs import logger, log_verbose, MAX_TOKENS_INPUT
 from server.agent import get_model_container, ModelContainer
 from server.agent.tools_select import register_tool
 from server.db.base import create_engine_wrapper
@@ -28,63 +30,72 @@ from server.knowledge_base.kb_doc_api import search_docs
 from server.memory.message_i18n import Message_I18N
 from server.utils import get_ChatOpenAI, get_tool_config, parse_json_md, parse_sql_md
 
-_DECIDER_TEMPLATE = """Given a question and a JSON map where the key is the table name and the value is the table comment. 
-Let's think step by step, there must be a clear logical connection between the question and the chosen table, every table maybe has same relevant tables, make sure you don't miss them. 
-Please only output a json list of the table names(wrap with double quote "") that may be necessary to answer this question directly. If no table is relevant according to the question, output an empty list []. 
-You are not allowed to output anything else outside of this specification. Only a list of table name in map or [] can return.
-Pay attention to do not use more than 3 tables unless it is necessary.
-Question: {query}
+_DECIDER_TEMPLATE = """Given a question and a JSON map below where the key is the table name and the value is the table description. 
 Table Map: {table_names}
-Output:[your answer here]
+Question: {query}
+Let's think step by step. 
+1. Deeply understand the description of each table, determine which tables are most relevant to the question.
+2. If you want to convert the question into SQL query which tables you should choose. 
+3. There must be a clear logical connection between the question and the chosen table, every table maybe has same relevant tables, make sure you don't miss them. 
+Please only output a json list of the table names that may be necessary to answer this question directly. If no table is relevant according to the question, output an empty list []. 
+You are not allowed to output anything else outside of this specification. Only a list of table name in map or [] can return.
+Output:your answer here
 """
 
 DECIDER_PROMPT = PromptTemplate(input_variables=["query", "table_names"], template=_DECIDER_TEMPLATE, )
 
-_DECIDER_DB_TEMPLATE = """Given a question and a JSON map where the key is the database name and the value is the database description, determine which database is most relevant to the question. 
-There must be a clear logical connection between the question and the chosen database. 
-If a relevant database is found, output its name directly. If no database is relevant according to the question, output an empty string "". 
-You are not allowed to output anything else outside of this specification. Only the key in map or "" can return.
-Question: {query}
+_DECIDER_DB_TEMPLATE = """Given a question and a JSON map below where the key is the database name and the value is the database description.
 Database Map: {database_names}
-Output:[your answer here]
+Question: {query}
+let's think step by step.
+1. Deeply understand the description of each database, determine which database is most relevant to the question. 
+2. If you want to convert the question into SQL query which database can you choose. There must be a clear logical connection or keywords between the question and the chosen database. 
+3. If a relevant database is found, output its name directly. If no database is relevant according to the question, output an empty string "". 
+You are not allowed to output anything else outside of this specification. Only the key in map or "" can return.
+Output:your answer here
 """
 
 DECIDER_DB_PROMPT = PromptTemplate(input_variables=["query", "database_names"], template=_DECIDER_DB_TEMPLATE, )
 
-_mysql_prompt = """You are a MySQL expert. Given an input question, create a syntactically correct SQL query to run. Let's think step by step. Ensure that:
+_mysql_prompt = """
+You are a data science expert. Below, you are provided with a database schema and a natural language question. Your task is to understand the schema and generate a valid SQL query to answer the question.
+
+Database Engine:
+{dialect}
+
+Database Schema:
+{table_info}
+This schema describes the database's structure, including tables, columns, primary keys, foreign keys, and any relevant relationships or constraints.
+
+Question:
+{input}
+
+Instructions:
 1. Only return {top_k} results using the LIMIT clause as per SQL. You can order the results to return the most informative data in the database.
-2. Assign a unique alias for each table and prefix each column with its table alias to avoid ambiguity.
+2. Generate an unique alias for each table and use it to prefix each column in the table to avoid ambiguity.
 3. Only select columns necessary to answer the question; do not use `SELECT *`. Make sure at least one column from each involved table is queried.
-4. For questions involving "today", utilize the `CURDATE()` function to get the current date.
-5. Do not use `LIKE` in JOIN conditions to maintain query performance.
-6. Carefully verify that all referenced column names exist within the specified tables.
+4. Pay attention to use only the column names from which table you have use in SQL. Be careful to not query for columns that do not exist. Also, pay attention to which column is in which table.
+5. For questions involving "today", utilize the `CURRENT_DATE` function to get the current date. 
+6. Not allowed to use LIKE in JOIN conditions. Use the IN clause instead of multiple OR conditions for better readability and performance.
+7. If no time column specify in this question, and create time column exist in SQL prefer to use create time.
 
 Follow this format strictly:
-Question: [Your question here]
-SQLQuery: [Your SQL query here, crafted following the above guidelines]
+Question: Your question here
+SQLQuery: Your SQL query here
+
+Before generating the final SQL query, please think through the steps of how to write the query. Take a deep breath and think step by step to find the correct SQL query.
 """
 
 MYSQL_PROMPT = PromptTemplate(
     input_variables=["input", "table_info", "top_k"],
-    template=_mysql_prompt + PROMPT_SUFFIX,
+    template=_mysql_prompt,
 )
 
-_postgres_prompt = """You are a PostgreSQL expert. Given an input question, create a syntactically correct SQL query to run. Let's think step by step. Ensure that:
-1. Only return {top_k} results using the LIMIT clause as per SQL. You can order the results to return the most informative data in the database.
-2. Assign a unique alias for each table and prefix each column with its table alias to avoid ambiguity.
-3. Only select columns necessary to answer the question; do not use `SELECT *`. Make sure at least one column from each involved table is queried.
-4. For questions involving "today", utilize the `CURRENT_DATE` function to get the current date.
-5. Do not use `LIKE` in JOIN conditions to maintain query performance.
-6. Carefully verify that all referenced column names exist within the specified tables.
-
-Follow this format strictly:
-Question: [Your question here]
-SQLQuery: [Your SQL query here, crafted following the above guidelines]
-"""
+_postgres_prompt = _mysql_prompt
 
 POSTGRES_PROMPT = PromptTemplate(
     input_variables=["input", "table_info", "top_k"],
-    template=_postgres_prompt + PROMPT_SUFFIX,
+    template=_postgres_prompt,
 )
 
 SQL_PROMPTS = {
@@ -223,7 +234,7 @@ class CustomSQLDatabaseSequentialChain(SQLDatabaseSequentialChain):
         _table_names = self.sql_chain.database.get_usable_table_names()
         llm_inputs = {
             "query": inputs[self.input_key],
-            "table_names": "[]",
+            "table_names": "{}",
         }
         if self.fill_table_in_prompt:
             _table_comments = {}
@@ -236,12 +247,18 @@ class CustomSQLDatabaseSequentialChain(SQLDatabaseSequentialChain):
             llm_inputs["table_names"] = f"{table_names_comment_map}"
         _lowercased_table_names = [name.lower() for name in _table_names]
         table_names_predict = self.decider_chain.predict(**llm_inputs)
+        _run_manager.on_text(f"Table names predict:{table_names_predict}", end="\n", verbose=self.verbose)
         table_names_predict = [t for t in json.loads(parse_json_md(table_names_predict).replace("'", '"'))]
-        table_names_to_use = [
-            name
-            for name in table_names_predict
-            if name.lower() in _lowercased_table_names
-        ]
+        table_names_to_use = []
+        for name in table_names_predict:
+            if name.lower() in _lowercased_table_names:
+                table_names_to_use.append(name)
+                continue
+            for _name in _lowercased_table_names:
+                parts = _name.split(".")
+                if len(parts) > 1 and name.lower() == parts[1]:
+                    table_names_to_use.append(f"{parts[0]}.{name}")
+                    break
         _run_manager.on_text("Table names to use:", end="\n", verbose=self.verbose)
         _run_manager.on_text(
             str(table_names_to_use), color="yellow", verbose=self.verbose
@@ -441,10 +458,8 @@ def intercept_sql(conn, cursor, statement, parameters, context, executemany):
     )
     # Check if the statement starts with any of the write operation keywords
     if any(statement.strip().lower().startswith(op) for op in write_operations):
-        raise OperationalError(
-            "Database is read-only. Write operations are not allowed.",
-            params=None,
-            orig=None,
+        raise ChatBusinessException(
+            Message_I18N.TOOL_SQL_READ_ONLY.value,
         )
 
 
@@ -459,17 +474,54 @@ def complex_handler(obj):
         raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
-def judge_chart_type(query: str):
+def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
+    chart_types = {"line": "折线图", "pie": "饼图", "bar": "柱状图", "table": "表格"}
+    chart_json_example = {
+        "line": '{"title":{"text":"折线图示例"},"tooltip":{"trigger":"axis"},"legend":{"data":["邮件营销","联盟广告"]},"grid":{"left":"3%","right":"4%","bottom":"3%","containLabel":true},"toolbox":{"feature":{"saveAsImage":{}}},"xAxis":{"type":"category","boundaryGap":false,"data":["周一","周二","周三","周四","周五","周六","周日"]},"yAxis":{"type":"value"},"series":[{"name":"邮件营销","type":"line","stack":"总量","data":[120,132,101,134,90,230,210]},{"name":"联盟广告","type":"line","stack":"总量","data":[220,182,191,234,290,330,310]}]}',
+        "pie": '{"title":{"text":"饼图示例","left":"center"},"tooltip":{"trigger":"item"},"legend":{"orient":"vertical","left":"left"},"series":[{"name":"访问来源","type":"pie","radius":"50%","data":[{"value":1048,"name":"搜索引擎"},{"value":735,"name":"直接访问"}],"emphasis":{"itemStyle":{"shadowBlur":10,"shadowOffsetX":0,"shadowColor":"rgba(0, 0, 0, 0.5)"}}}]}',
+        "bar": '{"title":{"text":"柱状图示例"},"tooltip":{},"xAxis":{"data":["衬衫","羊毛衫","雪纺衫","裤子","高跟鞋","袜子"]},"yAxis":{},"series":[{"name":"销量","type":"bar","data":[5,20,36,10,10,20]}]}'
+    }
     if "折线图" in query:
-        return "line"
+        chart_type = "line"
     elif "饼图" in query:
-        return "pie"
+        chart_type = "pie"
     elif "柱状图" in query:
-        return "bar"
+        chart_type = "bar"
     elif "表格" in query:
-        return "table"
+        chart_type = "table"
     else:
-        return "table"
+        chart_type = "table"
+    chart_json = {}
+    if records and chart_type in chart_json_example:
+        prompt = """
+        你是一个专业的数据可视化工程师，给定以下数据:
+        数据集: {records}
+        图表类型: {chart_type}
+        请你深呼吸，然后让我们一步一步来思考。 
+        1. 请充分理解给定的数据集的每一个维度每一个数值的含义。
+        2. 然后从数据里面的选取合适的维度并在echart图表里面展示出来，即使为0或者空值也允许展示。
+        3. 请直接输出一个符合echart图表规范的json对象，不允许包含其他文字内容。
+        4. json中包裹key和value的双引号必须成对存在，value为对象的话不要使用双引号包裹。
+        你可以参考以下例子的格式: {chart_json_example}
+        """
+        try:
+            template = PromptTemplate(input_variables=["records", "chart_type", "chart_json_example"],
+                                      template=prompt)
+            chain = LLMChain(llm=llm, prompt=template)
+            chart_json = chain.run(records=json.dumps(records, default=complex_handler),
+                                   chart_type=chart_types[chart_type],
+                                   chart_json_example=chart_json_example[chart_type])
+            chart_json = json.loads(parse_json_md(chart_json))
+            if 'tooltip' not in chart_json:
+                chart_json['tooltip'] = {}
+            if chart_type == 'pie':
+                chart_json['tooltip'] = {"trigger": "item"}
+            else:
+                chart_json['tooltip'] = {"trigger": "axis"}
+        except Exception as e:
+            logger.error(f"generate echart json error, error:{e}, json:{chart_json}")
+            chart_json = {}
+    return chart_type, chart_json
 
 
 class Text2SqlInput(BaseModel):
@@ -482,8 +534,10 @@ class Text2SqlInput(BaseModel):
 def text2sql(query: str):
     model_container = get_model_container() or ModelContainer()
     model_container.TOOL_RERUN = False
-    if model_container.TOOL_ARGS.get("query"):
-        query = model_container.TOOL_ARGS.get("query")
+    tool_arg_query = model_container.TOOL_ARGS.get("query")
+    if tool_arg_query and 'select' in query.lower():
+        query = tool_arg_query
+    model_container.TOOL_ARGS["query"] = query
     origin_query = query
 
     text2sql_config_bak = get_tool_config().TOOL_CONFIG.get("text2sql", {})
@@ -508,7 +562,7 @@ def text2sql(query: str):
     try:
         llm = get_ChatOpenAI(
             model_name=model_name,
-            temperature=0.1,
+            temperature=0,
             streaming=True,
             verbose=True,
         )
@@ -522,9 +576,14 @@ def text2sql(query: str):
                 if db_name_from_chain:
                     db_name_from_chain = db_name_from_chain.replace("'", "").replace('"', "")
             if db_name_from_chain not in db_infos:
+                for k, v in db_infos.items():
+                    if v.get("default", False):
+                        db_name_from_chain = k
+                        break
+            if db_name_from_chain not in db_infos:
                 logger.error(
                     f"query: {query}, database {db_name_from_chain} not found, available dbs:{list(db_infos.keys())}.")
-                return Message_I18N.TOOL_SQL_NOT_CLEAR.value.format(database_comments=database_comments)
+                return Message_I18N.TOOL_SQL_NOT_CLEAR.value.format(database_comments=list(database_comments.values()))
             db_info = db_infos.get(db_name_from_chain)
             db_name = db_name_from_chain
             knowledgebase = db_name
@@ -533,7 +592,8 @@ def text2sql(query: str):
             db_name = next(iter(db_infos.keys()))
             knowledgebase = db_name
 
-        engine = create_engine_wrapper(uri=db_info.get("sqlalchemy_connect_str"), pool_size=1)
+        engine = create_engine_wrapper(uri=db_info.get("sqlalchemy_connect_str"), pool_size=1,
+                                       connect_args=db_info.get('connect_args') or {})
         db = CustomSQLDatabase(engine=engine, schema=db_info.get("sqlalchemy_schema"),
                                sample_rows_in_table_info=sample_rows_in_table_info,
                                indexes_in_table_info=indexes_in_table_info,
@@ -560,24 +620,32 @@ def text2sql(query: str):
             ref_dbs: dict = db_info.get("ref_dbs")
             for k, v in ref_dbs.items():
                 ref_engine = create_engine_wrapper(uri=v.get("sqlalchemy_connect_str"), pool_size=1)
-                ref_db = CustomSQLDatabase(engine=ref_engine, schema=v.get("sqlalchemy_schema"),
-                                           sample_rows_in_table_info=1,
-                                           max_string_length=max_string_length,
-                                           view_support=v.get("view_support", False),
-                                           include_tables=v.get("table_names"))
-                db._all_tables += [rename_func(k, a) for a in ref_db._all_tables]
-                db._include_tables += [rename_func(k, a) for a in ref_db._include_tables]
-                db._ignore_tables += [rename_func(k, a) for a in ref_db._ignore_tables]
-                db._usable_tables += [rename_func(k, a) for a in ref_db._usable_tables]
-                if ref_db._custom_table_info:
-                    for kk, vv in ref_db._custom_table_info:
-                        db._custom_table_info[rename_func(k, kk)] = vv
-                for a, b in ref_db._metadata.tables.items():
-                    b.name = rename_func(k, b.name)
-                    db._metadata._add_table(name=b.name, table=b, schema=b.schema)
-                ref_db_table_comments = v.get("table_comments", {})
-                for table_name, table_comment in ref_db_table_comments.items():
-                    table_comments[rename_func(k, table_name)] = table_comment
+                try:
+                    ref_db = CustomSQLDatabase(engine=ref_engine, schema=v.get("sqlalchemy_schema"),
+                                               sample_rows_in_table_info=1,
+                                               max_string_length=max_string_length,
+                                               view_support=v.get("view_support", False),
+                                               include_tables=v.get("table_names"))
+                    db._all_tables += [rename_func(k, a) for a in ref_db._all_tables]
+                    db._include_tables += [rename_func(k, a) for a in ref_db._include_tables]
+                    db._ignore_tables += [rename_func(k, a) for a in ref_db._ignore_tables]
+                    db._usable_tables += [rename_func(k, a) for a in ref_db._usable_tables]
+                    if ref_db._custom_table_info:
+                        for kk, vv in ref_db._custom_table_info:
+                            db._custom_table_info[rename_func(k, kk)] = vv
+                    for a, b in ref_db._metadata.tables.items():
+                        b.name = rename_func(k, b.name)
+                        db._metadata._add_table(name=b.name, table=b, schema=b.schema)
+                    ref_db_table_comments = v.get("table_comments", {})
+                    for table_name, table_comment in ref_db_table_comments.items():
+                        table_comments[rename_func(k, table_name)] = table_comment
+                finally:
+                    if ref_engine:
+                        try:
+                            ref_engine.clear_compiled_cache()
+                            ref_engine.pool.dispose()
+                        except:
+                            pass
         else:
             table_comments = db_info.get("table_comments", {})
         db.table_comments = table_comments
@@ -617,9 +685,8 @@ def text2sql(query: str):
                 metadata={},
             )
             if docs:
-                sql_few_shot_prompt = "\n\nSome SQL examples with notes that correspond to question:\n\n"
-                sql_few_shot_prompt += "\n".join([d.page_content for d in docs])
-                query += sql_few_shot_prompt
+                sql_few_shot_prompt = "\n".join([d.page_content for d in docs])
+                query = f"\n你可以参考以下问题及对应的SQL，注意学习查询条件跟问题之间的关系以及如何调整参数值和选择合适的函数:\n{sql_few_shot_prompt}\n好了，现在让我们来解决这个问题：{query}"
 
         result = db_chain.invoke({"query": query, "sql_cmd": sql_cmd})
         if not result or result.get('result') is None:
@@ -627,7 +694,7 @@ def text2sql(query: str):
             return Message_I18N.TOOL_SQL_NOT_CLEAR.value.format(database_comments=list(database_comments.values()))
         if return_sql:
             sql = result['result']
-            logger.debug(f"knowledgebase:{knowledgebase},\n query:{origin_query},\n sql:{sql}")
+            logger.info(f"knowledgebase:{knowledgebase},\n query:{origin_query},\n sql:{sql}")
             if return_format == "json":
                 return json.dumps({"sql": parse_sql_md(sql)}, ensure_ascii=False)
             return Message_I18N.TOOL_SQL_PRODUCE.value.format(sql=parse_sql_md(sql))
@@ -636,59 +703,77 @@ def text2sql(query: str):
         sql = intermediate_steps[1]
         records = intermediate_steps[3]
         table_info = intermediate_steps[0]['table_info']
-        logger.debug(f"knowledgebase:{knowledgebase},\n query:{origin_query},\n sql:{sql}")
+        logger.info(f"knowledgebase:{knowledgebase},\n query:{origin_query},\n sql:{sql}")
         column_map = {}
         if isinstance(records, list) and len(records) > 0:
-            translate_prompt = """
-                        You are a helpful assistant, given the below sql and table info:
-                        SQL:{{ sql }},
-                        Table Info:{{ table_info }},
-                        Let's think step by step, please translate these columns:{{ columns }} into chinese.
-                        Out put a json map with the format: {"column": "column_in_chinese"}, column_in_chinese only contains Chinese characters and letters, shorter is better.
-                    """
+            translate_prompt = """你是一个翻译专家。你可以参考以下给定的SQL和表信息：
+            SQL: {{ sql }},
+            表信息: {{ table_info }},
+            现在深吸一口气，让我们一步一步来思考，请将这些列名翻译成中文：{{ columns }}。
+            1. 如果某个列名已经是中文，则直接使用列名作为翻译后的内容；
+            2. 确保翻译后的内容仅包含中文，过滤掉其他无效的字符，并且尽可能简短。
+            现在，请根据以上要求直接输出一个JSON对象，其中key是列名，value是翻译后的内容。
+            """
             translate_template = PromptTemplate(input_variables=["sql", "table_info", "columns"],
                                                 template=translate_prompt, template_format="jinja2")
             translate_chain = LLMChain(llm=llm, prompt=translate_template)
             try:
                 p = translate_chain.predict(
                     **{"sql": sql, "table_info": table_info, "columns": records[0].keys()})
-                column_map = json.loads(parse_json_md(p).replace("'", '"'))
+                column_map = {column: chinese.split("_")[0] for column, chinese in
+                              json.loads(parse_json_md(p).replace("'", '"')).items()}
             except Exception as e:
-                logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
-        summarize_prompt = """
-        You are a helpful assistant, given the question ,sql and records below,
-        Question: {{ query }}, 
-        SQL: {{ sql }},
-        Records: {{ records }},
-        let's think step by step, deeply understand the question and explore the potential value of these records, and provide a comprehensive summary.
-        you can use column_map for translate the key(column_name) in records into chinese, 
-        column_map: {{ column_map }},
-        Just output the summary directly without other words, you must follow this format:{{ report_prompt }}
-        """
-        summarize_template = PromptTemplate(input_variables=["query", "sql", "column_map", "records", "report_prompt"],
-                                            template=summarize_prompt, template_format="jinja2")
-        summarize_chain = LLMChain(llm=llm, prompt=summarize_template)
-        summarize = summarize_chain.predict(
-            **{"query": origin_query, "sql": sql, "column_map": column_map,
-               "records": json.dumps(records[0:35], default=complex_handler),
-               "report_prompt": report_prompt})
-
+                logger.error(f'translate column error:{e}')
+        if not records and not sql_cmd:
+            summarize = "很抱歉，本次查询没有返回数据。请检查您提供的查询条件是否准确，例如：\n1. 姓名的拼写是否正确和完整；\n2. 区域的命名是否跟业务上一致；\n3. 查询时间是否明确上周、本月或者完整的年月日；\n4. 其他可能影响查询的条件或语法上造成的歧义等；\n5. 数据库确实存在此类数据。\n\n如果您已经检查过以上几点并确认无误，可以重新提问一次或者换个问题尝试。"
+        else:
+            summarize_prompt = """You are a helpful assistant, given the question and records below,
+            Question: {{ query }}, 
+            Records: {{ records }},
+            let's think step by step, deeply understand the question and explore the potential value of these records, and provide a comprehensive summary.
+            Just output the summary directly without other words, you must follow this format:{{ report_prompt }}
+            """
+            summarize_template = PromptTemplate(input_variables=["query", "records", "report_prompt"],
+                                                template=summarize_prompt, template_format="jinja2")
+            summarize_chain = LLMChain(llm=llm, prompt=summarize_template)
+            summarize = summarize_chain.predict(
+                **{"query": origin_query,
+                   "records": f"{shorter_records(records)}",
+                   "report_prompt": report_prompt})
+        translate_records = [{column_map.get(k, k): v for k, v in rec.items()} for rec in records]
+        chart_type, chart_json = judge_chart_type(origin_query, translate_records, llm)
         if return_format == "json":
             return json.dumps(
-                {"sql": parse_sql_md(sql), "column_map": column_map, "records": records,
-                 "chart_type": judge_chart_type(origin_query),
-                 "summarize": summarize, "metadata": {"table_info": table_info}},
+                {"column_map": column_map, "records": records,
+                 "chart_type": chart_type,
+                 "chart_json": chart_json,
+                 "summarize": summarize,
+                 "metadata": {"sql": parse_sql_md(sql), "table_info": table_info, "db_name": db_name,
+                              "fix_sql": True if sql_cmd else False}},
                 default=complex_handler, ensure_ascii=False)
         return Message_I18N.TOOL_SQL_DETAIL_PRODUCE.value.format(sql=parse_sql_md(sql),
                                                                  records=json.dumps(
-                                                                     {"chart_type": judge_chart_type(origin_query),
+                                                                     {"chart_type": chart_type,
+                                                                      "chart_json": chart_json,
                                                                       "column_map": column_map, "records": records, },
                                                                      default=complex_handler, indent=4),
                                                                  summarize=summarize)
     except Exception as e:
+        error_info = str(e)
         logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
-        model_container.TOOL_RERUN = True
-        return Message_I18N.TOOL_SQL_ERROR.value.format(error=e)
+        if isinstance(e, ChatBusinessException):
+            return error_info
+        if 'timeout' in error_info or 'time out' in error_info or 'timed out' in error_info:
+            return Message_I18N.TOOL_SQL_TIMEOUT.value
+        if model_container.TOOL_ARGS.get("sql_cmd"):
+            return Message_I18N.TOOL_SQL_ERROR.value.format(error=error_info.split("\n")[0])
+        retry = model_container.TOOL_ARGS.get("retry", 0)
+        retry -= 1
+        if retry > 0:
+            model_container.TOOL_RERUN = True
+            model_container.TOOL_ARGS['retry'] = retry
+            return Message_I18N.TOOL_SQL_ERROR_RETRY.value.format(error=error_info.split("\n")[0])
+        return Message_I18N.TOOL_SQL_ERROR.value.format(error=error_info.split("\n")[0])
     finally:
         if engine:
             try:
@@ -698,6 +783,19 @@ def text2sql(query: str):
                 pass
 
 
+def shorter_records(records: list):
+    result = []
+    length = 0
+    for rr in records:
+        r_str = json.dumps(rr, default=complex_handler)
+        length += len(r_str)
+        if length > MAX_TOKENS_INPUT - 5000:
+            break
+        result.append(r_str)
+    return result
+
+
 if __name__ == '__main__':
-    r = text2sql("查询最近10年的告警信息以及关联的告警操作人名称、部门信息")
-    print(r)
+    for i in range(10):
+        r = text2sql("查看海涛和程丽本月的告警明细")
+        print(r)

@@ -10,8 +10,12 @@ message_i18n_map = {
 
         "TOOL_CALCULATE_ERROR": "```{query}```表达式无法被numexpr解析执行",
         "TOOL_SEARCH_KNOWLEDGEBASE_EMPTY": "没有找到相关文档,请更换关键词或者知识库重试",
-        "TOOL_SQL_ERROR": "生成SQL失败，请根据异常信息调整SQL后重新调用工具，异常信息：{error}。",
-        "TOOL_SQL_NOT_CLEAR": "该问题无法用sql解决，请修改您的提问满足以下数据库的内容:```json {database_comments} ```，并完善问题，例如：提供更详细的查询主体、范围和条件等信息。",
+        "TOOL_SQL_NO_RECORD": "对不起，没有查询到数据，请您换个问题或者修改问题的查询条件后重新提问，例如：提供完整的姓名、修改时间范围、使用业务上的省份区域命名方式、记录的唯一标识等。",
+        "TOOL_SQL_READ_ONLY": "对不起，您只允许进行数据库查询，不允许进行增、删、改等操作。",
+        "TOOL_SQL_TIMEOUT": "对不起，执行查询时超时，可能是数据库繁忙、数据量太大或者网络波动。",
+        "TOOL_SQL_ERROR_RETRY": "执行出错，请重新调用工具，异常信息：{error}",
+        "TOOL_SQL_ERROR": "对不起，执行过程出现异常，您可以换个问题或者重新提问，异常信息：{error}",
+        "TOOL_SQL_NOT_CLEAR": "对不起我无法回答您的问题，我只能回答以下数据库范围内的问题:``` {database_comments} ```",
         "TOOL_SQL_DETAIL_PRODUCE": "生成的SQL如下：\n```sql\n{sql}\n```\n数据库查询结果如下：\n```json\n{records}\n```\n总结：\n{summarize}\n",
         "TOOL_SQL_PRODUCE": "生成的SQL如下：\n```sql\n{sql}\n```\n",
         "TOOL_SEARCH_RESULT": "查询结果：{result}",
@@ -48,8 +52,12 @@ message_i18n_map = {
 
         "TOOL_CALCULATE_ERROR": "The expression ```{query}``` cannot be parsed and executed by numuxpr",
         "TOOL_SEARCH_KNOWLEDGEBASE_EMPTY": "No relevant documents found, please change keywords or knowledge base and try again",
-        "TOOL_SQL_ERROR": "Failed to generate SQL, please correct your SQL according to error info and rerun this tool, error info: {error}.",
-        "TOOL_SQL_NOT_CLEAR": "The question cannot be solved with SQL, please modify your question to fit the content of the following database: ```json {database_comments} ```, and improve your question by providing more detailed query subjects, scope, conditions, etc.",
+        "TOOL_SQL_NO_RECORD": "Sorry, no data was found. Please change your question or modify the query conditions and ask again, for example: provide full name, modify the time range, use the provincial area naming conventions in business, unique identifiers of records, etc.",
+        "TOOL_SQL_READ_ONLY": "I'm sorry, you are only allowed to perform database queries; data manipulation operations such as insert, delete, or update are not permitted.",
+        "TOOL_SQL_TIMEOUT": "Sorry, the query execution timed out, which may be due to a busy database, too much data, or network fluctuations.",
+        "TOOL_SQL_ERROR_RETRY": "Execution error, please rerun this tool, error info: {error}",
+        "TOOL_SQL_ERROR": "Sorry, an exception occurred during the execution. You may try a different question or rephrase your query. Error info: {error}",
+        "TOOL_SQL_NOT_CLEAR": "I'm sorry, I can't answer your question. I can only respond to questions within the scope of the following database: ``` {database_comments} ```",
         "TOOL_SQL_DETAILS_PRODUCE": "The generated SQL is as follows:\n```sql\n{sql}\n```\nrecords:\n```json\n{records}\n```\nsummarize:\n{summarize}\n",
         "TOOL_SQL_PRODUCE": "The generated SQL is as follows:\n```sql\n{sql}\n```\n",
         "TOOL_SEARCH_RESULT": "Search result:{result}",
@@ -60,8 +68,8 @@ message_i18n_map = {
         "WORKER_CHAT_ERROR": "There is an exception occur",
         "WORKER_CHAT_CANCELLED": "Chat cancelled",
 
-        "API_AGENT_TOOL_SUCCESS_INFO": "\n```\nTool name: {tool_name}\nTool status: Call failed\nError message: {error}\n```\n",
-        "API_AGENT_TOOL_ERROR_INFO": "\n```\nTool name: {tool_name}\nTool status: Call success\nTool input: {input_str}\nTool output: {output_str}\n```\n",
+        "API_AGENT_TOOL_ERROR_INFO": "\n```\nTool name: {tool_name}\nTool status: Call failed\nError message: {error}\n```\n",
+        "API_AGENT_TOOL_SUCCESS_INFO": "\n```\nTool name: {tool_name}\nTool status: Call success\nTool input: {input_str}\nTool output: {output_str}\n```\n",
         "API_CREATE_ERROR": "Create failed",
         "API_UPDATE_ERROR": "Update failed",
         "API_DELETE_ERROR": "Delete failed",
@@ -95,6 +103,10 @@ class Message_I18N(enum.Enum):
 
     TOOL_CALCULATE_ERROR = get_message_i18n("TOOL_CALCULATE_ERROR")
     TOOL_SEARCH_KNOWLEDGEBASE_EMPTY = get_message_i18n("TOOL_SEARCH_KNOWLEDGEBASE_EMPTY")
+    TOOL_SQL_NO_RECORD = get_message_i18n("TOOL_SQL_NO_RECORD")
+    TOOL_SQL_READ_ONLY = get_message_i18n("TOOL_SQL_READ_ONLY")
+    TOOL_SQL_TIMEOUT = get_message_i18n("TOOL_SQL_TIMEOUT")
+    TOOL_SQL_ERROR_RETRY = get_message_i18n("TOOL_SQL_ERROR_RETRY")
     TOOL_SQL_ERROR = get_message_i18n("TOOL_SQL_ERROR")
     TOOL_SQL_NOT_CLEAR = get_message_i18n("TOOL_SQL_NOT_CLEAR")
     TOOL_SQL_PRODUCE = get_message_i18n("TOOL_SQL_PRODUCE")
