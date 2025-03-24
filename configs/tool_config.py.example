@@ -61,6 +61,8 @@ TOOL_CONFIG = {
                 # 如提示缺少对应数据库的驱动，请自行通过poetry安装
                 "sqlalchemy_schema": os.environ.get('TEXT2SQL_DATABASE_SCHEMA', DATABASE_SCHEMA),
                 "sqlalchemy_connect_str": os.environ.get('TEXT2SQL_DATABASE_URL', SQLALCHEMY_DATABASE_URI),
+                # 连接参数，如超时时间等 mysql:{"read_timeout": 10}, pg: {"options": "-c statement_timeout=10000"}
+                "connect_args": {"options": "-c statement_timeout=10000"},
                 "description": "",
                 # 是否支持数据库视图
                 "view_support": True,

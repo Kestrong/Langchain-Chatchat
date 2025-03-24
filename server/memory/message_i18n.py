@@ -68,8 +68,8 @@ message_i18n_map = {
         "WORKER_CHAT_ERROR": "There is an exception occur",
         "WORKER_CHAT_CANCELLED": "Chat cancelled",
 
-        "API_AGENT_TOOL_SUCCESS_INFO": "\n```\nTool name: {tool_name}\nTool status: Call failed\nError message: {error}\n```\n",
-        "API_AGENT_TOOL_ERROR_INFO": "\n```\nTool name: {tool_name}\nTool status: Call success\nTool input: {input_str}\nTool output: {output_str}\n```\n",
+        "API_AGENT_TOOL_ERROR_INFO": "\n```\nTool name: {tool_name}\nTool status: Call failed\nError message: {error}\n```\n",
+        "API_AGENT_TOOL_SUCCESS_INFO": "\n```\nTool name: {tool_name}\nTool status: Call success\nTool input: {input_str}\nTool output: {output_str}\n```\n",
         "API_CREATE_ERROR": "Create failed",
         "API_UPDATE_ERROR": "Update failed",
         "API_DELETE_ERROR": "Delete failed",

@@ -23,7 +23,6 @@ from server.chat.task_manager import task_manager
 from server.chat.utils import History, wrap_event_response
 from server.db.repository import add_message_to_db, update_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
-from server.memory.message_i18n import Message_I18N
 from server.utils import wrap_done, get_prompt_template, get_ChatOpenAI
 
 
@@ -62,9 +61,10 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
         message_id = add_message_to_db(chat_type=ChatType.AGENT_CHAT.value, query=query,
                                        conversation_id=conversation_id,
                                        store=store_message, assistant_id=assistant_id)
+        waiting_tips = extra.get("waiting_tips", "正在查询相关信息，请耐心等待，我们将尽快为您提供答案...")
+        yield json.dumps(obj={"thought": waiting_tips, "message_id": message_id,
+                              "conversation_id": conversation_id}, ensure_ascii=False)
         if extra and extra.get("sql_cmd"):
-            d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
-            yield json.dumps(d, ensure_ascii=False)
 
             async def co():
                 return text2sql(query)
@@ -194,68 +194,26 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                         pass
                 task_manager.put(message_id, task)
 
-                d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
-                yield json.dumps(d, ensure_ascii=False)
                 if stream:
                     async for chunk in callback.aiter():
                         # Use server-sent-events to stream the response
                         data = json.loads(chunk)
                         if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
                             continue
-                        elif data["status"] == AgentStatus.error:
-                            use_tool_name = data["tool_name"]
-                            use_tool = [a for a in available_tools if a.name == use_tool_name]
-                            thought = Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
-                                tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
-                                error=data["error"])
-                            yield json.dumps(
-                                {"thought": thought, "message_id": message_id, "conversation_id": conversation_id},
-                                ensure_ascii=False)
-                        elif data["status"] == AgentStatus.tool_end:
-                            use_tool_name = data["tool_name"]
-                            use_tool = [a for a in available_tools if a.name == use_tool_name]
-                            thought = Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
-                                tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
-                                input_str=str(data.get("input_str")),
-                                output_str=str(data.get("output_str")))
-                            yield json.dumps(
-                                {"thought": thought, "message_id": message_id, "conversation_id": conversation_id},
-                                ensure_ascii=False)
                         elif data["status"] == AgentStatus.agent_finish:
                             final_answer = data["final_answer"]
                             yield json.dumps({"answer": final_answer, "message_id": message_id,
                                               "conversation_id": conversation_id}, ensure_ascii=False)
-                        else:
-                            yield json.dumps(
-                                {"thought": data["llm_token"], "message_id": message_id,
-                                 "conversation_id": conversation_id},
-                                ensure_ascii=False)
                 else:
                     answer = ""
-                    thought = ""
                     async for chunk in callback.aiter():
                         data = json.loads(chunk)
                         if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
                             continue
-                        elif data["status"] == AgentStatus.error:
-                            use_tool_name = data["tool_name"]
-                            use_tool = [a for a in available_tools if a.name == use_tool_name]
-                            thought += Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
-                                tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
-                                error=data["error"])
-                        elif data["status"] == AgentStatus.tool_end:
-                            use_tool_name = data["tool_name"]
-                            use_tool = [a for a in available_tools if a.name == use_tool_name]
-                            thought += Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
-                                tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
-                                input_str=str(data.get("input_str")),
-                                output_str=str(data.get("output_str")))
                         elif data["status"] == AgentStatus.agent_finish:
                             answer += data["final_answer"]
-                        else:
-                            thought += data["llm_token"]
 
-                    yield json.dumps({"thought": thought, "answer": answer, "message_id": message_id,
+                    yield json.dumps({"answer": answer, "message_id": message_id,
                                       "conversation_id": conversation_id}, ensure_ascii=False)
                 await task
 

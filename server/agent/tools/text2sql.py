@@ -501,6 +501,7 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
         1. 请充分理解给定的数据集的每一个维度每一个数值的含义。
         2. 然后从数据里面的选取合适的维度并在echart图表里面展示出来，即使为0或者空值也允许展示。
         3. 请直接输出一个符合echart图表规范的json对象，不允许包含其他文字内容。
+        4. json中包裹key和value的双引号必须成对存在，value为对象的话不要使用双引号包裹。
         你可以参考以下例子的格式: {chart_json_example}
         """
         try:
@@ -519,6 +520,7 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
                 chart_json['tooltip'] = {"trigger": "axis"}
         except Exception as e:
             logger.error(f"generate echart json error, error:{e}, json:{chart_json}")
+            chart_json = {}
     return chart_type, chart_json
 
 
@@ -704,11 +706,13 @@ def text2sql(query: str):
         logger.info(f"knowledgebase:{knowledgebase},\n query:{origin_query},\n sql:{sql}")
         column_map = {}
         if isinstance(records, list) and len(records) > 0:
-            translate_prompt = """You are a helpful assistant, given the below sql and table info:
-            SQL:{{ sql }},
-            Table Info:{{ table_info }},
-            Let's think step by step, please translate these columns:{{ columns }} into chinese.
-            Out put a json map with the format: {"column": "column_in_chinese"}, column_in_chinese only contains Chinese characters and letters, shorter is better.
+            translate_prompt = """你是一个翻译专家。你可以参考以下给定的SQL和表信息：
+            SQL: {{ sql }},
+            表信息: {{ table_info }},
+            现在深吸一口气，让我们一步一步来思考，请将这些列名翻译成中文：{{ columns }}。
+            1. 如果某个列名已经是中文，则直接使用列名作为翻译后的内容；
+            2. 确保翻译后的内容仅包含中文，过滤掉其他无效的字符，并且尽可能简短。
+            现在，请根据以上要求直接输出一个JSON对象，其中key是列名，value是翻译后的内容。
             """
             translate_template = PromptTemplate(input_variables=["sql", "table_info", "columns"],
                                                 template=translate_prompt, template_format="jinja2")
@@ -716,11 +720,12 @@ def text2sql(query: str):
             try:
                 p = translate_chain.predict(
                     **{"sql": sql, "table_info": table_info, "columns": records[0].keys()})
-                column_map = json.loads(parse_json_md(p).replace("'", '"'))
+                column_map = {column: chinese.split("_")[0] for column, chinese in
+                              json.loads(parse_json_md(p).replace("'", '"')).items()}
             except Exception as e:
-                logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
+                logger.error(f'translate column error:{e}')
         if not records and not sql_cmd:
-            summarize = "很抱歉，本次查询没有返回数据。请检查您提供的查询条件是否准确，例如：\n1. 姓名的拼写是否正确和完整；2. 区域的命名是否跟业务上一致；3. 查询时间是否明确上周、本月或者完整的年月日；4. 其他可能影响查询的条件或语法上造成的歧义等。\n如果您已经检查过以上几点并确保无误，可以重新提问一次或者换个问题尝试。"
+            summarize = "很抱歉，本次查询没有返回数据。请检查您提供的查询条件是否准确，例如：\n1. 姓名的拼写是否正确和完整；\n2. 区域的命名是否跟业务上一致；\n3. 查询时间是否明确上周、本月或者完整的年月日；\n4. 其他可能影响查询的条件或语法上造成的歧义等；\n5. 数据库确实存在此类数据。\n\n如果您已经检查过以上几点并确认无误，可以重新提问一次或者换个问题尝试。"
         else:
             summarize_prompt = """You are a helpful assistant, given the question and records below,
             Question: {{ query }}, 
@@ -743,7 +748,7 @@ def text2sql(query: str):
                  "chart_type": chart_type,
                  "chart_json": chart_json,
                  "summarize": summarize,
-                 "metadata": {"sql": parse_sql_md(sql), "table_info": table_info,
+                 "metadata": {"sql": parse_sql_md(sql), "table_info": table_info, "db_name": db_name,
                               "fix_sql": True if sql_cmd else False}},
                 default=complex_handler, ensure_ascii=False)
         return Message_I18N.TOOL_SQL_DETAIL_PRODUCE.value.format(sql=parse_sql_md(sql),
