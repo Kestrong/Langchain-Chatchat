@@ -108,6 +108,61 @@ SQL_WRAPPER = {"mysql": "`"}
 
 class CustomSQLDatabaseChain(SQLDatabaseChain):
 
+    def execute_with_retry(self, sql_cmd, inputs, max_retries=1):
+        attempt = 0
+        origin_error = None
+        table_info = inputs.get("table_info")
+        dialect = inputs.get("dialect")
+        prompt = """You are a database administrator, given the information below,
+        
+                    Database Engine: 
+                    {dialect}
+                    
+                    Database Schema:
+                    {table_info}
+                    This schema describes the database's structure, including tables, columns, primary keys, foreign keys, and any relevant relationships or constraints.
+                    
+                    SQL: {sql}
+                    
+                    Error info: {error_info}
+                    
+                    Instructions:
+                    
+                    1. Deeply understand the table info.
+                    2. According to the error info try to fix the SQL problems.
+                    3. Just output the sql directly without other words.
+                    
+                    Output Format:
+                    In your answer, please enclose the generated SQL query in a code block:
+                    ```
+                    -- Your SQL query
+                    ```
+                    
+                    Before generating the final SQL query, please think through the steps of how to write the query. Take a deep breath and think step by step to find the correct SQL query.
+                    """
+        template = PromptTemplate(input_variables=["error_info", "table_info", "dialect", "sql"],
+                                  template=prompt)
+        chain = LLMChain(llm=self.llm_chain.llm, prompt=template)
+        while attempt <= max_retries:
+            try:
+                result = self.database.run(command=sql_cmd, include_columns=True)
+                return sql_cmd, result
+            except Exception as e:
+                if attempt == 0:
+                    origin_error = e
+                if attempt >= max_retries:
+                    raise origin_error
+                else:
+                    # 调用大模型服务以获得修改建议
+                    attempt += 1
+                    modified_sql_cmd = chain.predict(
+                        sql=sql_cmd,
+                        error_info=str(e).split('\n')[0],
+                        table_info=table_info,
+                        dialect=dialect,
+                    )
+                    sql_cmd = parse_sql_md(modified_sql_cmd)
+
     def _call(
             self,
             inputs: Dict[str, Any],
@@ -145,7 +200,6 @@ class CustomSQLDatabaseChain(SQLDatabaseChain):
                 intermediate_steps.append(
                     sql_cmd
                 )  # output: sql generation (no checker)
-                intermediate_steps.append({"sql_cmd": sql_cmd})  # input: sql exec
                 if SQL_QUERY in sql_cmd:
                     sql_cmd = sql_cmd.split(SQL_QUERY)[1].strip()
                 result = self.database.run(command=sql_cmd, include_columns=True)
@@ -170,10 +224,8 @@ class CustomSQLDatabaseChain(SQLDatabaseChain):
                 _run_manager.on_text(
                     checked_sql_command, color="green", verbose=self.verbose
                 )
-                intermediate_steps.append(
-                    {"sql_cmd": checked_sql_command}
-                )  # input: sql exec
-                result = self.database.run(command=checked_sql_command, include_columns=True)
+                checked_sql_command, result = self.execute_with_retry(checked_sql_command, llm_inputs)
+                intermediate_steps[1] = checked_sql_command
                 intermediate_steps.append(result)  # output: sql exec
                 sql_cmd = checked_sql_command
 
@@ -698,10 +750,10 @@ def text2sql(query: str):
             if return_format == "json":
                 return json.dumps({"sql": parse_sql_md(sql)}, ensure_ascii=False)
             return Message_I18N.TOOL_SQL_PRODUCE.value.format(sql=parse_sql_md(sql))
-        # 0:输入参数 1:sql 2:{"sql_cmd":sql} 3:execute_result
+        # 0:输入参数 1:sql 2:execute_result
         intermediate_steps = result["intermediate_steps"]
         sql = intermediate_steps[1]
-        records = intermediate_steps[3]
+        records = intermediate_steps[2]
         table_info = intermediate_steps[0]['table_info']
         logger.info(f"knowledgebase:{knowledgebase},\n query:{origin_query},\n sql:{sql}")
         column_map = {}
