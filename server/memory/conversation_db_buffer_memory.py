@@ -34,14 +34,21 @@ class ConversationBufferDBMemory(BaseChatMemory):
             return []
 
         # prune the chat message if it exceeds the max token limit
-        curr_buffer_length = self.llm.get_num_tokens(get_buffer_string(chat_messages))
+        curr_buffer_length = self.get_num_tokens(chat_messages)
         if curr_buffer_length > self.max_token_limit:
             pruned_memory = []
             while curr_buffer_length > self.max_token_limit and chat_messages:
                 pruned_memory.append(chat_messages.pop(0))
-                curr_buffer_length = self.llm.get_num_tokens(get_buffer_string(chat_messages))
+                curr_buffer_length = self.get_num_tokens(chat_messages)
 
         return chat_messages
+
+    def get_num_tokens(self, chat_messages):
+        try:
+            curr_buffer_length = self.llm.get_num_tokens(get_buffer_string(chat_messages))
+        except:
+            curr_buffer_length = len(get_buffer_string(chat_messages))
+        return curr_buffer_length
 
     @property
     def memory_variables(self) -> List[str]:
