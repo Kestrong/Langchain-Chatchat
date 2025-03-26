@@ -128,12 +128,16 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                     else:
                         memory.chat_memory.add_ai_message(parse_history_message(a.content))
                         history_var.append({"role": a.type, "content": parse_history_message(a.content)})
-            step_prompt0 = """你是一个资深的数据库专家，请根据以下输入的问题并联系历史对话上下文，请严格按照以下步骤一步步判断：
-1. 判断该问题是否跟sql查询或者数据查询分析有关，如果无关请直接返回“否”，否则返回“是”；
-2. 如果要将该问题转换成SQL查询并在数据库里面执行，假设你已经知道要查询哪些表以及对应的表结构，请判断问题是否有给出查询条件，例如：时间范围、员工姓名、省份其中一个条件，如果没有请直接返回“否”，否则返回“是”；
-历史对话内容: {{ history }}
-问题: {{ input }}
-你的答案只能为“是”或“否”其中的一个，不允许输出其他任何文字。"""
+            step_prompt0 = """你是一个资深的数据库专家，请仔细阅读以下输入的问题和历史对话上下文，忽略与问题无关的历史对话。
+                            历史对话内容: {{ history }}
+                            问题: {{ input }}
+                            请你深吸一口气，让我们一步一步来思考。
+                            1. 判断该问题是否跟数据查询、统计分析、告警或者调度单有关，如果无关请直接返回“否”，否则进行下一步判断；
+                            2. 如果要将该问题转换成SQL查询并在数据库里面执行，假设你已经知道要查询哪些表以及对应的表结构，请判断问题是否有给出以下查询条件的其中一个：时间范围、员工姓名、省市区域，如果没有请直接返回“否”，否则进行下一步判断；
+                            3. 同时满足前面两个条件时请返回“是”，否则返回“否”。
+                            历史对话内容: {{ history }}
+                            问题: {{ input }}
+                            你的答案只能为“是”或“否”其中的一个，不允许输出其他任何文字。"""
             step_template0 = PromptTemplate(input_variables=["input", "history"],
                                             template=textwrap.dedent(step_prompt0).strip(),
                                             template_format="jinja2")
