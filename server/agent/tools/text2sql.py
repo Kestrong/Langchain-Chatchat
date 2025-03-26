@@ -9,7 +9,7 @@ from langchain.chains.sql_database.prompt import PROMPT
 from langchain_community.chat_models import ChatOpenAI
 from langchain_community.tools.sql_database.prompt import QUERY_CHECKER
 from langchain_community.utilities import SQLDatabase
-from langchain_community.utilities.sql_database import truncate_word, _format_index
+from langchain_community.utilities.sql_database import _format_index
 from langchain_core.callbacks import CallbackManagerForChainRun
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import PromptTemplate, BasePromptTemplate
@@ -44,15 +44,15 @@ Output:your answer here
 
 DECIDER_PROMPT = PromptTemplate(input_variables=["query", "table_names"], template=_DECIDER_TEMPLATE, )
 
-_DECIDER_DB_TEMPLATE = """Given a question and a JSON map below where the key is the database name and the value is the database description.
-Database Map: {database_names}
-Question: {query}
-let's think step by step.
-1. Deeply understand the description of each database, determine which database is most relevant to the question. 
-2. If you want to convert the question into SQL query which database can you choose. There must be a clear logical connection or keywords between the question and the chosen database. 
-3. If a relevant database is found, output its name directly. If no database is relevant according to the question, output an empty string "". 
-You are not allowed to output anything else outside of this specification. Only the key in map or "" can return.
-Output:your answer here
+_DECIDER_DB_TEMPLATE = """
+你是一个专业的数据库管理员，给定下面的数据库信息和自然语言描述的问题，判断哪个数据库与问题最相关？
+数据库信息: {database_names}，其中key是数据库名称value是数据库描述。
+问题: {query}
+请你深吸一口气，让我们一步一步来思考。
+1. 每个数据库的描述，确定哪个数据库与问题最相关。
+2. 如果要把问题转换成SQL查询，你会选择哪个数据库。问题与选定的数据库之间必须有明确的逻辑联系或问题与数据库描述有相同的关键词。
+3. 如果找到了相关的数据库，直接输出它的名称。如果没有找到相关的数据库，则输出空字符串""。
+输出你的答案，你只能返回数据库的名称或""：
 """
 
 DECIDER_DB_PROMPT = PromptTemplate(input_variables=["query", "database_names"], template=_DECIDER_DB_TEMPLATE, )
@@ -440,6 +440,20 @@ class CustomSQLDatabase(SQLDatabase):
         indexes_formatted = "\n".join(map(_format_index, indexes))
         return f"Table Indexes:\n{indexes_formatted}"
 
+    def truncate_word(self, content: Any, *, length: int, suffix: str = "...") -> str:
+        """
+        Truncate a string to a certain number of words, based on the max string
+        length.
+        """
+
+        if not isinstance(content, str) or length <= 0:
+            return content
+
+        if len(content) <= length:
+            return content
+
+        return content[: length - len(suffix)] + suffix
+
     def run(
             self,
             command: Union[str, Executable],
@@ -463,7 +477,7 @@ class CustomSQLDatabase(SQLDatabase):
 
         res = [
             {
-                column: truncate_word(value, length=self._max_string_length)
+                column: self.truncate_word(value, length=self._max_string_length)
                 for column, value in r.items()
             }
             for r in result
@@ -529,9 +543,101 @@ def complex_handler(obj):
 def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
     chart_types = {"line": "折线图", "pie": "饼图", "bar": "柱状图", "table": "表格"}
     chart_json_example = {
-        "line": '{"title":{"text":"折线图示例"},"tooltip":{"trigger":"axis"},"legend":{"data":["邮件营销","联盟广告"]},"grid":{"left":"3%","right":"4%","bottom":"3%","containLabel":true},"toolbox":{"feature":{"saveAsImage":{}}},"xAxis":{"type":"category","boundaryGap":false,"data":["周一","周二","周三","周四","周五","周六","周日"]},"yAxis":{"type":"value"},"series":[{"name":"邮件营销","type":"line","stack":"总量","data":[120,132,101,134,90,230,210]},{"name":"联盟广告","type":"line","stack":"总量","data":[220,182,191,234,290,330,310]}]}',
-        "pie": '{"title":{"text":"饼图示例","left":"center"},"tooltip":{"trigger":"item"},"legend":{"orient":"vertical","left":"left"},"series":[{"name":"访问来源","type":"pie","radius":"50%","data":[{"value":1048,"name":"搜索引擎"},{"value":735,"name":"直接访问"}],"emphasis":{"itemStyle":{"shadowBlur":10,"shadowOffsetX":0,"shadowColor":"rgba(0, 0, 0, 0.5)"}}}]}',
-        "bar": '{"title":{"text":"柱状图示例"},"tooltip":{},"xAxis":{"data":["衬衫","羊毛衫","雪纺衫","裤子","高跟鞋","袜子"]},"yAxis":{},"series":[{"name":"销量","type":"bar","data":[5,20,36,10,10,20]}]}'
+        "line": """
+        {
+            "title": {
+                "text": "折线图示例"
+            },
+            "tooltip": {
+                "trigger": "axis"
+            },
+            "legend": {
+                "data": ["邮件营销", "联盟广告"]
+            },
+            "grid": {
+                "left": "3%",
+                "right": "4%",
+                "bottom": "3%",
+                "containLabel": true
+            },
+            "xAxis": {
+                "type": "category",
+                "boundaryGap": false,
+                "data": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+            },
+            "yAxis": {
+                "type": "value"
+            },
+            "series": [{
+                "name": "邮件营销",
+                "type": "line",
+                "stack": "总量",
+                "data": [120, 132, 101, 134, 90, 230, 210]
+            },
+            {
+                "name": "联盟广告",
+                "type": "line",
+                "stack": "总量",
+                "data": [220, 182, 191, 234, 290, 330, 310]
+            }]
+        }
+        """,
+        "pie": """
+        {
+            "title": {
+                "text": "饼图示例"
+            },
+            "tooltip": {
+                "trigger": "item"
+            },
+            "legend": {
+                "orient": "vertical",
+                "left": "left"
+            },
+            "series": [{
+                "name": "访问来源",
+                "type": "pie",
+                "radius": "50%",
+                "data": [{
+                    "value": 1048,
+                    "name": "搜索引擎"
+                },
+                {
+                    "value": 735,
+                    "name": "直接访问"
+                }],
+                "emphasis": {
+                    "itemStyle": {
+                        "shadowBlur": 10,
+                        "shadowOffsetX": 0,
+                        "shadowColor": "rgba(0, 0, 0, 0.5)"
+                    }
+                }
+            }]
+        }
+        """,
+        "bar": """
+       {
+            "title": {
+                "text": "柱状图示例"
+            },
+            "tooltip": {},
+            "xAxis": {
+                "data": ["衬衫", "羊毛衫"]
+            },
+            "yAxis": {},
+            "series": [{
+                "name": "销量",
+                "type": "bar",
+                "data": [5, 20]
+            },
+            {
+                "name": "价格",
+                "type": "bar",
+                "data": [5, 20]
+            }]
+        }
+        """
     }
     if "折线图" in query:
         chart_type = "line"
@@ -547,20 +653,22 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
     if records and chart_type in chart_json_example:
         prompt = """
         你是一个专业的数据可视化工程师，给定以下数据:
-        数据集: {records}
-        图表类型: {chart_type}
+        标题(请简化)：{{ query }}
+        数据集: {{ records }}
+        图表类型: {{chart_type }}
         请你深呼吸，然后让我们一步一步来思考。 
-        1. 请充分理解给定的数据集的每一个维度每一个数值的含义。
-        2. 然后从数据里面的选取合适的维度并在echart图表里面展示出来，即使为0或者空值也允许展示。
+        1. 请充分理解给定的数据集的每一个字段和数值的含义，每个统计数值类型的字段对应一个维度。
+        2. 必须使用数据集里面所有的维度并在echart图表里面展示出来，即使为0或者空值也允许展示。
         3. 请直接输出一个符合echart图表规范的json对象，不允许包含其他文字内容。
-        4. json中包裹key和value的双引号必须成对存在，value为对象的话不要使用双引号包裹。
-        你可以参考以下例子的格式: {chart_json_example}
+        4. 输出前检查一遍json的格式是否正确，包裹key和value的双引号必须成对存在，value为对象或数组时不要使用双引号包裹。
+        你可以参考以下例子的格式: {{ chart_json_example }}
         """
         try:
-            template = PromptTemplate(input_variables=["records", "chart_type", "chart_json_example"],
-                                      template=prompt)
+            template = PromptTemplate(input_variables=["query", "records", "chart_type", "chart_json_example"],
+                                      template=prompt, template_format="jinja2")
             chain = LLMChain(llm=llm, prompt=template)
-            chart_json = chain.run(records=json.dumps(records, default=complex_handler),
+            chart_json = chain.run(query=query,
+                                   records=json.dumps(records, default=complex_handler),
                                    chart_type=chart_types[chart_type],
                                    chart_json_example=chart_json_example[chart_type])
             chart_json = json.loads(parse_json_md(chart_json))
@@ -574,6 +682,14 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
             logger.error(f"generate echart json error, error:{e}, json:{chart_json}")
             chart_json = {}
     return chart_type, chart_json
+
+
+def get_clean_translate_column(column: str, separator="_"):
+    parts = column.split(separator)
+    for part in parts:
+        if not (part.isascii() and part.isalpha()):
+            return part
+    return column
 
 
 class Text2SqlInput(BaseModel):
@@ -763,7 +879,8 @@ def text2sql(query: str):
             表信息: {{ table_info }},
             现在深吸一口气，让我们一步一步来思考，请将这些列名翻译成中文：{{ columns }}。
             1. 如果某个列名已经是中文，则直接使用列名作为翻译后的内容；
-            2. 确保翻译后的内容仅包含中文，过滤掉其他无效的字符，并且尽可能简短。
+            2. 确保翻译后的内容仅包含中文字符，忽略下划线后无实际意义的字符，并且尽可能简短；
+            3. 如果某个列名无法直接翻译则通过sql和表信息推断其实际含义，推断不出时直接使用列名作为翻译。
             现在，请根据以上要求直接输出一个JSON对象，其中key是列名，value是翻译后的内容。
             """
             translate_template = PromptTemplate(input_variables=["sql", "table_info", "columns"],
@@ -772,7 +889,7 @@ def text2sql(query: str):
             try:
                 p = translate_chain.predict(
                     **{"sql": sql, "table_info": table_info, "columns": records[0].keys()})
-                column_map = {column: chinese.split("_")[0] for column, chinese in
+                column_map = {column: get_clean_translate_column(chinese) for column, chinese in
                               json.loads(parse_json_md(p).replace("'", '"')).items()}
             except Exception as e:
                 logger.error(f'translate column error:{e}')
