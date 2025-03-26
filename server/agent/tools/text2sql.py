@@ -672,12 +672,21 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
                                    chart_type=chart_types[chart_type],
                                    chart_json_example=chart_json_example[chart_type])
             chart_json = json.loads(parse_json_md(chart_json))
+            # 设置鼠标悬浮提示
             if 'tooltip' not in chart_json:
                 chart_json['tooltip'] = {}
             if chart_type == 'pie':
                 chart_json['tooltip'] = {"trigger": "item"}
             else:
                 chart_json['tooltip'] = {"trigger": "axis"}
+            # 坐标太多时交换x和y轴 并设置显示间隔为0
+            if 'yAxis' in chart_json and 'xAxis' in chart_json:
+                yAxis = chart_json['yAxis']
+                xAxis = chart_json['xAxis']
+                if 'data' in xAxis and len(xAxis['data']) > 10:
+                    xAxis['axisLabel'] = {"interval": 0}
+                    chart_json['yAxis'] = xAxis
+                    chart_json['xAxis'] = yAxis
         except Exception as e:
             logger.error(f"generate echart json error, error:{e}, json:{chart_json}")
             chart_json = {}
@@ -855,7 +864,7 @@ def text2sql(query: str):
             if docs:
                 sql_few_shot_prompt = "\n".join([d.page_content for d in docs])
                 query = f"\n你可以参考以下问题及对应的SQL，注意学习查询条件跟问题之间的关系以及如何调整参数值和选择合适的函数:\n{sql_few_shot_prompt}\n好了，现在让我们来解决这个问题：{query}"
-
+        query = f'{query}，当前时间：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
         result = db_chain.invoke({"query": query, "sql_cmd": sql_cmd})
         if not result or result.get('result') is None:
             logger.error(f"SQL generate can not accomplish, query:{origin_query}, database:{db_name}")
