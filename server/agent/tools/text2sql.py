@@ -1,4 +1,5 @@
 import json
+import re
 from copy import copy
 from datetime import date, datetime
 from decimal import Decimal
@@ -68,7 +69,7 @@ Database Schema:
 This schema describes the database's structure, including tables, columns, primary keys, foreign keys, and any relevant relationships or constraints.
 
 Question:
-{input}
+{input}\n忽略问题里面提到的返回记录数，以下面的指示为准。
 
 Instructions:
 1. Only return {top_k} results using the LIMIT clause as per SQL. You can order the results to return the most informative data in the database.
@@ -169,7 +170,7 @@ class CustomSQLDatabaseChain(SQLDatabaseChain):
             run_manager: Optional[CallbackManagerForChainRun] = None,
     ) -> Dict[str, Any]:
         _run_manager = run_manager or CallbackManagerForChainRun.get_noop_manager()
-        input_text = f"{inputs[self.input_key]}, only return {self.top_k} records, \n{SQL_QUERY}"
+        input_text = f"{inputs[self.input_key]}\n{SQL_QUERY}"
         _run_manager.on_text(input_text, verbose=self.verbose)
         # If not present, then defaults to None which is all tables.
         table_names_to_use = inputs.get("table_names_to_use")
@@ -854,7 +855,7 @@ def text2sql(query: str):
             query += sql_few_shot_prompt
         elif use_vector_sample:
             docs = search_docs(
-                query=origin_query,
+                query=re.sub(r'[，。;；？?!！]', ' ', origin_query),
                 knowledge_base_name=knowledgebase,
                 top_k=vector_search_top_k,
                 score_threshold=vector_score_threshold,
@@ -905,6 +906,7 @@ def text2sql(query: str):
         if not records and not sql_cmd:
             summarize = "很抱歉，本次查询没有返回数据。请检查您提供的查询条件是否准确，例如：\n1. 姓名的拼写是否正确和完整；\n2. 区域的命名是否跟业务上一致；\n3. 查询时间是否明确上周、本月或者完整的年月日；\n4. 其他可能影响查询的条件或语法上造成的歧义等；\n5. 数据库确实存在此类数据。\n\n如果您已经检查过以上几点并确认无误，可以重新提问一次或者换个问题尝试。"
         else:
+            records = records[:top_k]
             summarize_prompt = """You are a helpful assistant, given the question and records below,
             Question: {{ query }}, 
             Records: {{ records }},
