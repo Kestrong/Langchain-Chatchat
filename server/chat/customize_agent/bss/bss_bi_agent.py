@@ -1,6 +1,6 @@
 import asyncio
 import json
-import textwrap
+import random
 from typing import Dict, Any, List, Optional
 
 from fastapi import Body
@@ -105,7 +105,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
             def parse_history_message(content: str):
                 if content.startswith("{") and content.endswith("}"):
                     content_obj = json.loads(content)
-                    return json.dumps(content_obj.get('summarize'), ensure_ascii=False)
+                    return content_obj.get('summarize')
                 return content
 
             memory = ConversationBufferWindowMemory(k=max(HISTORY_LEN * 2, len(history) if history else 0))
@@ -128,26 +128,40 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                     else:
                         memory.chat_memory.add_ai_message(parse_history_message(a.content))
                         history_var.append({"role": a.type, "content": parse_history_message(a.content)})
-            step_prompt0 = """你是一个资深的数据库专家，请仔细阅读以下输入的问题和历史对话上下文，忽略与问题无关的历史对话。
-                            历史对话内容: {{ history }}
-                            问题: {{ input }}
-                            请你深吸一口气，让我们一步一步来思考。
-                            1. 判断该问题是否跟数据查询、统计分析、告警或者调度单有关，如果无关请直接返回“否”，否则进行下一步判断；
-                            2. 如果要将该问题转换成SQL查询并在数据库里面执行，假设你已经知道要查询哪些表以及对应的表结构，请判断问题是否有给出以下查询条件的其中一个：时间范围、员工姓名、省市区域，如果没有请直接返回“否”，否则进行下一步判断；
-                            3. 同时满足前面两个条件时请返回“是”，否则返回“否”。
-                            历史对话内容: {{ history }}
-                            问题: {{ input }}
-                            你的答案只能为“是”或“否”其中的一个，不允许输出其他任何文字。"""
+            step_prompt0 = """你是一个资深的python程序员，请仔细阅读以下输入的问题和历史对话上下文。
+                        历史对话上下文: {{ history }}
+                        问题: {{ input }}
+                        请你结合历史对话上下文和问题，让我们一步一步来推理，判断以下python伪代码的输出是什么？
+                        指令：请直接输出伪代码运行的结果，不要包含任何其他的内容
+                        def function() -> bool:
+                            flag1 = False
+                            接下来想问的问题 = 推理(历史对话上下文 + 问题)
+                            if 接下来想问的问题 关于 数据查询 or 统计分析 or 告警 or 调度单:
+                                flag1 = True
+                            flag2 = False    
+                            if 接下来想问的问题 包含 时间范围 or 员工姓名 or 省市区域:
+                                flag2 = True
+                            if flag1 and flag2:
+                                return True
+                            else:
+                                return False
+                        """
             step_template0 = PromptTemplate(input_variables=["input", "history"],
-                                            template=textwrap.dedent(step_prompt0).strip(),
+                                            template=step_prompt0,
                                             template_format="jinja2")
             step_chain0 = LLMChain(llm=model, prompt=step_template0)
             continue_flag = True
             flag = step_chain0.predict(input=query, history=f"{history_var}")
-            if flag in ["\"否\"", "“否”", "否", "NO", "no", "No"]:
+            if "false" in flag.lower():
                 continue_flag = False
+                question_alarm = ['查看某人上周的告警明细', '查看某人本月的告警统计',
+                                  '过去一周告警的分布情况', '今天已处理和未处理的告警按人员分布情况']
+                question_schedule = ['查看某区域上周的调度单明细', '查看某区域上月的调度单统计',
+                                     '查询某人上月的调度单处理及时性统计']
+                question1 = random.choice(question_alarm)
+                question2 = random.choice(question_schedule)
                 d = {"message_id": message_id, "conversation_id": conversation_id,
-                     "answer": "请确保您的提问跟数据库的查询与分析有关，您可以提问有关告警或者调度单查询方面的问题。请确保您提供了明确的查询条件，例如：\n1. 查询某人上周的告警信息；\n2. 查询某区域本月的调度单明细。"}
+                     "answer": f"请确保您的提问跟数据库的查询与分析有关，您可以提问有关告警或者调度单查询方面的问题。请确保您提供了以下查询条件之一：时间范围、员工姓名、省份区域。您也可以尝试提问以下内容：\n1. {question1}；\n2. {question2}。\n\n💡**小提示**：有时候是我没理解您的意思，重新提问一次也许会得到更好的结果。"}
                 update_message(message_id=message_id, response=d.get("answer"), metadata=None)
                 yield json.dumps(d, ensure_ascii=False)
 
