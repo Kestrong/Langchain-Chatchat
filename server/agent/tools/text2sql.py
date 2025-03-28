@@ -50,10 +50,10 @@ _DECIDER_DB_TEMPLATE = """
 数据库信息: {database_names}，其中key是数据库名称value是数据库描述。
 问题: {query}
 请你深吸一口气，让我们一步一步来思考。
-1. 每个数据库的描述，确定哪个数据库与问题最相关。
-2. 如果要把问题转换成SQL查询，你会选择哪个数据库。问题与选定的数据库之间必须有明确的逻辑联系或问题与数据库描述有相同的关键词。
+1. 请详细阅读和理解每个数据库的描述，确定哪个数据库与问题最相关。
+2. 明确问题想要查询的数据主体，如果要把问题转换成SQL查询，你会选择哪个数据库。
 3. 如果找到了相关的数据库，直接输出它的名称。如果没有找到相关的数据库，则输出空字符串""。
-输出你的答案，你只能返回数据库的名称或""：
+在给出最终答案前认真分析，你只能返回数据库的名称或""，不允许输出其他内容。\n答案：
 """
 
 DECIDER_DB_PROMPT = PromptTemplate(input_variables=["query", "database_names"], template=_DECIDER_DB_TEMPLATE, )
@@ -769,11 +769,11 @@ def text2sql(query: str):
             db_info = next(iter(db_infos.values()))
             db_name = next(iter(db_infos.keys()))
             knowledgebase = db_name
-
+        sql_cmd = model_container.TOOL_ARGS.get("sql_cmd")
         engine = create_engine_wrapper(uri=db_info.get("sqlalchemy_connect_str"), pool_size=1,
                                        connect_args=db_info.get('connect_args') or {})
         db = CustomSQLDatabase(engine=engine, schema=db_info.get("sqlalchemy_schema"),
-                               sample_rows_in_table_info=sample_rows_in_table_info,
+                               sample_rows_in_table_info=0 if sql_cmd else sample_rows_in_table_info,
                                indexes_in_table_info=indexes_in_table_info,
                                max_string_length=max_string_length, view_support=db_info.get("view_support", False),
                                include_tables=db_info.get("table_names"))
@@ -844,7 +844,6 @@ def text2sql(query: str):
             return_intermediate_steps=True,
         )
 
-        sql_cmd = model_container.TOOL_ARGS.get("sql_cmd")
         report_prompt = model_container.TOOL_ARGS.get("report_prompt")
         if not report_prompt:
             report_prompt = text2sql_config.get('report_prompt', text2sql_config_bak.get('report_prompt'))
