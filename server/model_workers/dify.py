@@ -44,8 +44,7 @@ class DifyWorker(ApiModelWorker):
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key') or contentObj.get('api_key') or params.api_key
         response_mode = model_config.get('stream', contentObj.get('stream', True))
-        headers = {"Authorization": f"Bearer {api_key}",
-                   "Content-Type": "text/event-stream" if response_mode else "application/json"}
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         inputs = self.get_inputs(role_meta)
         data = {
             "inputs": inputs,
