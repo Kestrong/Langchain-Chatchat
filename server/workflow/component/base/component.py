@@ -59,7 +59,7 @@ class Component(BaseModel):
                         expr_value = self.get_expr_value(i.value)
                         i.value = expr_value
                     elif self.contains_variable_template(i.value):
-                        i.value = self.parse_template(i.value)
+                        i.value = self.parse_template(self.transform_template(i.value))
 
     def update_input_context(self):
         inputs = {}
@@ -71,7 +71,7 @@ class Component(BaseModel):
 
     def parse_template(self, template: str):
         try:
-            return DEFAULT_FORMATTER_MAPPING["jinja2"](template, **self._context)
+            return DEFAULT_FORMATTER_MAPPING["jinja2"](template, CONTEXT=self._context)
         except Exception as e:
             logger.error(f"{e}")
             return template
@@ -92,6 +92,18 @@ class Component(BaseModel):
         match = re.search(pattern, template)
         return match is not None
 
+    def transform_template(self, template: str):
+        def replacer(match):
+            var_path = match.group(1)
+            # 分割变量路径，按点分割
+            parts = var_path.split('.')
+            # 构造新的访问路径
+            new_path = "CONTEXT" + ''.join(f"['{part}']" for part in parts)
+            return "{{ %s }}" % new_path
+
+        transformed_content = re.sub(r'\{\{\s*([\w.-]+)\s*}}', replacer, template)
+        return transformed_content
+
     def prepare_output(self, outputs: Dict[str, Any]):
         if self.outputs:
             for i in self.outputs:
@@ -100,7 +112,7 @@ class Component(BaseModel):
                         expr_value = self.get_expr_value(i.value)
                         i.value = expr_value
                     elif self.contains_variable_template(i.value):
-                        i.value = self.parse_template(i.value)
+                        i.value = self.parse_template(self.transform_template(i.value))
                 else:
                     i.value = outputs.get(i.name)
 

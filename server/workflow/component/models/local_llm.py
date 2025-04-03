@@ -4,7 +4,7 @@ from typing import Dict, Any, Union
 from common.exceptions import ChatBusinessException
 from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD
 from server.agent.tools_select import get_all_tools
-from server.db.repository import list_kbs_from_db
+from server.db.repository import list_kbs_from_db, get_assistant_simple_by_code_from_db
 from server.utils import api_address, get_httpx_client
 from server.workflow.component.base.component import Component
 from server.workflow.utils.inputs import TextInput, IntegerInput, FloatInput, ListInput
@@ -27,6 +27,11 @@ class LocalLLMComponent(Component):
             value=''
         ),
         TextInput(
+            name='assistant_code',
+            display_name='Assistant code',
+            info='The code of assistant.'
+        ),
+        TextInput(
             name='prompt',
             display_name='Prompt',
             info='Prompt for chat.'
@@ -35,7 +40,7 @@ class LocalLLMComponent(Component):
             name='model_name',
             display_name='Model Name',
             required=True,
-            info=f'The name of LLM, optional {LLM_MODELS}.',
+            info=f'The name of LLM.',
             options=LLM_MODELS,
             value=LLM_MODELS[0]
         ),
@@ -97,11 +102,16 @@ class LocalLLMComponent(Component):
 
     async def _run(self, state: Dict[str, Any]):
 
-        inputs = super()._context[self.id]["inputs"]
+        inputs = self.get_context()[self.id]["inputs"]
         query = inputs.get("query") or state.get("query")
         extra = inputs.get("extra") or state.get("extra", {})
         conversation_id = state.get("conversation_id")
-        assistant_id = state.get("assistant_id")
+        assistant_code = inputs.get("assistant_code")
+        assistant_id = -1
+        if assistant_code:
+            assistant = get_assistant_simple_by_code_from_db(assistant_code=assistant_code)
+            if assistant and not assistant.get('workflow_config'):
+                assistant_id = assistant["id"]
         history_len = state.get("history_len") or -1
         stream = False
         store_message = False
@@ -128,8 +138,8 @@ class LocalLLMComponent(Component):
                     api_names=api_names)
         result = {}
         answer = ''
-        with get_httpx_client() as client:
-            response = client.post(url=f"{api_base_url}/chat/chat", json=data)
+        async with get_httpx_client(use_async=True) as client:
+            response = await client.post(url=f"{api_base_url}/chat/chat", json=data)
             for line in response.iter_lines():
                 if not line:
                     continue
@@ -147,4 +157,6 @@ class LocalLLMComponent(Component):
         result.setdefault("docs", [])
         result.setdefault("thought", None)
         result['answer'] = answer
+        if prompt:
+            del inputs["prompt"]
         return result

@@ -143,3 +143,13 @@ def get_assistant_simple_from_db(session, assistant_id: int) -> dict:
         return {}
     data = assistant.dict()
     return data
+
+
+@with_session
+def get_assistant_simple_by_code_from_db(session, assistant_code: str) -> dict:
+    filters = [WorkflowAssistantModel.code == assistant_code]
+    assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(*filters).first()
+    if assistant is None:
+        return {}
+    data = assistant.dict()
+    return data

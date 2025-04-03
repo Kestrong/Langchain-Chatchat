@@ -316,6 +316,6 @@ async def test_workflow():
         async for chunk in chat_response.body_iterator:
             print(chunk)
     elif isinstance(chat_response, Response):
-        return {"answer": chat_response.body.decode('utf-8')}
+        print(chat_response.body.decode('utf-8'))
     else:
         print(chat_response)

@@ -30,7 +30,7 @@ class JsonFormatterComponent(Component):
     ]
 
     async def _run(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        inputs = super()._context[self.id]["inputs"]
+        inputs = self.get_context()[self.id]["inputs"]
         json_str = inputs.get("json_str")
         json_obj = json.loads(json_str)
         return {"json_obj": json_obj}

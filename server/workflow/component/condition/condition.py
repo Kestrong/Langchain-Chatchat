@@ -22,7 +22,7 @@ class IfElseComponent(Component):
         TextInput(
             name="relation",
             display_name="Relation",
-            info="'AND' or 'OR' between conditions.",
+            info="`AND` or `OR` between conditions.",
             value='AND'
         )
     ]
@@ -35,7 +35,7 @@ class IfElseComponent(Component):
     ]
 
     async def _run(self, state: Dict[str, Any]):
-        inputs = self._context[self.id]["inputs"]
+        inputs = self.get_context()[self.id]["inputs"]
         conditions: List[dict] = inputs.get("conditions", [])
         relation = inputs.get("relation", "AND")
         if not conditions:
@@ -47,9 +47,11 @@ class IfElseComponent(Component):
             if left and isinstance(left, str):
                 if left.startswith("{{") and left.endswith("}}"):
                     left = self.get_expr_value(left)
+                    condition['left'] = left
             if right and isinstance(right, str):
                 if right.startswith("{{") and right.endswith("}}"):
                     right = self.get_expr_value(right)
+                    condition['right'] = right
             if condition['operator'] == '==':
                 matches.append(left == right)
             elif condition['operator'] == '!=':

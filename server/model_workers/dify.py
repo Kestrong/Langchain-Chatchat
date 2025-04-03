@@ -32,7 +32,7 @@ class DifyWorker(ApiModelWorker):
         event = json_data.get('event')
         if is_workflow:
             if event == "workflow_finished":
-                return '[BREAK]'
+                return mark + '[BREAK]' + mark
             elif event == "tts_message":
                 return json_data.get('audio', '')
             elif event == "node_finished":
@@ -41,7 +41,7 @@ class DifyWorker(ApiModelWorker):
                 return None
         else:
             if event == "workflow_finished":
-                return '[BREAK]'
+                return mark + '[BREAK]' + mark
             elif event == "text_chunk":
                 msg = json_data.get('data', {}).get('text', '')
                 return msg
@@ -105,7 +105,7 @@ class DifyWorker(ApiModelWorker):
                                                                  api_key)
                                 if not result:
                                     continue
-                                if result == '[BREAK]':
+                                if result == mark + '[BREAK]' + mark:
                                     break
                                 text += result
                                 yield {"error_code": 0, "text": text}
