@@ -67,7 +67,7 @@ class HttpCallerComponent(Component):
     ]
 
     async def _run(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        inputs = super()._context[self.id]["inputs"]
+        inputs = self.get_context()[self.id]["inputs"]
         url = inputs.get("url")
         method = inputs.get("method")
         if method not in {"GET", "POST", "PATCH", "PUT", "DELETE"}:
@@ -80,9 +80,9 @@ class HttpCallerComponent(Component):
         data = body or None
 
         try:
-            with get_httpx_client(follow_redirects=True, timeout=timeout) as client:
-                response = client.request(method=method, url=url, cookies=cookies, headers=headers, params=params,
-                                          json=data)
+            async with get_httpx_client(follow_redirects=True, timeout=timeout, use_async=True) as client:
+                response = await client.request(method=method, url=url, cookies=cookies, headers=headers, params=params,
+                                                json=data)
                 try:
                     result = response.json()
                 except Exception:  # noqa: BLE001

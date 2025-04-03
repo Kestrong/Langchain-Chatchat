@@ -15,10 +15,10 @@ class DifyWorker(ApiModelWorker):
     def __init__(
             self,
             *,
-            model_names: List[str] = ["iotqwen-api"],
+            model_names: List[str] = ["dify-api"],
             controller_addr: str = None,
             worker_addr: str = None,
-            version: Literal["iotqwen-v1"] = "iotqwen-v1",
+            version: Literal["dify-v1"] = "dify-v1",
             **kwargs,
     ):
         kwargs.update(model_names=model_names, controller_addr=controller_addr, worker_addr=worker_addr)
@@ -27,6 +27,38 @@ class DifyWorker(ApiModelWorker):
 
     def get_inputs(self, role_meta: dict):
         return role_meta.get("inputs", {})
+
+    def get_chunk_response(self, json_data, is_workflow, mark, user, api_key):
+        event = json_data.get('event')
+        if is_workflow:
+            if event == "workflow_finished":
+                return mark + '[BREAK]' + mark
+            elif event == "tts_message":
+                return json_data.get('audio', '')
+            elif event == "node_finished":
+                return mark + json.dumps({"answer": json_data.get('data', {}).get('outputs')}) + mark
+            else:
+                return None
+        else:
+            if event == "workflow_finished":
+                return mark + '[BREAK]' + mark
+            elif event == "text_chunk":
+                msg = json_data.get('data', {}).get('text', '')
+                return msg
+            elif event == "message" or event == "agent_message":
+                conversation_id = json_data.get('conversation_id')
+                message_id = json_data.get('message_id')
+                msg = json_data.get('answer', '')
+                inner_json = json.dumps(
+                    {"conversation_id": conversation_id, "message_id": message_id,
+                     "user": user, "api_key": api_key, "answer": msg})
+                return mark + inner_json + mark
+            elif event == "tts_message":
+                return json_data.get('audio', '')
+            elif event == "error":
+                return json_data.get('message', '')
+            else:
+                return None
 
     def do_chat(self, params: ApiChatParams) -> Dict:
         params = params.load_config(self.model_names[0])
@@ -44,8 +76,8 @@ class DifyWorker(ApiModelWorker):
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key') or contentObj.get('api_key') or params.api_key
         response_mode = model_config.get('stream', contentObj.get('stream', True))
-        headers = {"Authorization": f"Bearer {api_key}",
-                   "Content-Type": "text/event-stream" if response_mode else "application/json"}
+        is_workflow = role_meta.get('is_workflow', False)
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         inputs = self.get_inputs(role_meta)
         data = {
             "inputs": inputs,
@@ -69,31 +101,28 @@ class DifyWorker(ApiModelWorker):
                             json_str = chunk.decode('utf-8')[6:]
                             try:
                                 json_data = json.loads(json_str)
-                                if 'event' in json_data and json_data.get('event') == "workflow_finished":
+                                result = self.get_chunk_response(json_data, is_workflow, mark, data.get('user'),
+                                                                 api_key)
+                                if not result:
+                                    continue
+                                if result == mark + '[BREAK]' + mark:
                                     break
-                                elif 'event' in json_data and json_data.get('event') == "text_chunk":
-                                    msg = json_data.get('data', {}).get('text', '')
-                                    text += msg
-                                    yield {"error_code": 0, "text": text}
-                                elif 'event' in json_data and json_data.get('event') == "message":
-                                    conversation_id = json_data.get('conversation_id')
-                                    message_id = json_data.get('message_id')
-                                    msg = json_data.get('answer', '')
-                                    inner_json = json.dumps(
-                                        {"conversation_id": conversation_id, "message_id": message_id,
-                                         "user": data.get('user'), "api_key": api_key, "answer": msg})
-                                    text += mark + inner_json + mark
-                                    yield {"error_code": 0, "text": text}
+                                text += result
+                                yield {"error_code": 0, "text": text}
                             except json.JSONDecodeError:
                                 pass
                 else:
                     json_data = response.json()
-                    conversation_id = json_data.get('conversation_id')
-                    message_id = json_data.get('message_id')
-                    inner_json = json.dumps({"conversation_id": conversation_id, "message_id": message_id,
-                                             "user": data.get('user'), "api_key": api_key,
-                                             "answer": json_data.get('answer', '')})
-                    yield {"error_code": 0, "text": mark + inner_json + mark}
+                    if is_workflow:
+                        inner_json = json.dumps({"answer": json_data.get('data', {}).get('outputs')})
+                        yield {"error_code": 0, "text": mark + inner_json + mark}
+                    else:
+                        conversation_id = json_data.get('conversation_id')
+                        message_id = json_data.get('message_id')
+                        inner_json = json.dumps({"conversation_id": conversation_id, "message_id": message_id,
+                                                 "user": data.get('user'), "api_key": api_key,
+                                                 "answer": json_data.get('answer', '')})
+                        yield {"error_code": 0, "text": mark + inner_json + mark}
         except Exception as e:
             logger.error(f"{e}")
             if text == '':

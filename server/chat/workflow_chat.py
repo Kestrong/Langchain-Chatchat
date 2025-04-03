@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import uuid
 from asyncio import CancelledError
@@ -21,7 +22,7 @@ from server.workflow.component.base.component import Component
 
 async def workflow_chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
                         assistant_id: int = Body(-1, description="助手ID"),
-                        stream: bool = False,
+                        stream: bool = Body(False, description="流式输出"),
                         extra: dict = Body({}, description="额外的属性"),
                         conversation_id: str = Body("", description="对话框ID"),
                         store_message: bool = Body(True, description="是否保存消息到数据库"),
@@ -30,9 +31,9 @@ async def workflow_chat(query: str = Body(..., description="用户输入", examp
     if assistant_id >= 0:
         assistant = get_assistant_detail_from_db(assistant_id=assistant_id)
     workflow_config = assistant.get("workflow_config", {})
-    return do_workflow_chat(query=query, stream=stream, assistant_id=assistant_id, extra=extra,
-                            conversation_id=conversation_id,
-                            store_message=store_message, workflow_config=workflow_config)
+    return await do_workflow_chat(query=query, stream=stream, assistant_id=assistant_id, extra=extra,
+                                  conversation_id=conversation_id,
+                                  store_message=store_message, workflow_config=workflow_config)
 
 
 def get_component_type(name: str):
@@ -142,7 +143,7 @@ async def do_workflow_chat(query: str,
             edges = workflow_config.get("edges", [])
             graph = defaultdict(list)
             for e in edges:
-                target_node = node_map[e.get("target")]
+                target_node = copy.copy(node_map[e.get("target")])
                 target_node["condition"] = e.get("condition")
                 graph[e.get("source")].append(target_node)
 

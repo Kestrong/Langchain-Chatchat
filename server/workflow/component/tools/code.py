@@ -32,7 +32,8 @@ class PythonREPLComponent(Component):
 
     async def _run(self, state: Dict[str, Any]) -> Dict[str, Any]:
         py_repl = PythonREPL()
-        inputs = super()._context[self.id]["inputs"]
+        inputs = self.get_context()[self.id]["inputs"]
         python_code = inputs.get("python_code")
         result = py_repl.run(python_code)
+        del inputs["python_code"]
         return {"result": result}
