@@ -34,6 +34,6 @@ class PythonREPLComponent(Component):
         py_repl = PythonREPL()
         inputs = self.get_context()[self.id]["inputs"]
         python_code = inputs.get("python_code")
-        result = py_repl.run(python_code)
         del inputs["python_code"]
+        result = py_repl.run(python_code)
         return {"result": result}
