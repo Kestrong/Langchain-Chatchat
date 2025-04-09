@@ -22,6 +22,7 @@ class Input(BaseModel):
     name: str
     display_name: str
     required: bool = False
+    enable_expr: bool = True
     info: Union[str, None]
     options: list = []
 

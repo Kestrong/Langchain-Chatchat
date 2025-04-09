@@ -10,6 +10,7 @@ class Output(BaseModel):
     id: str = None
     name: str
     display_name: str
+    enable_expr: bool = False
 
     def __init__(self, **data: Any) -> None:
         super().__init__(**data)

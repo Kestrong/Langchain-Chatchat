@@ -51,15 +51,26 @@ class Component(BaseModel):
         # 确保调用的是我们自定义的 dict 方法
         return super().json(*args, **kwargs)
 
+    def parse_expr(self, value):
+        if value and isinstance(value, str):
+            if value.startswith("{{") and value.endswith("}}"):
+                expr_value = self.get_expr_value(value)
+                value = expr_value
+            elif self.contains_variable_template(value):
+                value = self.parse_template(self.transform_template(value))
+        return value
+
     def prepare_input(self, inputs: Dict[str, Any]):
         if self.inputs:
             for i in self.inputs:
-                if i.value and isinstance(i.value, str):
-                    if i.value.startswith("{{") and i.value.endswith("}}"):
-                        expr_value = self.get_expr_value(i.value)
-                        i.value = expr_value
-                    elif self.contains_variable_template(i.value):
-                        i.value = self.parse_template(self.transform_template(i.value))
+                if not i.enable_expr:
+                    continue
+                if isinstance(i.value, dict):
+                    i.value = {k: self.parse_expr(v) for k, v in i.value.items()}
+                elif isinstance(i.value, list):
+                    i.value = [self.parse_expr(v) for v in i.value]
+                else:
+                    i.value = self.parse_expr(i.value)
 
     def update_input_context(self):
         inputs = {}
@@ -87,8 +98,8 @@ class Component(BaseModel):
         return params
 
     def contains_variable_template(self, template: str):
-        # 定义正则表达式模式，匹配{{任意字符}}
-        pattern = r'\{\{[^}]+\}\}'
+        # 定义正则表达式模式，匹配{{component_id.inputs.field}}
+        pattern = r'\{\{\s*([\w-]+.(inputs|outputs).[\w.]+)\s*}}'
         match = re.search(pattern, template)
         return match is not None
 
@@ -101,18 +112,21 @@ class Component(BaseModel):
             new_path = "CONTEXT" + ''.join(f"['{part}']" for part in parts)
             return "{{ %s }}" % new_path
 
-        transformed_content = re.sub(r'\{\{\s*([\w.-]+)\s*}}', replacer, template)
+        transformed_content = re.sub(r'\{\{\s*([\w-]+.(inputs|outputs).[\w.]+)\s*}}', replacer, template)
         return transformed_content
 
     def prepare_output(self, outputs: Dict[str, Any]):
         if self.outputs:
             for i in self.outputs:
-                if i.value and isinstance(i.value, str):
-                    if i.value.startswith("{{") and i.value.endswith("}}"):
-                        expr_value = self.get_expr_value(i.value)
-                        i.value = expr_value
-                    elif self.contains_variable_template(i.value):
-                        i.value = self.parse_template(self.transform_template(i.value))
+                if not i.enable_expr:
+                    i.value = outputs.get(i.name)
+                    continue
+                if isinstance(i.value, dict):
+                    i.value = {k: self.parse_expr(v) for k, v in i.value.items()}
+                elif isinstance(i.value, list):
+                    i.value = [self.parse_expr(v) for v in i.value]
+                elif isinstance(i.value, str):
+                    i.value = self.parse_expr(i.value)
                 else:
                     i.value = outputs.get(i.name)
 

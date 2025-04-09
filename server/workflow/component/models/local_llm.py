@@ -118,6 +118,8 @@ class LocalLLMComponent(Component):
         prompt = inputs.get("prompt") or state.get("prompt")
         if not prompt:
             prompt = "default"
+        if "prompt" in inputs:
+            del inputs["prompt"]
         model_name = inputs.get("model_name")
         max_tokens = inputs.get("max_tokens") or -1
         temperature = inputs.get("temperature") or TEMPERATURE
@@ -157,6 +159,4 @@ class LocalLLMComponent(Component):
         result.setdefault("docs", [])
         result.setdefault("thought", None)
         result['answer'] = answer
-        if prompt:
-            del inputs["prompt"]
         return result
