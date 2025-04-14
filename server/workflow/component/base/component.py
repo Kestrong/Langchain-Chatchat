@@ -53,10 +53,7 @@ class Component(BaseModel):
 
     def parse_expr(self, value):
         if value and isinstance(value, str):
-            if value.startswith("{{") and value.endswith("}}"):
-                expr_value = self.get_expr_value(value)
-                value = expr_value
-            elif self.contains_variable_template(value):
+            if self.contains_variable_template(value):
                 value = self.parse_template(self.transform_template(value))
         return value
 
@@ -74,28 +71,18 @@ class Component(BaseModel):
 
     def update_input_context(self):
         inputs = {}
-        self._context.setdefault(self.id, {})
+        self.get_context().setdefault(self.id, {})
         if self.inputs:
             for i in self.inputs:
                 inputs[i.name] = i.value
-        self._context[self.id]["inputs"] = inputs
+        self.get_context()[self.id]["inputs"] = inputs
 
     def parse_template(self, template: str):
         try:
-            return DEFAULT_FORMATTER_MAPPING["jinja2"](template, CONTEXT=self._context)
+            return DEFAULT_FORMATTER_MAPPING["jinja2"](template, CONTEXT=self.get_context())
         except Exception as e:
             logger.error(f"{e}")
             return template
-
-    def get_expr_value(self, expr: str):
-        expr = expr.lstrip("{{").rstrip("}}")
-        parts = expr.split(".")
-        params = self._context.get(parts[0].strip(), {}).get(parts[1].strip(), {})
-        for p in parts[2:]:
-            if not params:
-                return None
-            params = params.get(p.strip())
-        return params
 
     def contains_variable_template(self, template: str):
         # 定义正则表达式模式，匹配{{component_id.inputs.field}}
@@ -132,11 +119,11 @@ class Component(BaseModel):
 
     def update_output_context(self):
         outputs = {}
-        self._context.setdefault(self.id, {})
+        self.get_context().setdefault(self.id, {})
         if self.outputs:
             for i in self.outputs:
                 outputs[i.name] = i.value
-        self._context[self.id]["outputs"] = outputs
+        self.get_context()[self.id]["outputs"] = outputs
 
     async def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
         self.prepare_input(state)
@@ -144,7 +131,7 @@ class Component(BaseModel):
         result = await self._run(state)
         self.prepare_output(result)
         self.update_output_context()
-        return self._context[self.id]["outputs"]
+        return self.get_context()[self.id]["outputs"]
 
     async def _run(self, state: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError(f"not implemented run method for {self.name} component")
