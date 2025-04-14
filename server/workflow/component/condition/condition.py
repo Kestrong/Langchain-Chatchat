@@ -46,11 +46,11 @@ class IfElseComponent(Component):
             right = condition.get("right")
             if left and isinstance(left, str):
                 if left.startswith("{{") and left.endswith("}}"):
-                    left = self.get_expr_value(left)
+                    left = self.parse_expr(left)
                     condition['left'] = left
             if right and isinstance(right, str):
                 if right.startswith("{{") and right.endswith("}}"):
-                    right = self.get_expr_value(right)
+                    right = self.parse_expr(right)
                     condition['right'] = right
             if condition['operator'] == '==':
                 matches.append(left == right)
