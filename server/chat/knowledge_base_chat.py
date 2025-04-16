@@ -129,7 +129,9 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                                 query=query,
                                                 knowledge_base_name=knowledge_base_name,
                                                 top_k=top_k,
-                                                score_threshold=score_threshold)
+                                                score_threshold=score_threshold,
+                                                file_name="",
+                                                metadata={})
             for d in docs_part:
                 d.metadata['kb_name'] = knowledge_base_name
                 docs.append(d)
