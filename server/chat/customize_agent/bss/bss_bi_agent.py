@@ -205,7 +205,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                                                                         tools=available_tools,
                                                                         verbose=True,
                                                                         memory=memory,
-                                                                        max_iterations=0
+                                                                        max_iterations=1
                                                                         )
                 while True:
                     try:
