@@ -129,29 +129,35 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                         memory.chat_memory.add_ai_message(parse_history_message(a.content))
                         history_var.append({"role": a.type, "content": parse_history_message(a.content)})
             step_prompt0 = """你是一个资深的python程序员，请仔细阅读以下输入的问题和历史对话上下文。
-                        历史对话上下文: {{ history }}
-                        问题: {{ input }}
-                        请你结合历史对话上下文和问题，让我们一步一步来推理，判断以下python伪代码的输出是什么？
-                        指令：请直接输出伪代码运行的结果，不要包含任何其他的内容
-                        def function() -> bool:
-                            flag1 = False
-                            接下来想问的问题 = 推理(历史对话上下文 + 问题)
-                            if 接下来想问的问题 关于 数据查询 or 统计分析 or 告警 or 调度单:
-                                flag1 = True
-                            flag2 = False    
-                            if 接下来想问的问题 包含 时间范围 or 员工姓名 or 省市区域:
-                                flag2 = True
-                            if flag1 and flag2:
-                                return True
-                            else:
-                                return False
+                            历史对话上下文: {{ history }}
+                            问题: {{ input }}
+                            给定伪代码如下：
+                            def function() -> bool:
+                                flag1 = False
+                                接下来想问的问题 = 推理(历史对话上下文 + 问题)
+                                if 接下来想问的问题 关于 数据查询 or 统计分析 or 告警 or 调度单:
+                                    flag1 = True
+                                flag2 = False    
+                                if 接下来想问的问题 包含 时间范围 or 员工姓名 or 省市区域:
+                                    flag2 = True
+                                if flag1 and flag2:
+                                    return True
+                                else:
+                                    return False
+                            请你深吸一口气，让我们一步一步来思考：
+                            1. 结合历史对话上下文和问题，判断function()函数的执行过程，记住每个变量的结果。
+                            2. 注意判断if里面的条件，or表示只要满足一个条件即可，and表示要全部满足。
+                            3. 时间范围的表达方式，例如：最近几天、自然周/月/年、具体日期等依此类推。
+                            4. 根据上一步的判断，得出伪代码返回的值，标记为变量result。
+                            5. 直接输出变量result的值，只允许输出True或者False，不允许输出其他内容。
+                            现在，以纯文本的格式输出你的答案：
                         """
             step_template0 = PromptTemplate(input_variables=["input", "history"],
                                             template=step_prompt0,
                                             template_format="jinja2")
             step_chain0 = LLMChain(llm=model, prompt=step_template0)
             continue_flag = True
-            flag = step_chain0.predict(input=query, history=f"{history_var}")
+            flag = step_chain0.predict(input=query, history=f"{history_var}" if history_var else "")
             if "false" in flag.lower():
                 continue_flag = False
                 question_alarm = ['查看某人上周的告警明细', '查看某人本月的告警统计',
@@ -199,9 +205,8 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                                                                         tools=available_tools,
                                                                         verbose=True,
                                                                         memory=memory,
-                                                                        max_iterations=3
+                                                                        max_iterations=1
                                                                         )
-                    model_container.TOOL_ARGS['retry'] = agent_executor.max_iterations
                 while True:
                     try:
                         task = asyncio.create_task(wrap_done(

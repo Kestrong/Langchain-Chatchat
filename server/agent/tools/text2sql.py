@@ -1,5 +1,6 @@
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, Future
 from copy import copy
 from datetime import date, datetime
 from decimal import Decimal
@@ -109,7 +110,7 @@ SQL_WRAPPER = {"mysql": "`"}
 
 class CustomSQLDatabaseChain(SQLDatabaseChain):
 
-    def execute_with_retry(self, sql_cmd, inputs, max_retries=1):
+    def execute_with_retry(self, sql_cmd, inputs, max_retries=3):
         attempt = 0
         origin_error = None
         table_info = inputs.get("table_info")
@@ -881,27 +882,6 @@ def text2sql(query: str):
         records = intermediate_steps[2]
         table_info = intermediate_steps[0]['table_info']
         logger.info(f"knowledgebase:{knowledgebase},\n query:{origin_query},\n sql:{sql}")
-        column_map = {}
-        if isinstance(records, list) and len(records) > 0:
-            translate_prompt = """你是一个翻译专家。你可以参考以下给定的SQL和表信息：
-            SQL: {{ sql }},
-            表信息: {{ table_info }},
-            现在深吸一口气，让我们一步一步来思考，请将这些列名翻译成中文：{{ columns }}。
-            1. 如果某个列名已经是中文，则直接使用列名作为翻译后的内容；
-            2. 确保翻译后的内容仅包含中文字符，忽略下划线后无实际意义的字符，并且尽可能简短；
-            3. 如果某个列名无法直接翻译则通过sql和表信息推断其实际含义，推断不出时直接使用列名作为翻译。
-            现在，请根据以上要求直接输出一个JSON对象，其中key是列名，value是翻译后的内容。
-            """
-            translate_template = PromptTemplate(input_variables=["sql", "table_info", "columns"],
-                                                template=translate_prompt, template_format="jinja2")
-            translate_chain = LLMChain(llm=llm, prompt=translate_template)
-            try:
-                p = translate_chain.predict(
-                    **{"sql": sql, "table_info": table_info, "columns": records[0].keys()})
-                column_map = {column: get_clean_translate_column(chinese) for column, chinese in
-                              json.loads(parse_json_md(p).replace("'", '"')).items()}
-            except Exception as e:
-                logger.error(f'translate column error:{e}')
         if not records and not sql_cmd:
             summarize = "很抱歉，本次查询没有返回数据。请检查您提供的查询条件是否准确，例如：\n1. 姓名的拼写是否正确和完整；\n2. 区域的命名是否跟业务上一致；\n3. 查询时间是否明确上周、本月或者完整的年月日；\n4. 其他可能影响查询的条件或语法上造成的歧义等；\n5. 数据库确实存在此类数据。\n\n如果您已经检查过以上几点并确认无误，可以重新提问一次或者换个问题尝试。"
         else:
@@ -915,12 +895,37 @@ def text2sql(query: str):
             summarize_template = PromptTemplate(input_variables=["query", "records", "report_prompt"],
                                                 template=summarize_prompt, template_format="jinja2")
             summarize_chain = LLMChain(llm=llm, prompt=summarize_template)
-            summarize = summarize_chain.predict(
-                **{"query": origin_query,
-                   "records": f"{shorter_records(records)}",
-                   "report_prompt": report_prompt})
+            used_token_count = len(summarize_prompt) + len(origin_query) + len(report_prompt) + 1000
+            with ThreadPoolExecutor() as executor:
+                summarize = executor.submit(summarize_chain.predict,
+                                            **{"query": origin_query,
+                                               "records": f"{shorter_records(records, used_token_count)}",
+                                               "report_prompt": report_prompt})
+        column_map = {}
+        if isinstance(records, list) and len(records) > 0:
+            translate_prompt = """你是一个翻译专家。你可以参考以下给定的SQL和表信息：
+                    SQL: {{ sql }},
+                    表信息: {{ table_info }},
+                    现在深吸一口气，让我们一步一步来思考，请将这些列名翻译成中文：{{ columns }}。
+                    1. 如果某个列名已经是中文，则直接使用列名作为翻译后的内容；
+                    2. 确保翻译后的内容仅包含中文字符，忽略下划线后无实际意义的字符，并且尽可能简短；
+                    3. 如果某个列名无法直接翻译则通过sql和表信息推断其实际含义，推断不出时直接使用列名作为翻译。
+                    现在，请根据以上要求直接输出一个JSON对象，其中key是列名，value是翻译后的内容。
+                    """
+            translate_template = PromptTemplate(input_variables=["sql", "table_info", "columns"],
+                                                template=translate_prompt, template_format="jinja2")
+            translate_chain = LLMChain(llm=llm, prompt=translate_template)
+            try:
+                p = translate_chain.predict(
+                    **{"sql": sql, "table_info": table_info, "columns": records[0].keys()})
+                column_map = {column: get_clean_translate_column(chinese) for column, chinese in
+                              json.loads(parse_json_md(p).replace("'", '"')).items()}
+            except Exception as e:
+                logger.error(f'translate column error:{e}')
         translate_records = [{column_map.get(k, k): v for k, v in rec.items()} for rec in records]
         chart_type, chart_json = judge_chart_type(origin_query, translate_records, llm)
+        if isinstance(summarize, Future):
+            summarize = summarize.result()
         if return_format == "json":
             return json.dumps(
                 {"column_map": column_map, "records": records,
@@ -944,14 +949,6 @@ def text2sql(query: str):
             return error_info
         if 'timeout' in error_info or 'time out' in error_info or 'timed out' in error_info:
             return Message_I18N.TOOL_SQL_TIMEOUT.value
-        if model_container.TOOL_ARGS.get("sql_cmd"):
-            return Message_I18N.TOOL_SQL_ERROR.value.format(error=error_info.split("\n")[0])
-        retry = model_container.TOOL_ARGS.get("retry", 0)
-        retry -= 1
-        if retry > 0:
-            model_container.TOOL_RERUN = True
-            model_container.TOOL_ARGS['retry'] = retry
-            return Message_I18N.TOOL_SQL_ERROR_RETRY.value.format(error=error_info.split("\n")[0])
         return Message_I18N.TOOL_SQL_ERROR.value.format(error=error_info.split("\n")[0])
     finally:
         if engine:
@@ -962,13 +959,13 @@ def text2sql(query: str):
                 pass
 
 
-def shorter_records(records: list):
+def shorter_records(records: list, used_count: int = 0):
     result = []
     length = 0
     for rr in records:
         r_str = json.dumps(rr, default=complex_handler)
         length += len(r_str)
-        if length > MAX_TOKENS_INPUT - 5000:
+        if length > MAX_TOKENS_INPUT - used_count:
             break
         result.append(r_str)
     return result
