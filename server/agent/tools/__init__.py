@@ -9,3 +9,4 @@ from .search_youtube import search_youtube, YoutubeInput
 from .arxiv import arxiv, ArxivInput
 from .text2sql import text2sql, Text2SqlInput
 from .http_request import http_request, HttpRequestInput
+from .code_interpreter import code_interpreter, CodeInput

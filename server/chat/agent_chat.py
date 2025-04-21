@@ -174,7 +174,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                                 tools=available_tools,
                                                                 verbose=True,
                                                                 memory=memory,
-                                                                max_iterations=3
+                                                                max_iterations=5
                                                                 )
         while True:
             try:
