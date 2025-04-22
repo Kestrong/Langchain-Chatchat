@@ -41,11 +41,14 @@ class FastgptWorker(ApiModelWorker):
         model_config = {}
         if assistant:
             model_config = assistant.get('model_config', {})
-            role_meta.update(model_config)
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key', params.api_key)
         headers = {"Authorization": api_key, "Content-Type": "application/json"}
-        variables = role_meta.get("variables", {})
+        variables = model_config.get("variables") or role_meta.get("variables", {})
+        extra = model_config.get("extra") or role_meta.get("extra", {})
+        app_id = model_config.get("appId") or role_meta.get("appId")
+        with_quote = model_config.get("with_quote") or role_meta.get("with_quote", True)
+        timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
         if variables is None or len(variables) == 0:
             variables = {"cTime": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S %A")}
         data = {
@@ -60,14 +63,11 @@ class FastgptWorker(ApiModelWorker):
             "detail": True,
             "stream": True
         }
-        data.update(role_meta.get("extra", {}))
+        data.update(extra)
         text = ""
         mark = f'###[{self.model_names[0]}]###'
-        app_id = role_meta.get("appId")
-        with_quote = role_meta.get('with_quote', True)
         try:
-            with requests.post(url, stream=True, headers=headers, json=data,
-                               timeout=role_meta.get("timeout", 30)) as response:
+            with requests.post(url, stream=True, headers=headers, json=data, timeout=timeout) as response:
                 response.raise_for_status()
                 done = False
                 error = False
