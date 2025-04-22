@@ -1,6 +1,9 @@
 import json
 from typing import List, Tuple, Dict, Union, AsyncIterable
 
+from langchain.agents import LLMSingleActionAgent, AgentExecutor
+from langchain.agents.structured_chat.output_parser import StructuredChatOutputParserWithRetries
+from langchain.chains import LLMChain
 from langchain.prompts.chat import ChatMessagePromptTemplate
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
@@ -118,3 +121,45 @@ def un_format_online_llm_model(model_name: str):
         worker = worker_class()
         return not worker.format_online_llm()
     return False
+
+
+def create_agent_executor(model, memory, available_tools: list, prompt_template: str, max_iterations: int = 5):
+    model_name = model.metadata["origin_model_name"]
+    if "chatglm3" in model_name or "zhipu-api" in model_name:
+        from server.agent.custom_agent.ChatGLM3Agent import initialize_glm3_agent
+
+        agent_executor = initialize_glm3_agent(
+            llm=model,
+            tools=available_tools,
+            callback_manager=None,
+            prompt=prompt_template,
+            input_variables=["input", "intermediate_steps", "history"],
+            memory=memory,
+            verbose=True,
+            max_iterations=max_iterations
+        )
+    else:
+        from server.agent import CustomPromptTemplate, CustomOutputParser
+
+        prompt_template_agent = CustomPromptTemplate(
+            template=prompt_template,
+            tools=available_tools,
+            template_format='jinja2',
+            input_variables=["input", "intermediate_steps", "history"]
+        )
+        llm_chain = LLMChain(llm=model, prompt=prompt_template_agent)
+        output_parser = StructuredChatOutputParserWithRetries.from_llm(llm=model, base_parser=CustomOutputParser())
+        output_parser.output_fixing_parser.max_retries = 3
+        agent = LLMSingleActionAgent(
+            llm_chain=llm_chain,
+            output_parser=output_parser,
+            stop=["Observation:", "\nObservation", "<|endoftext|>", "<|im_start|>", "<|im_end|>"],
+            allowed_tools=[t.name for t in available_tools],
+        )
+        agent_executor = AgentExecutor.from_agent_and_tools(agent=agent,
+                                                            tools=available_tools,
+                                                            verbose=True,
+                                                            memory=memory,
+                                                            max_iterations=max_iterations
+                                                            )
+    return agent_executor

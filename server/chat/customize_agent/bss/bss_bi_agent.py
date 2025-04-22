@@ -4,8 +4,6 @@ import random
 from typing import Dict, Any, List, Optional
 
 from fastapi import Body
-from langchain.agents import LLMSingleActionAgent, AgentExecutor
-from langchain.agents.structured_chat.output_parser import StructuredChatOutputParserWithRetries
 from langchain.chains import LLMChain
 from langchain.memory import ConversationBufferWindowMemory
 from langchain_core.messages import HumanMessage
@@ -13,14 +11,12 @@ from langchain_core.prompts import PromptTemplate
 from sse_starlette import EventSourceResponse
 
 from configs import TEMPERATURE, LLM_MODELS, HISTORY_LEN
-from server.agent import create_model_container, text2sql, AgentExecutorAsyncIteratorCallbackHandler, AgentStatus, \
-    CustomOutputParser, CustomPromptTemplate
-from server.agent.custom_agent.ChatGLM3Agent import initialize_glm3_agent
+from server.agent import create_model_container, text2sql, AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, wrap_event_response
+from server.chat.utils import History, wrap_event_response, create_agent_executor
 from server.db.repository import add_message_to_db, update_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.utils import wrap_done, get_prompt_template, get_ChatOpenAI
@@ -88,7 +84,6 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
             from server.chat.agent_chat import get_available_tools
             available_tools = get_available_tools(tool_names=['text2sql'], api_names=[],
                                                   tool_config=model_container.TOOL_CONFIG)
-            available_tool_names = [t.name for t in available_tools]
             callback = AgentExecutorAsyncIteratorCallbackHandler()
             conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                                 message_id=message_id,
@@ -174,39 +169,8 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
             if continue_flag:
                 model.callbacks = [callback]
                 prompt_template = get_prompt_template("agent_chat", prompt_name)
-                prompt_template_agent = CustomPromptTemplate(
-                    template=prompt_template,
-                    tools=available_tools,
-                    template_format='jinja2',
-                    input_variables=["input", "intermediate_steps", "history"]
-                )
-                llm_chain = LLMChain(llm=model, prompt=prompt_template_agent)
-                if "chatglm3" in model_name or "zhipu-api" in model_name:
-                    agent_executor = initialize_glm3_agent(
-                        llm=model,
-                        tools=available_tools,
-                        callback_manager=None,
-                        prompt=prompt_template,
-                        input_variables=["input", "intermediate_steps", "history"],
-                        memory=memory,
-                        verbose=True,
-                    )
-                else:
-                    output_parser = StructuredChatOutputParserWithRetries.from_llm(llm=model,
-                                                                                   base_parser=CustomOutputParser())
-                    output_parser.output_fixing_parser.max_retries = 3
-                    agent = LLMSingleActionAgent(
-                        llm_chain=llm_chain,
-                        output_parser=output_parser,
-                        stop=["Observation:", "\nObservation", "<|endoftext|>", "<|im_start|>", "<|im_end|>"],
-                        allowed_tools=available_tool_names,
-                    )
-                    agent_executor = AgentExecutor.from_agent_and_tools(agent=agent,
-                                                                        tools=available_tools,
-                                                                        verbose=True,
-                                                                        memory=memory,
-                                                                        max_iterations=1
-                                                                        )
+                agent_executor = create_agent_executor(model, memory, available_tools, prompt_template,
+                                                       max_iterations=1)
                 while True:
                     try:
                         task = asyncio.create_task(wrap_done(
