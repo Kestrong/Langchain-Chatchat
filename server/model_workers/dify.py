@@ -25,8 +25,8 @@ class DifyWorker(ApiModelWorker):
         super().__init__(**kwargs)
         self.version = version
 
-    def get_inputs(self, role_meta: dict):
-        return role_meta.get("inputs", {})
+    def get_inputs(self, role_meta: dict, model_config: dict):
+        return model_config.get('inputs') or role_meta.get("inputs", {})
 
     def get_chunk_response(self, json_data, is_workflow, pre_event, mark, user, api_key, node_types):
         event = json_data.get('event')
@@ -80,21 +80,22 @@ class DifyWorker(ApiModelWorker):
         response_mode = model_config.get('stream', contentObj.get('stream', True))
         is_workflow = model_config.get('is_workflow') or role_meta.get('is_workflow', False)
         node_types = model_config.get('node_types') or role_meta.get('node_types', [])
+        user = model_config.get('user') or role_meta.get("user")
+        timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        inputs = self.get_inputs(role_meta)
+        inputs = self.get_inputs(role_meta, model_config)
         data = {
             "inputs": inputs,
             "query": contentObj.get('question', ''),
             "response_mode": "streaming" if response_mode else "blocking",
-            "user": role_meta.get('user'),
+            "user": user,
             "conversation_id": contentObj.get('conversation_id'),
         }
         logger.debug(f"请求dify接口参数：{data}")
         text = ""
         mark = f'###[{self.model_names[0]}]###'
         try:
-            with requests.post(url, stream=response_mode, headers=headers, timeout=role_meta.get("timeout", 30),
-                               json=data) as response:
+            with requests.post(url, stream=response_mode, headers=headers, timeout=timeout, json=data) as response:
                 response.raise_for_status()
                 if response_mode:
                     pre_event = ''
@@ -154,6 +155,10 @@ class DifyWorker(ApiModelWorker):
 
 
 class IotQwenWorker(DifyWorker):
-    def get_inputs(self, role_meta: dict):
-        return {"userId": role_meta.get('user_id'), "kb_name": role_meta.get('kb_name'),
-                "topk": role_meta.get('topk'), "score_threshold": role_meta.get('score_threshold')}
+    def get_inputs(self, role_meta: dict, model_config: dict):
+        user_id = model_config.get('user_id') or role_meta.get('user_id')
+        kb_name = model_config.get('kb_name') or role_meta.get('kb_name')
+        topk = model_config.get('topk') or role_meta.get('topk')
+        score_threshold = model_config.get('score_threshold') or role_meta.get('score_threshold')
+        return {"userId": user_id, "kb_name": kb_name,
+                "topk": topk, "score_threshold": score_threshold}
