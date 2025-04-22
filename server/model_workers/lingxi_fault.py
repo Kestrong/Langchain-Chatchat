@@ -39,17 +39,16 @@ class LingxiFaultWorker(ApiModelWorker):
         model_config = {}
         if assistant:
             model_config = assistant.get('model_config', {})
-            role_meta.update(model_config)
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key', params.api_key)
         secret_key = model_config.get('secret_key', params.secret_key)
         timestamp = str(int(round(time.time() * 1000)))
+        timeout = model_config.get('timeout') or role_meta.get("timeout", 30)
         seqid = str(uuid.uuid1())
         headers = {"X-APP-ID": api_key, "X-APP-KEY": secret_key, "Content-Type": "application/json"}
         data = {"timestamp": timestamp, "seqid": seqid, "messages": [{"role": contentObj.get('question', '')}]}
         try:
-            with requests.post(url, stream=False, headers=headers, timeout=role_meta.get("timeout", 30),
-                               json=data) as response:
+            with requests.post(url, stream=False, headers=headers, timeout=timeout, json=data) as response:
                 response.raise_for_status()
                 json_data = response.json()
                 if "10000" == json_data.get("code"):
