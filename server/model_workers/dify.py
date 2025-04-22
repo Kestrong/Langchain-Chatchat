@@ -28,7 +28,7 @@ class DifyWorker(ApiModelWorker):
     def get_inputs(self, role_meta: dict):
         return role_meta.get("inputs", {})
 
-    def get_chunk_response(self, json_data, is_workflow, mark, user, api_key):
+    def get_chunk_response(self, json_data, is_workflow, pre_event, mark, user, api_key, node_types):
         event = json_data.get('event')
         if is_workflow:
             if event == "workflow_finished":
@@ -42,6 +42,9 @@ class DifyWorker(ApiModelWorker):
         else:
             if event == "workflow_finished":
                 return mark + '[BREAK]' + mark
+            elif event == "node_finished" and pre_event == 'node_started' and json_data.get('data', {}).get(
+                    'node_type') in node_types:
+                return json_data.get('data', {}).get('outputs', {}).get('text', '')
             elif event == "text_chunk":
                 msg = json_data.get('data', {}).get('text', '')
                 return msg
@@ -77,6 +80,7 @@ class DifyWorker(ApiModelWorker):
         api_key = model_config.get('api_key') or contentObj.get('api_key') or params.api_key
         response_mode = model_config.get('stream', contentObj.get('stream', True))
         is_workflow = role_meta.get('is_workflow', False)
+        node_types = role_meta.get('node_types') or []
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         inputs = self.get_inputs(role_meta)
         data = {
@@ -94,6 +98,7 @@ class DifyWorker(ApiModelWorker):
                                json=data) as response:
                 response.raise_for_status()
                 if response_mode:
+                    pre_event = ''
                     for chunk in response.iter_lines():
                         if chunk is None or len(chunk) == 0:
                             continue
@@ -101,8 +106,9 @@ class DifyWorker(ApiModelWorker):
                             json_str = chunk.decode('utf-8')[6:]
                             try:
                                 json_data = json.loads(json_str)
-                                result = self.get_chunk_response(json_data, is_workflow, mark, data.get('user'),
-                                                                 api_key)
+                                result = self.get_chunk_response(json_data, is_workflow, pre_event, mark,
+                                                                 data.get('user'), api_key, node_types)
+                                pre_event = json_data.get('event')
                                 if not result:
                                     continue
                                 if result == mark + '[BREAK]' + mark:

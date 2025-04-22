@@ -4,17 +4,12 @@ import uuid
 from typing import AsyncIterable, Optional, List, Dict, Any, Union
 
 from fastapi import Body
-from langchain.agents import AgentExecutor, LLMSingleActionAgent
-from langchain.agents.structured_chat.output_parser import StructuredChatOutputParserWithRetries
-from langchain.chains import LLMChain
 from langchain.memory import ConversationBufferWindowMemory
 from sse_starlette.sse import EventSourceResponse
 
 from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, logger
 from server.agent import create_model_container
 from server.agent.callbacks import AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
-from server.agent.custom_agent.ChatGLM3Agent import initialize_glm3_agent
-from server.agent.custom_template import CustomOutputParser, CustomPromptTemplate
 from server.agent.tools.http_request import _http_request
 from server.agent.tools_select import get_all_tools, get_tool, create_dynamic_tool
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
@@ -22,7 +17,7 @@ from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.customize_agent.customize_agent_type import customize_agent_types
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, wrap_event_response, un_format_online_llm_model
+from server.chat.utils import History, wrap_event_response, un_format_online_llm_model, create_agent_executor
 from server.db.repository import add_message_to_db, get_assistant_simple_from_db, update_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
@@ -93,7 +88,6 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
 
     if not available_tools:
         return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
-    available_tool_names = [t.name for t in available_tools]
 
     async def agent_chat_iterator(
             query: str,
@@ -133,13 +127,6 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         )
 
         prompt_template = get_prompt_template("agent_chat", prompt_name)
-        prompt_template_agent = CustomPromptTemplate(
-            template=prompt_template,
-            tools=available_tools,
-            template_format='jinja2',
-            input_variables=["input", "intermediate_steps", "history"]
-        )
-        llm_chain = LLMChain(llm=model, prompt=prompt_template_agent)
         memory = ConversationBufferWindowMemory(k=max(HISTORY_LEN * 2, len(history) if history else 0))
         if history:
             for message in history:
@@ -151,31 +138,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             memory = ConversationBufferDBMemory(conversation_id=conversation_id,
                                                 llm=model,
                                                 message_limit=history_len)
-        if "chatglm3" in model_name or "zhipu-api" in model_name:
-            agent_executor = initialize_glm3_agent(
-                llm=model,
-                tools=available_tools,
-                callback_manager=None,
-                prompt=prompt_template,
-                input_variables=["input", "intermediate_steps", "history"],
-                memory=memory,
-                verbose=True,
-            )
-        else:
-            output_parser = StructuredChatOutputParserWithRetries.from_llm(llm=model, base_parser=CustomOutputParser())
-            output_parser.output_fixing_parser.max_retries = 3
-            agent = LLMSingleActionAgent(
-                llm_chain=llm_chain,
-                output_parser=output_parser,
-                stop=["Observation:", "\nObservation", "<|endoftext|>", "<|im_start|>", "<|im_end|>"],
-                allowed_tools=available_tool_names,
-            )
-            agent_executor = AgentExecutor.from_agent_and_tools(agent=agent,
-                                                                tools=available_tools,
-                                                                verbose=True,
-                                                                memory=memory,
-                                                                max_iterations=5
-                                                                )
+        agent_executor = create_agent_executor(model, memory, available_tools, prompt_template)
         while True:
             try:
                 task = asyncio.create_task(wrap_done(
