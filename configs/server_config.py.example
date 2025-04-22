@@ -154,6 +154,12 @@ FSCHAT_MODEL_WORKERS = {
     "claude-api": {
         "port": 21011,
     },
+    "dify-api": {
+        "port": 21012,
+    },
+    "fastgpt-api": {
+        "port": 21013,
+    },
 }
 
 FSCHAT_CONTROLLER = {
