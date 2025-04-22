@@ -37,7 +37,6 @@ class LingxiCutOverWorker(ApiModelWorker):
         model_config = {}
         if assistant:
             model_config = assistant.get('model_config', {})
-            role_meta.update(model_config)
         url = model_config.get('api_proxy', params.api_proxy)
         headers = {"x-access-token": contentObj.get('token')}
         data = {
@@ -56,8 +55,8 @@ class LingxiCutOverWorker(ApiModelWorker):
             if k in contentObj:
                 data[k] = contentObj[k]
         try:
-            with requests.post(url, stream=False, headers=headers, timeout=role_meta.get("timeout", 30),
-                               json=data) as response:
+            timeout = model_config.get('timeout') or role_meta.get("timeout", 30)
+            with requests.post(url, stream=False, headers=headers, timeout=timeout, json=data) as response:
                 if response.status_code != 200:
                     logger.error(response.text)
                     response.raise_for_status()

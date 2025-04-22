@@ -75,12 +75,11 @@ class DifyWorker(ApiModelWorker):
         model_config = {}
         if assistant:
             model_config = assistant.get('model_config', {})
-            role_meta.update(model_config)
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key') or contentObj.get('api_key') or params.api_key
         response_mode = model_config.get('stream', contentObj.get('stream', True))
-        is_workflow = role_meta.get('is_workflow', False)
-        node_types = role_meta.get('node_types') or []
+        is_workflow = model_config.get('is_workflow') or role_meta.get('is_workflow', False)
+        node_types = model_config.get('node_types') or role_meta.get('node_types', [])
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         inputs = self.get_inputs(role_meta)
         data = {
