@@ -79,7 +79,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         mark = f'###[{self.model_name}]###'
         if metadata is None:
             metadata = {}
-        if answer.startswith(mark) and answer.endswith(mark):
+        if mark in answer:
             parts = answer.split(mark)
             answer = ''
             extra_key_map = {"message_id": "third_message_id", "conversation_id": "third_conversation_id",
