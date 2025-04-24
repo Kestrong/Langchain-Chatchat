@@ -28,7 +28,7 @@ class DifyWorker(ApiModelWorker):
     def get_inputs(self, role_meta: dict, model_config: dict):
         return model_config.get('inputs') or role_meta.get("inputs", {})
 
-    def get_chunk_response(self, json_data, is_workflow, pre_event, mark, user, api_key, node_types):
+    def get_chunk_response(self, json_data, is_workflow, mark, user, api_key, events, node_types):
         event = json_data.get('event')
         if is_workflow:
             if event == "workflow_finished":
@@ -42,11 +42,23 @@ class DifyWorker(ApiModelWorker):
         else:
             if event == "workflow_finished":
                 return mark + '[BREAK]' + mark
-            elif event == "node_finished" and pre_event == 'node_started' and json_data.get('data', {}).get(
-                    'node_type') in node_types:
-                return json_data.get('data', {}).get('outputs', {}).get('text', '')
+            if events and event not in events:
+                return None
+            event_data = json_data.get('data', {})
+            if event == "node_finished" and event_data.get('node_type') in node_types:
+                conversation_id = json_data.get('conversation_id')
+                message_id = json_data.get('message_id')
+                outputs = event_data.get('outputs', {})
+                if 'answer' in outputs:
+                    msg = outputs.get('answer', '')
+                else:
+                    msg = outputs.get('text', '')
+                inner_json = json.dumps(
+                    {"conversation_id": conversation_id, "message_id": message_id,
+                     "user": user, "api_key": api_key, "answer": msg})
+                return mark + inner_json + mark
             elif event == "text_chunk":
-                msg = json_data.get('data', {}).get('text', '')
+                msg = event_data.get('text', '')
                 return msg
             elif event == "message" or event == "agent_message":
                 conversation_id = json_data.get('conversation_id')
@@ -79,6 +91,7 @@ class DifyWorker(ApiModelWorker):
         api_key = model_config.get('api_key') or contentObj.get('api_key') or params.api_key
         response_mode = model_config.get('stream', contentObj.get('stream', True))
         is_workflow = model_config.get('is_workflow') or role_meta.get('is_workflow', False)
+        events = model_config.get('events') or role_meta.get('events', [])
         node_types = model_config.get('node_types') or role_meta.get('node_types', [])
         user = model_config.get('user') or role_meta.get("user")
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
@@ -98,7 +111,6 @@ class DifyWorker(ApiModelWorker):
             with requests.post(url, stream=response_mode, headers=headers, timeout=timeout, json=data) as response:
                 response.raise_for_status()
                 if response_mode:
-                    pre_event = ''
                     for chunk in response.iter_lines():
                         if chunk is None or len(chunk) == 0:
                             continue
@@ -106,9 +118,8 @@ class DifyWorker(ApiModelWorker):
                             json_str = chunk.decode('utf-8')[6:]
                             try:
                                 json_data = json.loads(json_str)
-                                result = self.get_chunk_response(json_data, is_workflow, pre_event, mark,
-                                                                 data.get('user'), api_key, node_types)
-                                pre_event = json_data.get('event')
+                                result = self.get_chunk_response(json_data, is_workflow, mark, data.get('user'),
+                                                                 api_key, events, node_types)
                                 if not result:
                                     continue
                                 if result == mark + '[BREAK]' + mark:
