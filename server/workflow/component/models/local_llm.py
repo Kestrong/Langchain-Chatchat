@@ -143,7 +143,7 @@ class LocalLLMComponent(Component):
         async with get_httpx_client(use_async=True) as client:
             response = await client.post(url=f"{api_base_url}/chat/chat", json=data)
             for line in response.iter_lines():
-                if not line:
+                if not line or not line.startswith("data:"):
                     continue
                 event = json.loads(line[6:])
                 if event.get("error"):
