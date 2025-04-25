@@ -14,7 +14,7 @@ def exec_python(python_code: str, args: Dict[str, Any], _globals: Dict[str, Any]
         result = _locals['main'](**args)
         queue.put(result)
     except Exception as e:
-        queue.put(repr(e))
+        queue.put(str(e))
 
 
 class PythonREPLComponent(Component):
@@ -49,7 +49,7 @@ class PythonREPLComponent(Component):
         )
     ]
 
-    def _run(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def _run(self, state: Dict[str, Any]) -> Dict[str, Any]:
         self.update_input_context()
         inputs = self.get_context()[self.id]["inputs"]
         python_code = inputs.get("python_code")
