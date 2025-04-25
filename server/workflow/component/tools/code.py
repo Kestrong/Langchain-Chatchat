@@ -1,4 +1,4 @@
-import multiprocessing
+import concurrent.futures
 from typing import Dict, Any, Union
 
 from configs import PYTHON_REPL_TIMEOUT
@@ -8,13 +8,13 @@ from server.workflow.utils.outputs import DictOutput
 
 
 def exec_python(python_code: str, args: Dict[str, Any], _globals: Dict[str, Any],
-                _locals: Dict[str, Any], queue: multiprocessing.Queue) -> Any:
+                _locals: Dict[str, Any]) -> Any:
     try:
         exec(python_code, _globals, _locals)
         result = _locals['main'](**args)
-        queue.put(result)
+        return result
     except Exception as e:
-        queue.put(repr(e))
+        return str(e)
 
 
 class PythonREPLComponent(Component):
@@ -49,7 +49,7 @@ class PythonREPLComponent(Component):
         )
     ]
 
-    def _run(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def _run(self, state: Dict[str, Any]) -> Dict[str, Any]:
         self.update_input_context()
         inputs = self.get_context()[self.id]["inputs"]
         python_code = inputs.get("python_code")
@@ -57,14 +57,11 @@ class PythonREPLComponent(Component):
         args = inputs.get("args")
         _globals = {}
         _locals = {}
-        queue: multiprocessing.Queue = multiprocessing.Queue()
-        p = multiprocessing.Process(
-            target=exec_python, args=(python_code, args, _globals, _locals, queue)
-        )
-        p.start()
-        if PYTHON_REPL_TIMEOUT > 0:
-            p.join(PYTHON_REPL_TIMEOUT)
-        if p.is_alive():
-            p.terminate()
-        result = queue.get()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(exec_python, python_code, args, _globals, _locals)
+            try:
+                # 设置超时时间
+                result = future.result(timeout=PYTHON_REPL_TIMEOUT) if PYTHON_REPL_TIMEOUT > 0 else future.result()
+            except concurrent.futures.TimeoutError as e:
+                result = str(e)
         return {"result": result}
