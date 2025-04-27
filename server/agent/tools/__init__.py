@@ -1,6 +1,6 @@
 ## 导入所有的工具类
 from .search_knowledgebase_complex import search_knowledgebase_complex, KnowledgeSearchInput
-from .calculate import calculate, CalculatorInput
+from .calculate import calculate, CalculatorInput, current_time
 from .weather_check import weathercheck, WeatherInput
 from .shell import shell, ShellInput
 from .search_internet import search_internet, SearchInternetInput
