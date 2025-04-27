@@ -4,6 +4,7 @@ import json
 import uuid
 from asyncio import CancelledError
 from collections import defaultdict
+from datetime import datetime
 from functools import partial
 from typing import Dict, Any, AsyncIterable, AsyncIterator
 
@@ -122,7 +123,7 @@ async def do_workflow_chat(query: str,
 
     async def chat_iterator() -> AsyncIterable[str]:
 
-        context = {}
+        context = {"GLOBAL": {"inputs": {"current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}}}
         db_message_response: Dict[str, Any] = {}
         response_all_nodes = []
         queue = asyncio.Queue()

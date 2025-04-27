@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import numexpr
 from pydantic import BaseModel, Field
 
@@ -17,6 +19,11 @@ def calculate(expression: str):
         return str(numexpr.evaluate(expression))
     except Exception:
         return Message_I18N.TOOL_CALCULATE_ERROR.value.format(query=expression)
+
+
+@register_tool(title='当前时钟', description="Useful to get current time.")
+def current_time():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 if __name__ == "__main__":
