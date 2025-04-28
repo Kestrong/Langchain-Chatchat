@@ -274,6 +274,13 @@ ONLINE_LLM_MODEL = {
             }
         }
     },
+    "dify-api": {
+        "version": "dify-v1",
+        "api_proxy": "http://ip:port/v1/chat-messages",
+        "api_key": "app-xxxx",
+        "provider": "DifyWorker",
+        "role_meta": {}
+    },
 }
 
 # 在以下字典中修改属性值，以指定本地embedding模型存储位置。支持3种设置方法：

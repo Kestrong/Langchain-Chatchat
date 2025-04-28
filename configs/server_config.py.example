@@ -169,6 +169,9 @@ FSCHAT_MODEL_WORKERS = {
     "shaanxi-selfdev-api": {
         "port": 21016,
     },
+    "dify-api": {
+        "port": 21017,
+    },
 }
 
 FSCHAT_CONTROLLER = {
