@@ -99,6 +99,7 @@ def create_model_worker_app(log_level: str = "INFO", **kwargs) -> FastAPI:
 
         worker = worker_class(model_names=args.model_names,
                               controller_addr=args.controller_address,
+                              limit_worker_concurrency=args.limit_worker_concurrency,
                               worker_addr=args.worker_address)
         # sys.modules["fastchat.serve.base_model_worker"].worker = worker
         sys.modules["fastchat.serve.base_model_worker"].logger.setLevel(log_level)
