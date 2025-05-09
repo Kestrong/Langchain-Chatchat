@@ -68,6 +68,9 @@ class QimingWorker(ApiModelWorker):
             if content.startswith('{') and content.endswith('}'):
                 contentObj = json.loads(content)
                 stream = contentObj.get('stream', True)
+                conversation_id = contentObj.get('conversation_id')
+                if conversation_id:
+                    message['session_id'] = conversation_id
                 if contentObj.get('question', '').startswith('###') and contentObj.get('question', '').endswith('###'):
                     parts = contentObj.get('question', '').split('###')
                     message['scene'] = parts[1]

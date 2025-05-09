@@ -99,7 +99,6 @@ async def do_chat_router(query: str,
                          api_names: List[str] = None,
                          ):
     if un_format_online_llm_model(model_name):
-        extra["knowledge_id"] = knowledge_id
         extra["token"] = get_token()
     if assistant is None and assistant_id >= 0:
         assistant = get_assistant_detail_from_db(assistant_id=assistant_id)

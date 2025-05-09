@@ -109,6 +109,8 @@ class DifyWorker(ApiModelWorker):
         mark = f'###[{self.model_names[0]}]###'
         try:
             with requests.post(url, stream=response_mode, headers=headers, timeout=timeout, json=data) as response:
+                if response.status_code != 200:
+                    logger.error(response.text)
                 response.raise_for_status()
                 if response_mode:
                     for chunk in response.iter_lines():

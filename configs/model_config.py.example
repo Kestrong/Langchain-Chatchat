@@ -164,84 +164,7 @@ ONLINE_LLM_MODEL = {
         "feedbackUrl": "http://10.128.86.64:8000/serviceAgent/rest/wsc/qimingmaas/feedback",
         "provider": "QimingWorker",
         "role_meta": {
-            "prov": "611000000000001824854982",
-            "scene": [
-                {
-                    "name": "规章制度",
-                    "value": "8"
-                },
-                {
-                    "name": "综维问答",
-                    "value": "2"
-                },
-                {
-                    "name": "无线网优",
-                    "value": "3"
-                },
-                {
-                    "name": "装维问答",
-                    "value": "7"
-                },
-                {
-                    "name": "故障复盘",
-                    "value": "6"
-                },
-                {
-                    "name": "传输故障处置",
-                    "value": "1"
-                },
-                {
-                    "name": "IT运维知识助手",
-                    "value": "9"
-                },
-                {
-                    "name": "天翼云知识助手",
-                    "value": "13"
-                }
-            ],
-            "role": [
-                {
-                    "name": "装维一线"
-                },
-                {
-                    "name": "客支"
-                },
-                {
-                    "name": "客调"
-                },
-                {
-                    "name": "客服"
-                },
-                {
-                    "name": "客户"
-                }
-            ],
-            "iTSubScene": [
-                {
-                    "name": "变更操作管控",
-                    "value": "bgczgk"
-                },
-                {
-                    "name": "安全漏洞修复",
-                    "value": "aqldxf"
-                },
-                {
-                    "name": "故障诊断",
-                    "value": "gzzd"
-                },
-                {
-                    "name": "故障自愈",
-                    "value": "gzzy"
-                },
-                {
-                    "name": "运维规范问答",
-                    "value": "ywgfwd"
-                },
-                {
-                    "name": "服务台/翼问赋能",
-                    "value": "fwt"
-                }
-            ]
+            "prov": "611000000000001824854982"
         }
     },
     "lingxi-fault-api": {
@@ -279,6 +202,13 @@ ONLINE_LLM_MODEL = {
         "api_proxy": "http://ip:port/v1/chat-messages",
         "api_key": "app-xxxx",
         "provider": "DifyWorker",
+        "role_meta": {}
+    },
+    "fuxi-api": {
+        "version": "fuxi-v1",
+        "api_proxy": "http://ip:port/fllmadp/open-api/llm/run/workflow",
+        "api_key": "sk-xxxx",
+        "provider": "FuXiWorker",
         "role_meta": {}
     },
 }

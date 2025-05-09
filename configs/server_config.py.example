@@ -172,6 +172,9 @@ FSCHAT_MODEL_WORKERS = {
     "dify-api": {
         "port": 21017,
     },
+    "fuxi-api": {
+        "port": 21018,
+    },
 }
 
 FSCHAT_CONTROLLER = {
