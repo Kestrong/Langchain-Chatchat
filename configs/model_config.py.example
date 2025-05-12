@@ -99,8 +99,9 @@ ONLINE_LLM_MODEL = {
         "top_p": 0.8,
         "embed_model": "bge-large-zh-v1.5"  # embedding 模型名称,
         "role_meta": {
-            # "think_mark": "</think>",
-            "extra_body": {"enable_thinking": False}
+            # "truncate_mark": "</think>",
+            # "think_mark": "/no_think",
+            "extra_body": {"enable_thinking": False, "chat_template_kwargs": {"enable_thinking": False}}
         }
     },
 
