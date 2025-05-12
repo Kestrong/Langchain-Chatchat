@@ -753,7 +753,7 @@ def text2sql(query: str):
                 db_name_from_chain = decider_db_chain.predict(
                     **{"query": query, "database_names": f"{database_comments}"})
                 if db_name_from_chain:
-                    db_name_from_chain = db_name_from_chain.replace("'", "").replace('"', "")
+                    db_name_from_chain = db_name_from_chain.replace("'", "").replace('"', "").replace("\n", "")
             if db_name_from_chain not in db_infos:
                 for k, v in db_infos.items():
                     if v.get("default", False):
@@ -973,5 +973,5 @@ def shorter_records(records: list, used_count: int = 0):
 
 if __name__ == '__main__':
     for i in range(10):
-        r = text2sql("查看海涛和程丽本月的告警明细")
+        r = text2sql("查看海涛和程丽上个月的告警明细")
         print(r)

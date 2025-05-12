@@ -32,7 +32,9 @@ class QwenWorker(ApiModelWorker):
         params.load_config(self.model_names[0])
         if log_verbose:
             logger.info(f'{self.__class__.__name__}:params: {params}')
-
+        think_mark = params.role_meta.get('think_mark')
+        if think_mark:
+            params.messages[-1]['content'] = params.messages[-1]['content'] + think_mark
         with OpenAI(
                 api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
                 base_url=params.api_proxy,  # 填写DashScope服务的base_url
@@ -50,12 +52,12 @@ class QwenWorker(ApiModelWorker):
                 ) as responses:
                     text = ''
                     mark = True
-                    think_mark = params.role_meta.get('think_mark')
+                    truncate_mark = params.role_meta.get('truncate_mark')
                     for resp in responses:
                         if resp.choices and resp.choices[0].delta and resp.choices[0].delta.content:
                             text += resp.choices[0].delta.content
-                            if mark and think_mark:
-                                if not text.endswith(think_mark):
+                            if mark and truncate_mark:
+                                if not text.endswith(truncate_mark):
                                     continue
                                 else:
                                     text = ''
