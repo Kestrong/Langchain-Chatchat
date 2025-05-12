@@ -164,13 +164,6 @@ ONLINE_LLM_MODEL = {
             "user": "xxx"
         }
     },
-    "fuxi-api": {
-        "version": "fuxi-v1",
-        "api_proxy": "http://ip:port/fllmadp/open-api/llm/run/workflow",
-        "api_key": "sk-xxxx",
-        "provider": "FuXiWorker",
-        "role_meta": {}
-    },
 }
 
 # 在以下字典中修改属性值，以指定本地embedding模型存储位置。支持3种设置方法：
