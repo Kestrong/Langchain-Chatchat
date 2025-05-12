@@ -65,6 +65,7 @@ class FuXiWorker(ApiModelWorker):
         api_key = model_config.get('api_key') or contentObj.get('api_key') or params.api_key
         stream = model_config.get('stream', contentObj.get('stream', True))
         is_workflow = True if 'workflow' in url else False
+        is_completion = True if 'completion' in url else False
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
         result_key = model_config.get('result_key') or role_meta.get("result_key")
         headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
@@ -79,7 +80,7 @@ class FuXiWorker(ApiModelWorker):
         text = ""
         mark = f'###[{self.model_names[0]}]###'
         try:
-            if not conversation_id and not is_workflow:
+            if not conversation_id and not is_workflow and not is_completion:
                 conversation_create_url = self.replace_last_path_segment(url=url, new_segment="create")
                 with requests.post(conversation_create_url, stream=False, headers=headers, timeout=timeout,
                                    json={"inputs": inputs}) as response:

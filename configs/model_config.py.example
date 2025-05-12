@@ -97,7 +97,11 @@ ONLINE_LLM_MODEL = {
         "provider": "QwenWorker",
         "max_tokens": 4096,
         "top_p": 0.8,
-        "embed_model": "bge-large-zh-v1.5"  # embedding 模型名称
+        "embed_model": "bge-large-zh-v1.5"  # embedding 模型名称,
+        "role_meta": {
+            # "think_mark": "</think>",
+            "extra_body": {"enable_thinking": False}
+        }
     },
 
     # 百川 API，申请方式请参考 https://www.baichuan-ai.com/home#api-enter
