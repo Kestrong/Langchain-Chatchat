@@ -45,7 +45,8 @@ class QwenWorker(ApiModelWorker):
                         messages=params.messages,
                         stream=True,
                         max_tokens=params.max_tokens,
-                        top_p=params.top_p
+                        top_p=params.top_p,
+                        extra_body=params.role_meta.get("extra_body", {})
                 ) as responses:
                     text = ''
                     mark = True

@@ -18,7 +18,7 @@ from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
     wrap_event_response, un_format_online_llm_model
-from server.db.repository import add_message_to_db
+from server.db.repository import add_message_to_db, filter_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.model_workers import ApiModelParams
 from server.utils import get_prompt_template, BaseResponse, parse_json_md
@@ -53,7 +53,12 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         extra['question'] = query
         extra['stream'] = stream
         apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=model_name)
-        if 'FastgptWorker' == apiModelParams.provider:
+        if apiModelParams.provider in ['DifyWorker', 'FuXiWorker']:
+            if not extra.get("conversation_id"):
+                m = filter_message(conversation_id=conversation_id, limit=1)
+                if m:
+                    extra['conversation_id'] = m[0].get('meta_data', {}).get('third_conversation_id')
+        else:
             extra['conversation_id'] = conversation_id
             extra['message_id'] = message_id
         query = json.dumps(extra)
