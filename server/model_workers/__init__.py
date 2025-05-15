@@ -16,3 +16,4 @@ from .lingxi_fault import LingxiFaultWorker
 from .lingxi_cutover import LingxiCutOverWorker
 from .fastgpt import FastgptWorker
 from .fuxi import FuXiWorker
+from .deepseek import DeepSeekWorker
