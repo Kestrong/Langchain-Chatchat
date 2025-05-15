@@ -160,6 +160,9 @@ FSCHAT_MODEL_WORKERS = {
     "fastgpt-api": {
         "port": 21013,
     },
+    "deepseek-api": {
+        "port": 21014,
+    },
 }
 
 FSCHAT_CONTROLLER = {

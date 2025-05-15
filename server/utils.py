@@ -68,6 +68,7 @@ def get_ChatOpenAI(
         temperature=temperature,
         max_tokens=max_tokens or config.get("max_tokens"),
         openai_proxy=config.get("openai_proxy"),
+        model_kwargs={'top_p': kwargs.get("top_p") if kwargs and 'top_p' in kwargs else config.get("top_p")},
         **kwargs
     )
     if model.metadata is None:

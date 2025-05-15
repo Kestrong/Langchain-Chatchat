@@ -12,3 +12,4 @@ from .gemini import GeminiWorker
 from .claude import ClaudeWorker
 from .dify import DifyWorker
 from .fastgpt import FastgptWorker
+from .deepseek import DeepSeekWorker
