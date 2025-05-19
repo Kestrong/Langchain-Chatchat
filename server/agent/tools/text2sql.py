@@ -681,14 +681,11 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
                 chart_json['tooltip'] = {"trigger": "item"}
             else:
                 chart_json['tooltip'] = {"trigger": "axis"}
-            # 坐标太多时交换x和y轴 并设置显示间隔为0
-            if 'yAxis' in chart_json and 'xAxis' in chart_json:
-                yAxis = chart_json['yAxis']
+            # 坐标太多时旋转标签角度 并设置显示间隔为0
+            if 'xAxis' in chart_json:
                 xAxis = chart_json['xAxis']
                 if 'data' in xAxis and len(xAxis['data']) > 10:
-                    xAxis['axisLabel'] = {"interval": 0}
-                    chart_json['yAxis'] = xAxis
-                    chart_json['xAxis'] = yAxis
+                    xAxis['axisLabel'] = {"interval": 0, "rotate": 60, "fontSize": 10}
         except Exception as e:
             logger.error(f"generate echart json error, error:{e}, json:{chart_json}")
             chart_json = {}
@@ -886,16 +883,10 @@ def text2sql(query: str):
             summarize = "很抱歉，本次查询没有返回数据。请检查您提供的查询条件是否准确，例如：\n1. 姓名的拼写是否正确和完整；\n2. 区域的命名是否跟业务上一致；\n3. 查询时间是否明确上周、本月或者完整的年月日；\n4. 其他可能影响查询的条件或语法上造成的歧义等；\n5. 数据库确实存在此类数据。\n\n如果您已经检查过以上几点并确认无误，可以重新提问一次或者换个问题尝试。"
         else:
             records = records[:top_k]
-            summarize_prompt = """You are a helpful assistant, given the question and records below,
-            Question: {{ query }}, 
-            Records: {{ records }},
-            let's think step by step, deeply understand the question and explore the potential value of these records, and provide a comprehensive summary.
-            Just output the summary directly without other words, you must follow this format:{{ report_prompt }}
-            """
             summarize_template = PromptTemplate(input_variables=["query", "records", "report_prompt"],
-                                                template=summarize_prompt, template_format="jinja2")
+                                                template=report_prompt, template_format="jinja2")
             summarize_chain = LLMChain(llm=llm, prompt=summarize_template)
-            used_token_count = len(summarize_prompt) + len(origin_query) + len(report_prompt) + 1000
+            used_token_count = len(origin_query) + len(report_prompt) + 1500
             with ThreadPoolExecutor() as executor:
                 summarize = executor.submit(summarize_chain.predict,
                                             **{"query": origin_query,
