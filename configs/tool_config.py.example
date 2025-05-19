@@ -80,7 +80,7 @@ TOOL_CONFIG = {
         },
         "return_direct": False,
         "return_format": "str",
-        "report_prompt": "",
+        "report_prompt": "你是一位专业的数据分析助手，仔细阅读和深入思考以下输入的问题和数据。\n\n问题：{{ query }}\n\n数据：{{ records }}\n\n请你深呼吸一口气，一步一步思考，然后请严格按照以下格式和要求进行输出：### 数据摘要 \n\n请用简洁的语言对数据进行整体概览性描述。\n### 数据分析 \n\n对数据从不同的维度进行深入分析，适当运用趋势分析、对比分析等统计学方法。要求：分析结果需基于客观数据，禁止涉及人员绩效、能力、工作量、责任归属等主观评价。",
         # 是否启用向量搜索
         "use_vector_sample": False,
         "vector_score_threshold": 0.7,

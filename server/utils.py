@@ -761,6 +761,12 @@ def aes_decrypt(text: str, key: str):
     return decrypted_message
 
 
+def aes_decrypt_placeholder(text: str, key: str):
+    if text.startswith("ENC(") and text.endswith(")"):
+        return aes_decrypt(text[4:-1], key)
+    return text
+
+
 def parse_sql_md(command):
     if "```" in command:
         # 使用正则表达式匹配```sql```和紧接着的结束```之间的内容
