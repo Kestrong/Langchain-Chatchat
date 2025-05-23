@@ -48,7 +48,8 @@ class QwenWorker(ApiModelWorker):
                         stream=True,
                         max_tokens=params.max_tokens,
                         top_p=params.top_p,
-                        extra_body=params.role_meta.get("extra_body", {})
+                        extra_body=params.role_meta.get("extra_body", {}),
+                        extra_headers=params.role_meta.get("extra_headers", {}),
                 ) as responses:
                     text = ''
                     mark = True
@@ -116,6 +117,7 @@ class QwenWorker(ApiModelWorker):
                     resp = client.embeddings.create(
                         model=params.embed_model or self.DEFAULT_EMBED_MODEL,
                         input=texts,  # 最大25行
+                        extra_headers=params.role_meta.get("extra_headers", {}),
                     )
                     embeddings = [x.embedding for x in resp.data]
                     if overlap_method == "chunk" and len(chunk_index) > 0:

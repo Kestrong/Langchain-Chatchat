@@ -101,6 +101,7 @@ ONLINE_LLM_MODEL = {
         "role_meta": {
             # "truncate_mark": "</think>",
             # "think_mark": "/no_think",
+            "extra_headers": {},
             "extra_body": {"enable_thinking": False, "chat_template_kwargs": {"enable_thinking": False}}
         }
     },
