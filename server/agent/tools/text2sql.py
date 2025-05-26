@@ -684,8 +684,11 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
             # 坐标太多时旋转标签角度 并设置显示间隔为0
             if 'xAxis' in chart_json:
                 xAxis = chart_json['xAxis']
-                if 'data' in xAxis and len(xAxis['data']) > 10:
-                    xAxis['axisLabel'] = {"interval": 0, "rotate": 60, "fontSize": 10}
+                if 'data' in xAxis:
+                    if len(xAxis['data']) > 10:
+                        xAxis['axisLabel'] = {"interval": 0, "rotate": 60, "fontSize": 10}
+                    else:
+                        xAxis['axisLabel'] = {"interval": 0}
         except Exception as e:
             logger.error(f"generate echart json error, error:{e}, json:{chart_json}")
             chart_json = {}
