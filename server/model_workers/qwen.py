@@ -72,7 +72,7 @@ class QwenWorker(ApiModelWorker):
                     "error_code": 500,
                     "text": f'{e}'
                 }
-                self.logger.error(f"请求千问 API 时发生错误：{data}")
+                self.logger.error(f"请求 {self.model_names[0]} 时发生错误：{data}")
                 yield data
 
     def split_string_by_length(self, s, length):
@@ -145,7 +145,7 @@ class QwenWorker(ApiModelWorker):
                     "error_code": 500,
                     "text": f'{e}'
                 }
-                self.logger.error(f"请求千问 API 时发生错误：{data}")
+                self.logger.error(f"请求 {self.model_names[0]} 时发生错误：{data}")
                 return data
         return {"code": 200, "data": result}
 
