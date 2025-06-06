@@ -178,6 +178,20 @@ ONLINE_LLM_MODEL = {
             # "truncate_mark": "</think>"
         }
     },
+    "sichuanmass-api": {
+        "version": "sichuanmass-v1",
+        "api_proxy": "http://ip:port/knowledge/knowledgeService",
+        "api_key": "EMPTY",
+        "provider": "SichuanMassWorker",
+        "role_meta": {
+            "systemKey": "xxx",
+            "systemSecret": "xxx",
+            "secret": "1",
+            "accComId ": 1,
+            "userCode ": "1",
+            "relAppId": "xxx"
+        }
+    },
 }
 
 # 在以下字典中修改属性值，以指定本地embedding模型存储位置。支持3种设置方法：

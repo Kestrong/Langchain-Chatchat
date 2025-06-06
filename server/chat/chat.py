@@ -10,6 +10,7 @@ from langchain.chains import LLMChain
 from langchain.prompts.chat import ChatPromptTemplate
 from langchain_core.prompts import PromptTemplate
 from sse_starlette.sse import EventSourceResponse
+from starlette.requests import Request
 
 from configs import LLM_MODELS, TEMPERATURE
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
@@ -44,6 +45,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                # top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
                prompt_name: str = Body("default", description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                store_message: bool = Body(True, description="是否保存消息到数据库"),
+               request: Request = None
                ):
     origin_query = query
     message_id = uuid.uuid4().hex
@@ -54,6 +56,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         extra['stream'] = stream
         apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=model_name)
         if apiModelParams.provider in ['DifyWorker', 'FuXiWorker']:
+            extra["cookie"] = request.headers.get('cookie')
             if not extra.get("conversation_id"):
                 m = filter_message(conversation_id=conversation_id, limit=1)
                 if m:

@@ -97,6 +97,7 @@ class DifyWorker(ApiModelWorker):
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         inputs = self.get_inputs(role_meta, model_config)
+        inputs['cookie'] = contentObj.get('cookie')
         data = {
             "inputs": inputs,
             "query": contentObj.get('question', ''),

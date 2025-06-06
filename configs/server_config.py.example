@@ -163,6 +163,9 @@ FSCHAT_MODEL_WORKERS = {
     "deepseek-api": {
         "port": 21014,
     },
+    "sichuanmass-api": {
+        "port": 21020,
+    },
 }
 
 FSCHAT_CONTROLLER = {
