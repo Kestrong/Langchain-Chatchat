@@ -97,7 +97,7 @@ ONLINE_LLM_MODEL = {
         "provider": "QwenWorker",
         "max_tokens": 4096,
         "top_p": 0.8,
-        "embed_model": "bge-large-zh-v1.5"  # embedding 模型名称,
+        "embed_model": "bge-large-zh-v1.5",  # embedding 模型名称,
         "role_meta": {
             # "truncate_mark": "</think>",
             # "think_mark": "/no_think",
