@@ -1,7 +1,7 @@
 # 默认搜索引擎。可选：bing, duckduckgo, metaphor
 import os
 
-from configs import SQLALCHEMY_DATABASE_URI, DATABASE_SCHEMA
+from configs import SQLALCHEMY_DATABASE_URI, DATABASE_SCHEMA, LLM_MODELS
 
 ENABLE_TOOLS = []
 
