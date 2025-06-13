@@ -1,6 +1,8 @@
+import ssl
 import sys
 from typing import List, Literal, Dict
 
+import httpx
 import numpy as np
 from fastchat import conversation as conv
 from fastchat.conversation import Conversation, SeparatorStyle
@@ -35,10 +37,18 @@ class QwenWorker(ApiModelWorker):
         think_mark = params.role_meta.get('think_mark')
         if think_mark:
             params.messages[-1]['content'] = params.messages[-1]['content'] + think_mark
+        # 自定义SSL上下文，禁用DH密钥检查
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False  # 原生request接口内容
+        ssl_ctx.verify_mode = 0  # 原生request接口内容
+        ssl_ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # 降低安全级别以允许较小的DH密钥
+        # 创建自定义的httpx.Client实例并传入SSL上下文
+        http_client = httpx.Client(verify=ssl_ctx, timeout=params.role_meta.get("timeout", 60))
         with OpenAI(
                 api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
                 base_url=params.api_proxy,  # 填写DashScope服务的base_url
                 timeout=params.role_meta.get("timeout", 60),
+                http_client=http_client
         ) as client:
             try:
                 with client.chat.completions.create(
@@ -84,10 +94,18 @@ class QwenWorker(ApiModelWorker):
             logger.info(f'{self.__class__.__name__}:params: {params}')
         overlap_method = params.role_meta.get("overlap_method")
         max_length = params.role_meta.get("max_embedding_length", 512)
+        # 自定义SSL上下文，禁用DH密钥检查
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False  # 原生request接口内容
+        ssl_ctx.verify_mode = 0  # 原生request接口内容
+        ssl_ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # 降低安全级别以允许较小的DH密钥
+        # 创建自定义的httpx.Client实例并传入SSL上下文
+        http_client = httpx.Client(verify=ssl_ctx, timeout=params.role_meta.get("timeout", 60))
         with OpenAI(
                 api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
                 base_url=params.api_proxy,  # 填写DashScope服务的base_url
                 timeout=params.role_meta.get("timeout", 10),
+                http_client=http_client
         ) as client:
             try:
                 result = []

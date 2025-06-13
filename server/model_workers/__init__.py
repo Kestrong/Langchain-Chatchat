@@ -1,3 +1,9 @@
+import requests
+from urllib3.exceptions import InsecureRequestWarning
+
+# 全局禁用 InsecureRequestWarning 警告
+requests.urllib3.disable_warnings(InsecureRequestWarning)
+
 from .base import *
 from .zhipu import ChatGLMWorker
 from .minimax import MiniMaxWorker
