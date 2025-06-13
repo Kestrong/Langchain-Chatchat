@@ -67,7 +67,7 @@ class FastgptWorker(ApiModelWorker):
         text = ""
         mark = f'###[{self.model_names[0]}]###'
         try:
-            with requests.post(url, stream=True, headers=headers, json=data, timeout=timeout) as response:
+            with requests.post(url, stream=True, headers=headers, json=data, timeout=timeout, verify=False) as response:
                 response.raise_for_status()
                 done = False
                 error = False

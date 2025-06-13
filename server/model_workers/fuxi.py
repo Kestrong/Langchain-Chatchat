@@ -83,14 +83,15 @@ class FuXiWorker(ApiModelWorker):
             if not conversation_id and not is_workflow and not is_completion:
                 conversation_create_url = self.replace_last_path_segment(url=url, new_segment="create")
                 with requests.post(conversation_create_url, stream=False, headers=headers, timeout=timeout,
-                                   json={"inputs": inputs}) as response:
+                                   json={"inputs": inputs}, verify=False) as response:
                     if response.status_code != 200:
                         logger.error(response.text)
                     response.raise_for_status()
                     conversation_id = response.text
                     data['conversationId'] = conversation_id
             logger.debug(f"请求fuxi接口参数：{data}")
-            with requests.post(url, stream=stream, headers=headers, timeout=timeout, json=data) as response:
+            with requests.post(url, stream=stream, headers=headers, timeout=timeout, json=data,
+                               verify=False) as response:
                 if response.status_code != 200:
                     logger.error(response.text)
                 response.raise_for_status()

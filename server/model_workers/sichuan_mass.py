@@ -59,7 +59,8 @@ class SichuanMassWorker(ApiModelWorker):
                 "charset": "utf-8",
             }
             get_token_url = f'{url}/support/user/v1/getToken'
-            with requests.post(get_token_url, timeout=timeout, json=get_token_request, headers=headers) as response:
+            with requests.post(get_token_url, timeout=timeout, json=get_token_request, headers=headers,
+                               verify=False) as response:
                 if response.status_code != 200:
                     logger.error(response.text)
                 response.raise_for_status()
@@ -117,7 +118,7 @@ class SichuanMassWorker(ApiModelWorker):
             response = None
             try:
                 response = requests.post(chat_url, timeout=timeout, json=chat_request, headers=headers,
-                                         stream=stream)
+                                         stream=stream, verify=False)
                 if response.status_code == 401 or response.status_code == 403:
                     logger.error(response.text)
                     with self.lock:
@@ -131,7 +132,7 @@ class SichuanMassWorker(ApiModelWorker):
                     headers['token'] = self.get_token(url, systemKey, systemSecret, accComId, userCode, secret, timeout,
                                                       token_expired)
                     response = requests.post(chat_url, timeout=timeout, json=chat_request, headers=headers,
-                                             stream=stream)
+                                             stream=stream, verify=False)
                 if response.status_code != 200:
                     logger.error(response.text)
                 response.raise_for_status()
