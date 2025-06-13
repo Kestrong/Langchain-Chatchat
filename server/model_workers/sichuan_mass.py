@@ -31,7 +31,7 @@ class SichuanMassWorker(ApiModelWorker):
         self.token = None
         self.token_expired_at = -1
 
-    def get_token(self, url, systemKey, systemSecret, accComId, userCode, secret, timeout, token_expired):
+    def get_token(self, url, systemKey, systemSecret, accComId, userCode, secret, timeout):
         if self.token and self.token_expired_at > time.time():
             return self.token
         with self.lock:
@@ -40,8 +40,7 @@ class SichuanMassWorker(ApiModelWorker):
             nonce = random.randint(10000, 99999)
             timestamp = int(round(time.time() * 1000))
             md5 = hashlib.md5()
-            md5.update(
-                (f"{systemKey}:{systemSecret}:{timestamp}:{nonce}" + "{" + secret + "}").encode(encoding='utf-8'))
+            md5.update((f"{systemKey}:{systemSecret}:{timestamp}:{nonce}" + "{" + secret + "}").encode())
             signature = md5.hexdigest()
             get_token_request = {
                 "systemKey": systemKey,
@@ -59,6 +58,7 @@ class SichuanMassWorker(ApiModelWorker):
                 "charset": "utf-8",
             }
             get_token_url = f'{url}/support/user/v1/getToken'
+            logger.debug(f"getToken request: {get_token_request}, headers: {headers}")
             with requests.post(get_token_url, timeout=timeout, json=get_token_request, headers=headers,
                                verify=False) as response:
                 if response.status_code != 200:
@@ -73,7 +73,7 @@ class SichuanMassWorker(ApiModelWorker):
                 response_data = json.loads(resultStr)
                 token = response_data["resultObject"]["token"]
                 self.token = token
-                self.token_expired_at = time.time() + token_expired
+                self.token_expired_at = time.time() + response_data["resultObject"]["expireTime"] - 600
                 return self.token
 
     def do_chat(self, params: ApiChatParams) -> Dict:
@@ -97,10 +97,9 @@ class SichuanMassWorker(ApiModelWorker):
         relAppId = model_config.get('relAppId') or role_meta.get("relAppId")
         stream = model_config.get('stream', contentObj.get('stream', True))
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
-        token_expired = model_config.get("token_expired") or role_meta.get("token_expired", 60 * 60 * 1)
         text = ''
         try:
-            token = self.get_token(url, systemKey, systemSecret, accComId, userCode, secret, timeout, token_expired)
+            token = self.get_token(url, systemKey, systemSecret, accComId, userCode, secret, timeout)
             headers = {
                 "content-type": "application/json;charset=utf-8",
                 "Accept": "application/json",
@@ -114,6 +113,7 @@ class SichuanMassWorker(ApiModelWorker):
                 "relAppId": relAppId,
                 "stream": stream
             }
+            logger.debug(f"chat request: {chat_request}, header: {headers}")
             chat_url = f'{url}/core/chat/openChat'
             response = None
             try:
@@ -129,8 +129,7 @@ class SichuanMassWorker(ApiModelWorker):
                         response.close()
                     except Exception:
                         pass
-                    headers['token'] = self.get_token(url, systemKey, systemSecret, accComId, userCode, secret, timeout,
-                                                      token_expired)
+                    headers['token'] = self.get_token(url, systemKey, systemSecret, accComId, userCode, secret, timeout)
                     response = requests.post(chat_url, timeout=timeout, json=chat_request, headers=headers,
                                              stream=stream, verify=False)
                 if response.status_code != 200:
