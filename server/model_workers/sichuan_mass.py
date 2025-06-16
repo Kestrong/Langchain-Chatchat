@@ -49,8 +49,8 @@ class SichuanMassWorker(ApiModelWorker):
                 "timestamp": timestamp,
                 "nonce": nonce,
                 "signature": signature,
-                "accComId ": accComId,
-                "userCode ": userCode
+                "accComId": accComId,
+                "userCode": userCode
             }
             headers = {
                 "content-type": "application/json;charset=utf-8",
@@ -109,7 +109,7 @@ class SichuanMassWorker(ApiModelWorker):
             }
             chat_request = {
                 "histories": [{"obj": a.get("role"), "value": a.get("content")} for a in params.messages[0:-1]],
-                "chatContent": contentObj.get('question', ''),
+                "chatContent": contentObj.get('question', '').replace('\n', ' '),
                 "relAppId": relAppId,
                 "stream": stream
             }
@@ -138,15 +138,17 @@ class SichuanMassWorker(ApiModelWorker):
                 if stream:
                     event_type = None
                     for line in response.iter_lines():
-                        if line is None or len(line) == 0:
+                        logger.debug(f"chat response: {line}")
+                        if not line:
                             continue
-                        if line.startswith(b'event:'):
-                            event_type = line.split(":")[1].strip()
+                        decoded_line = line.decode('utf-8')
+                        if decoded_line.startswith('event:'):
+                            event_type = decoded_line.split(":")[1].strip()
                         if event_type != 'answer':
                             continue
-                        if line.startswith(b'data:'):
-                            json_str = line.decode('utf-8')[6:]
-                            if json_str.strip() == "[DONE]":
+                        if decoded_line.startswith('data:'):
+                            json_str = decoded_line[5:].strip()
+                            if json_str == "[DONE]":
                                 break
                             try:
                                 response_data = json.loads(json_str)
