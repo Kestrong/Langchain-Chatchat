@@ -43,7 +43,8 @@ class FastgptWorker(ApiModelWorker):
             model_config = assistant.get('model_config', {})
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key', params.api_key)
-        headers = {"Authorization": api_key, "Content-Type": "application/json"}
+        extra_headers = model_config.get("extra_headers") or role_meta.get("extra_headers", {})
+        headers = {"Authorization": api_key, "Content-Type": "application/json", **extra_headers}
         variables = model_config.get("variables") or role_meta.get("variables", {})
         extra = model_config.get("extra") or role_meta.get("extra", {})
         app_id = model_config.get("appId") or role_meta.get("appId")

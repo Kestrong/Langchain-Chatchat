@@ -68,7 +68,8 @@ class FuXiWorker(ApiModelWorker):
         is_completion = True if 'completion' in url else False
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
         result_key = model_config.get('result_key') or role_meta.get("result_key")
-        headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
+        extra_headers = model_config.get("extra_headers") or role_meta.get("extra_headers", {})
+        headers = {"X-API-KEY": api_key, "Content-Type": "application/json", **extra_headers}
         inputs = self.get_inputs(role_meta, model_config)
         conversation_id = contentObj.get('conversation_id')
         data = {

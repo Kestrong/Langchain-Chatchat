@@ -95,7 +95,8 @@ class DifyWorker(ApiModelWorker):
         node_types = model_config.get('node_types') or role_meta.get('node_types', [])
         user = model_config.get('user') or role_meta.get("user")
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        extra_headers = model_config.get("extra_headers") or role_meta.get("extra_headers", {})
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", **extra_headers}
         inputs = self.get_inputs(role_meta, model_config)
         inputs['cookie'] = contentObj.get('cookie')
         data = {
