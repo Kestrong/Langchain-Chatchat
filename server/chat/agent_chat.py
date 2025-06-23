@@ -37,6 +37,8 @@ def get_available_tools(tool_names: List[str], api_names: List[str], tool_config
                 t = get_tool(tool_name)
                 if t:
                     available_tools.append(t)
+                    if tool_name in tool_config:
+                        t._return_direct = tool_config.get(tool_name, {}).get("return_direct", t._return_direct)
     else:
         available_tools = get_all_tools()
     return available_tools
