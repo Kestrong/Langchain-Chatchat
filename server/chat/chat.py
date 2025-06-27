@@ -12,7 +12,7 @@ from langchain_core.prompts import PromptTemplate
 from sse_starlette.sse import EventSourceResponse
 from starlette.requests import Request
 
-from configs import LLM_MODELS, TEMPERATURE
+from configs import LLM_MODELS, TEMPERATURE, logger
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
@@ -58,9 +58,12 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         if apiModelParams.provider in ['DifyWorker', 'FuXiWorker']:
             extra["cookie"] = request.headers.get('cookie')
             if not extra.get("conversation_id"):
-                m = filter_message(conversation_id=conversation_id, limit=1)
+                m = filter_message(conversation_id=conversation_id, limit=1, not_response=False, reverse=True,
+                                   meta_data_key_exists=['third_conversation_id'])
                 if m:
                     extra['conversation_id'] = m[0].get('meta_data', {}).get('third_conversation_id')
+                else:
+                    logger.warning(f"conversation_id[{conversation_id}] not found any associate messages")
         else:
             extra['conversation_id'] = conversation_id
             extra['message_id'] = message_id
