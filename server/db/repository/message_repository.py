@@ -1,7 +1,7 @@
 import uuid
 from typing import Dict
 
-from sqlalchemy import func
+from sqlalchemy import func, String, cast
 
 from server.db.models.message_model import MessageModel
 from server.db.repository import add_conversation_to_db
@@ -72,10 +72,17 @@ def feedback_message_to_db(session, message_id, feedback_score, feedback_reason)
 
 
 @with_session
-def filter_message(session, conversation_id: str, limit: int = 10):
+def filter_message(session, conversation_id: str, limit: int = 10, not_response: bool = True, reverse: bool = False,
+                   meta_data_key_exists: list = None):
     # 用户最新的query 也会插入到db，忽略这个message record
-    filters = [MessageModel.conversation_id == conversation_id, MessageModel.response.isnot(None)]
-    messages = session.query(MessageModel).filter(*filters).order_by(MessageModel.create_time.desc()).limit(limit).all()
+    filters = [MessageModel.conversation_id == conversation_id]
+    if not_response:
+        filters.append(MessageModel.response.isnot(None))
+    if meta_data_key_exists:
+        for key in meta_data_key_exists:
+            filters.append(cast(MessageModel.meta_data, String).contains(key))
+    messages = session.query(MessageModel).filter(*filters).order_by(
+        MessageModel.create_time.asc() if reverse else MessageModel.create_time.desc()).limit(limit).all()
     # 直接返回 List[MessageModel] 报错
     data = []
     for m in messages:
