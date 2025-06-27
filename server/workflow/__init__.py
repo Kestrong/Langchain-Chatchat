@@ -8,12 +8,14 @@ from server.workflow.component.outputs.chat_output import ChatOutputComponent
 from server.workflow.component.tools.code import PythonREPLComponent
 from server.workflow.component.tools.http_caller import HttpCallerComponent
 from server.workflow.component.tools.json_formatter import JsonFormatterComponent
+from server.workflow.component.tools.knowledge_retrieval import KnowledgeRetrievalComponent
 from server.workflow.utils.inputs import *
 from server.workflow.utils.outputs import *
 
 components = {key: list(group) for key, group in
               groupby([IfElseComponent(), ChatInputComponent(), ChatOutputComponent(), LocalLLMComponent(),
-                       PythonREPLComponent(), HttpCallerComponent(), JsonFormatterComponent()], key=lambda x: x.tag)}
+                       PythonREPLComponent(), HttpCallerComponent(), JsonFormatterComponent(),
+                       KnowledgeRetrievalComponent()], key=lambda x: x.tag)}
 
 if __name__ == '__main__':
     import json
