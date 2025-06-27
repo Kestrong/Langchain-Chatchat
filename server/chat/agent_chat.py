@@ -37,6 +37,9 @@ def get_available_tools(tool_names: List[str], api_names: List[str], tool_config
                 t = get_tool(tool_name)
                 if t:
                     available_tools.append(t)
+                    if tool_name == 'search_knowledgebase_complex':
+                        from server.agent.tools.search_knowledgebase_complex import template
+                        t.description = template()
                     if tool_name in tool_config:
                         t._return_direct = tool_config.get(tool_name, {}).get("return_direct", t._return_direct)
     else:
