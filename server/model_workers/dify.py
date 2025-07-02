@@ -107,6 +107,7 @@ class DifyWorker(ApiModelWorker):
             "conversation_id": contentObj.get('conversation_id'),
         }
         logger.debug(f"请求dify接口参数：{data}")
+        data.update({"input_data": inputs, "mode": data.get('response_mode'), })
         text = ""
         mark = f'###[{self.model_names[0]}]###'
         try:
