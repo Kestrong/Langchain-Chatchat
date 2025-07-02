@@ -69,7 +69,7 @@ kbs_config = {
         "port": os.environ.get('MILVUS_PORT', '19530'),
         "user": os.environ.get('MILVUS_USER', ''),
         "password": os.environ.get('MILVUS_PASSWORD', ''),
-        "secure": False,
+        "secure": os.environ.get('MILVUS_SECURE', False),
     },
     "zilliz": {
         "host": "in01-a7ce524e41e3935.ali-cn-hangzhou.vectordb.zilliz.com.cn",
@@ -100,14 +100,15 @@ kbs_config = {
 
 # oss对象存储配置
 oss_config = {
-    "default_type": "filesystem",  # [filesystem, minio] default filesystem
+    "default_type": os.environ.get('OSS_DEFAULT_TYPE', 'filesystem'),  # [filesystem, minio] default filesystem
     "delete_on_vs": False,  # delete file after vector store
     "minio": {
-        "endpoint": os.environ.get('MINIO_ENDPOINT', 'http://127.0.0.1:9000/'),
+        "endpoint": os.environ.get('MINIO_ENDPOINT', '127.0.0.1:9000'),
         "default_bucket_name": "knowledgebase",
         "access_key": os.environ.get('MINIO_ACCESS_KEY', 'minioadmin'),
         "secret_key": os.environ.get('MINIO_SECRET_KEY', 'minioadmin'),
-        "secure": False,
+        "secure": os.environ.get('MINIO_SECURE', False),
+        "cert_check": os.environ.get('MINIO_CERT_CHECK', False),
         "enabled": os.environ.get('MINIO_ENABLED', False),
     }
 }

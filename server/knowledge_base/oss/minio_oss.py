@@ -16,8 +16,8 @@ class MinioOss(Base):
         self.config = self.oss_config.get("minio", {})
         self.bucket_name = self.config.get('default_bucket_name')
         self.minio = Minio(endpoint=self.config.get("endpoint"), access_key=self.config.get("access_key"),
-                           secret_key=self.config.get("secret_key"), secure=self.config.get("secure"),
-                           cert_check=self.config.get("secure"))
+                           secret_key=self.config.get("secret_key"), secure=self.config.get("secure", False),
+                           cert_check=self.config.get("cert_check", False))
         if self.bucket_name:
             try:
                 if not self.minio.bucket_exists(self.bucket_name):
