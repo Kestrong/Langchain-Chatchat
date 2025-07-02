@@ -1,7 +1,8 @@
 import uuid
 
-from sqlalchemy import func
 from dateutil import parser
+from sqlalchemy import func
+
 from server.db.models.conversation_model import ConversationModel
 from server.db.models.message_model import MessageModel
 from server.db.session import with_session
@@ -85,3 +86,12 @@ def get_conversation_from_db(session, assistant_id: int = -1, page: int = 1, lim
     for c in conversations:
         data.append(c.dict())
     return data, total
+
+
+@with_session
+def get_conversation_by_id(session, conversation_id: str):
+    if not conversation_id:
+        return None
+    conversation: ConversationModel = session.query(ConversationModel).filter(
+        ConversationModel.id == conversation_id).first()
+    return conversation.dict() if conversation is not None else None

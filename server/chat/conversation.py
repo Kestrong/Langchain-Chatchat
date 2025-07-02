@@ -2,7 +2,7 @@ from fastapi import Body, Query
 
 from configs.basic_config import logger, log_verbose
 from server.db.repository.conversation_repository import add_conversation_to_db, update_conversation_to_db, \
-    delete_conversation_from_db, get_conversation_from_db, delete_user_conversation_from_db
+    delete_conversation_from_db, get_conversation_from_db, delete_user_conversation_from_db, get_conversation_by_id
 from server.db.repository.message_repository import delete_message_from_db, \
     filter_message_page
 from server.memory.message_i18n import Message_I18N
@@ -81,6 +81,11 @@ def filter_conversation(assistant_id: int = Query(-1, description="助手ID"),
     conversations, total = get_conversation_from_db(assistant_id=assistant_id, page=page, limit=min(abs(limit), 1000),
                                                     start_time=start_time, end_time=end_time, keyword=keyword)
     return BaseResponse(code=200, data={'conversations': conversations, 'total': total})
+
+
+def get_conversation_detail(id: str = Query(description="会话id")) -> BaseResponse:
+    conversation = get_conversation_by_id(conversation_id=id)
+    return BaseResponse(code=200, data={'conversation': conversation})
 
 
 def delete_message(message_id: str = Query(description="消息id")) -> BaseResponse:

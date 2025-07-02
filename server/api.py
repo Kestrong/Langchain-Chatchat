@@ -100,7 +100,7 @@ def mount_chat_routes(app: FastAPI):
     from server.chat.workflow_chat import workflow_chat
     from server.chat.feedback import chat_feedback
     from server.chat.conversation import create_conversation, delete_conversation, update_conversation, filter_message, \
-        filter_conversation, delete_message, delete_user_conversation
+        filter_conversation, delete_message, delete_user_conversation, get_conversation_detail
     from server.chat.task_manager import stop
     from server.chat.assistant import create_assistant, update_assistant, delete_assistant, get_assistants, \
         get_assistant_detail
@@ -120,6 +120,7 @@ def mount_chat_routes(app: FastAPI):
     chat_router.post("/feedback", summary="返回llm模型对话评分", )(chat_feedback)
     chat_router.post("/stop", summary="停止llm模型对话", )(stop)
     chat_router.get("/conversations", summary="获取会话", )(filter_conversation)
+    chat_router.get("/conversation", summary="获取会话详情", )(get_conversation_detail)
     chat_router.post("/conversation", summary="创建会话", )(create_conversation)
     chat_router.put("/conversation", summary="修改会话", )(update_conversation)
     chat_router.delete("/conversation", summary="删除会话", )(delete_conversation)
