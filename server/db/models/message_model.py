@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, JSON, func
+from sqlalchemy import Column, Integer, String, DateTime, JSON, func, Text
 
 from server.db.base import Base
 
@@ -13,7 +13,7 @@ class MessageModel(Base):
     # chat/agent_chat等
     chat_type = Column(String(50), comment='聊天类型')
     query = Column(String(4096), comment='用户问题')
-    response = Column(String(4096), comment='模型回答')
+    response = Column(Text, comment='模型回答')
     # 记录知识库id等，以便后续扩展
     meta_data = Column(JSON, default={})
     # 满分100 越高表示评价越好
