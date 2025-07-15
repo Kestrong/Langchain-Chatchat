@@ -1,4 +1,6 @@
+import io
 import json
+import re
 from typing import List, Dict, Literal
 
 import requests
@@ -7,7 +9,94 @@ from fastchat.conversation import Conversation
 
 from configs import logger
 from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
+from server.knowledge_base.oss import default_oss
 from server.model_workers import ApiModelWorker, ApiChatParams
+
+# 自定义 MIME 类型和文件类别映射
+MIME_TYPE_MAP = {
+    # 文档类
+    'txt': 'text/plain',
+    'md': 'text/markdown',
+    'markdown': 'text/markdown',
+    'pdf': 'application/pdf',
+    'html': 'text/html',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'xls': 'application/vnd.ms-excel',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'doc': 'application/msword',
+    'csv': 'text/csv',
+    'eml': 'message/rfc822',
+    'msg': 'application/vnd.ms-outlook',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'ppt': 'application/vnd.ms-powerpoint',
+    'xml': 'application/xml',
+    'epub': 'application/epub+zip',
+
+    # 图像类
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'svg': 'image/svg+xml',
+
+    # 音频类
+    'mp3': 'audio/mpeg',
+    'm4a': 'audio/x-m4a',
+    'wav': 'audio/wav',
+    'webm': 'audio/webm',
+    'amr': 'audio/amr',
+
+    # 视频类
+    'mp4': 'video/mp4',
+    'mov': 'video/quicktime',
+    'mpeg': 'video/mpeg',
+    'mpga': 'audio/mpeg',  # 注意：MPGA 有时是音频
+
+    # 其他通用类型
+    'bin': 'application/octet-stream',
+    'unknown': 'application/octet-stream'
+}
+
+# 文件分类规则
+FILE_CATEGORY_MAP = {
+    'document': ['txt', 'md', 'markdown', 'pdf', 'html', 'xlsx', 'xls', 'docx', 'doc', 'csv', 'eml', 'msg', 'pptx',
+                 'ppt', 'xml', 'epub'],
+    'image': ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'],
+    'audio': ['mp3', 'm4a', 'wav', 'webm', 'amr'],
+    'video': ['mp4', 'mov', 'mpeg', 'mpga']
+}
+
+
+def get_file_category(ext):
+    ext_lower = ext.lower()
+    for category, extensions in FILE_CATEGORY_MAP.items():
+        if ext_lower in extensions:
+            return category
+    return 'custom'
+
+
+def analyze_file(filename):
+    # 获取扩展名
+    if '.' not in filename:
+        ext = ''
+    else:
+        ext = filename.rsplit('.', 1)[-1].strip().lower()
+
+    mime = get_mime_type(ext)
+    category = get_file_category(ext)
+
+    return {
+        'filename': filename,
+        'extension': ext or '(无扩展名)',
+        'category': category,
+        'mime_type': mime
+    }
+
+
+def get_mime_type(ext):
+    ext_lower = ext.lower()
+    return MIME_TYPE_MAP.get(ext_lower, MIME_TYPE_MAP['unknown'])
 
 
 class DifyWorker(ApiModelWorker):
@@ -75,6 +164,75 @@ class DifyWorker(ApiModelWorker):
             else:
                 return None
 
+    def upload_files(self, url, api_key, user, contentObj, file_type):
+        result = []
+        knowledge_id = contentObj.get('knowledge_id')
+        files = contentObj.get('files')
+        if not knowledge_id and not files:
+            logger.debug("knowledge_id和files都为空，不需要上传")
+            return result
+        headers = {'Authorization': f'Bearer {api_key}'}
+        data = {'user': user}
+        match = re.search(r'https?://[^?]*?/v1(?=/|$)', url)
+        upload_url = f"{match.group(0)}/files/upload" if match else url
+        logger.debug(f"上传内部和第三方文件到dify, url={upload_url}, knowledge_id={knowledge_id}, files={files}")
+        if knowledge_id:
+            attachment_names = default_oss().list_objects(bucket_name="temp", object_name=knowledge_id)
+            if attachment_names:
+                for a in attachment_names:
+                    logger.debug(f"upload file: {a}")
+                    with default_oss().get_object(bucket_name="temp", object_name=f"{knowledge_id}/{a}") as o:
+                        file_prop = analyze_file(a)
+                        with requests.post(url=upload_url, headers=headers, data=data,
+                                           files=[("file", (a, o, file_prop.get('mime_type')))],
+                                           verify=False) as response:
+                            if not response.ok:
+                                logger.error(response.text)
+                            response.raise_for_status()
+                            file = {
+                                "type": file_type or file_prop.get('category'),
+                                "transfer_method": "local_file",
+                                "url": "",
+                                "upload_file_id": response.json().get('id')
+                            }
+                            result.append(file)
+        if files:
+            cookies = contentObj.get('cookies')
+            get_file_headers = None
+            if contentObj.get('token'):
+                get_file_headers = {"Authorization": contentObj.get('token')}
+            for f in files:
+                logger.debug(f"upload file: {f.get('name')}")
+                response = requests.get(f.get('url'), headers=get_file_headers, cookies=cookies, stream=True,
+                                        verify=False)
+                if not response.ok:
+                    logger.error(response.text)
+                response.raise_for_status()
+
+                file_stream = io.BytesIO()
+                try:
+                    for chunk in response.iter_content(chunk_size=1024 * 64):
+                        if chunk:
+                            file_stream.write(chunk)
+                    file_stream.seek(0)
+                    file_prop = analyze_file(f.get('name'))
+                    with requests.post(url=upload_url, headers=headers, data=data,
+                                       files=[("file", (f.get('name'), file_stream, file_prop.get('mime_type')))],
+                                       verify=False) as response:
+                        if not response.ok:
+                            logger.error(response.text)
+                        response.raise_for_status()
+                        file = {
+                            "type": file_type or file_prop.get('category'),
+                            "transfer_method": "local_file",
+                            "url": "",
+                            "upload_file_id": response.json().get('id')
+                        }
+                        result.append(file)
+                finally:
+                    file_stream.close()
+        return result
+
     def do_chat(self, params: ApiChatParams) -> Dict:
         params = params.load_config(self.model_names[0])
         role_meta = params.role_meta
@@ -95,6 +253,7 @@ class DifyWorker(ApiModelWorker):
         node_types = model_config.get('node_types') or role_meta.get('node_types', [])
         user = model_config.get('user') or role_meta.get("user")
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
+        file_type = model_config.get('file_type') or role_meta.get("file_type")
         extra_headers = model_config.get("extra_headers") or role_meta.get("extra_headers", {})
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", **extra_headers}
         inputs = self.get_inputs(role_meta, model_config)
@@ -106,11 +265,13 @@ class DifyWorker(ApiModelWorker):
             "user": user,
             "conversation_id": contentObj.get('conversation_id'),
         }
-        logger.debug(f"请求dify接口参数：{data}")
-        data.update({"input_data": inputs, "mode": data.get('response_mode'), })
         text = ""
         mark = f'###[{self.model_names[0]}]###'
         try:
+            files = self.upload_files(url, api_key, user, contentObj, file_type)
+            data['files'] = files
+            logger.debug(f"请求dify接口参数：{data}")
+            data.update({"input_data": inputs, "mode": data.get('response_mode')})
             with requests.post(url, stream=response_mode, headers=headers, timeout=timeout, json=data,
                                verify=False) as response:
                 if response.status_code != 200:

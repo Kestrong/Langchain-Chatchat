@@ -12,90 +12,95 @@ from server.workflow.utils.outputs import TextOutput, ListOutput
 
 
 class LocalLLMComponent(Component):
-    display_name = "Local LLM"
-    description = "Generate text using Local LLMs."
+    display_name = "${WORKFLOW_DISPLAYNAME_LOCALLLM}"
+    description = "${WORKFLOW_DESCRIPTION_LOCALLLM}"
     name = "local_llm"
-    tag = "Model"
+    tag = "${WORKFLOW_TAG_MODEL}"
     icon: Union[str, None]
 
     inputs = [
         TextInput(
             name='query',
-            display_name='Text',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_QUERY}",
             required=True,
-            info='Message to be passed as input.',
+            info="${WORKFLOW_INPUT_INFO_QUERY}",
             value=''
         ),
         TextInput(
             name='assistant_code',
-            display_name='Assistant code',
-            info='The code of assistant.'
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_ASSISTANT_CODE}",
+            info="${WORKFLOW_INPUT_INFO_ASSISTANT_CODE}",
         ),
         TextInput(
             name='prompt',
-            display_name='Prompt',
-            info='Prompt for chat.'
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_PROMPT}",
+            info="${WORKFLOW_INPUT_INFO_PROMPT}",
         ),
         TextInput(
             name='model_name',
-            display_name='Model Name',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_MODEL_NAME}",
             required=True,
-            info=f'The name of LLM.',
+            info="${WORKFLOW_INPUT_INFO_MODEL_NAME}",
             options=LLM_MODELS,
             value=LLM_MODELS[0]
         ),
         IntegerInput(
             name='max_tokens',
-            display_name='Max Tokens',
-            info='The maximum number of tokens to generate. Unlimited tokens if no set or set 0.'
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_MAX_TOKENS}",
+            info="${WORKFLOW_INPUT_INFO_MAX_TOKENS}",
         ),
         IntegerInput(
             name='top_k',
-            display_name='TopK',
-            info='The maximum number of knowledge base doc to match.',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_TOP_K}",
+            info="${WORKFLOW_INPUT_INFO_TOP_K}",
             value=VECTOR_SEARCH_TOP_K
         ),
         FloatInput(
             name='score_threshold',
-            display_name='Score Threshold',
-            info='For the knowledge base match relevance threshold, the value range is between 0 and 1, where a smaller SCORE indicates higher relevance, and a SCORE of 1 is equivalent to no filtering. It is recommended to set this threshold around 0.5.',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_SCORE_THRESHOLD}",
+            info="${WORKFLOW_INPUT_INFO_SCORE_THRESHOLD}",
             value=SCORE_THRESHOLD
         ),
         FloatInput(
             name='temperature',
-            display_name='Temperature',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_TEMPERATURE}",
             value=TEMPERATURE
+        ),
+        TextInput(
+            name='knowledge_id',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_KNOWLEDGE_ID}",
+            info="${WORKFLOW_INPUT_INFO_KNOWLEDGE_ID}",
         ),
         ListInput(
             name='knowledge_base_names',
-            display_name='KnowledgeBase Names',
-            info='Available knowledgebase names to use for LLM.',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_KNOWLEDGE_BASE_NAMES}",
+            info="${WORKFLOW_INPUT_INFO_KNOWLEDGE_BASE_NAMES}",
             options=[k["kb_name"] for k in list_kbs_from_db(all_kbs=True)[0]]
         ),
         ListInput(
             name='tool_names',
-            display_name='Tool Names',
-            info='Available tool names to use for LLM.',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_TOOL_NAMES}",
+            info="${WORKFLOW_INPUT_INFO_TOOL_NAMES}",
             options=[t.name for t in get_all_tools()]
         ),
         ListInput(
             name='api_names',
-            display_name='Api Names',
-            info='Available api names to use for LLM.'
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_API_NAMES}",
+            info="${WORKFLOW_INPUT_INFO_API_NAMES}",
         ),
     ]
 
     outputs = [
         TextOutput(
-            display_name="Answer",
+            display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_ANSWER}",
             name="answer",
         ),
         ListOutput(
-            display_name="Docs",
+            display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_DOCS}",
             name="docs",
         ),
         TextOutput(
-            display_name="Thought",
+            display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_THOUGHT}",
             name="thought",
         )
     ]
@@ -106,6 +111,7 @@ class LocalLLMComponent(Component):
         query = inputs.get("query") or state.get("query")
         extra = inputs.get("extra") or state.get("extra", {})
         conversation_id = state.get("conversation_id")
+        knowledge_id = inputs.get("knowledge_id")
         assistant_code = inputs.get("assistant_code")
         assistant_id = -1
         if assistant_code:
@@ -132,7 +138,7 @@ class LocalLLMComponent(Component):
         api_base_url = api_address()
         data = dict(query=query, extra=extra, conversation_id=conversation_id,
                     default_value_from_assistant=False, assistant_id=assistant_id,
-                    stream=stream, model_name=model_name,
+                    stream=stream, model_name=model_name, knowledge_id=knowledge_id,
                     temperature=temperature, max_tokens=max_tokens, history_len=history_len,
                     top_k=top_k, score_threshold=score_threshold,
                     prompt_name=prompt, knowledge_base_names=knowledge_base_names,

@@ -9,35 +9,35 @@ from server.workflow.utils.outputs import ListOutput
 
 
 class KnowledgeRetrievalComponent(Component):
-    display_name = "Knowledge Retrieval"
-    description = "retrieval knowledge form vectorstore using embedding model."
+    display_name = "${WORKFLOW_DISPLAYNAME_KNOWLEDGERETRIEVAL}"
+    description = "${WORKFLOW_DESCRIPTION_KNOWLEDGERETRIEVAL}"
     name = "knowledge_retrieval"
-    tag = "Tool"
+    tag = "${WORKFLOW_TAG_TOOL}"
     icon: Union[str, None]
 
     inputs = [
         TextInput(
             name='query',
-            display_name='Text',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_QUERY}",
             required=True,
-            info='input question to search vectorstore',
+            info="${WORKFLOW_INPUT_INFO_QUERY}",
         ),
         ListInput(
             name='knowledge_base_names',
-            display_name='KnowledgeBase Names',
-            info='Available knowledgebase names to use for LLM.',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_KNOWLEDGE_BASE_NAMES}",
+            info="${WORKFLOW_INPUT_INFO_KNOWLEDGE_BASE_NAMES}",
             options=[k["kb_name"] for k in list_kbs_from_db(all_kbs=True)[0]]
         ),
         IntegerInput(
             name='top_k',
-            display_name='TopK',
-            info='The maximum number of knowledge base doc to match.',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_TOP_K}",
+            info="${WORKFLOW_INPUT_INFO_TOP_K}",
             value=VECTOR_SEARCH_TOP_K
         ),
         FloatInput(
             name='score_threshold',
-            display_name='Score Threshold',
-            info='For the knowledge base match relevance threshold, the value range is between 0 and 1, where a smaller SCORE indicates higher relevance, and a SCORE of 1 is equivalent to no filtering. It is recommended to set this threshold around 0.5.',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_SCORE_THRESHOLD}",
+            info="${WORKFLOW_INPUT_INFO_SCORE_THRESHOLD}",
             value=SCORE_THRESHOLD
         ),
     ]
@@ -45,7 +45,7 @@ class KnowledgeRetrievalComponent(Component):
     outputs = [
         ListOutput(
             name='document',
-            display_name='Document',
+            display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_DOCUMENT}",
         )
     ]
 

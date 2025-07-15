@@ -158,7 +158,8 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
 
         callbacks = [callback]
         message_id = add_message_to_db(chat_type=ChatType.FILE_CHAT.value, query=query, assistant_id=assistant_id,
-                                       conversation_id=conversation_id, store=store_message)
+                                       conversation_id=conversation_id, store=store_message,
+                                       metadata={"knowledge_id": knowledge_id})
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type=ChatType.FILE_CHAT.value,
                                                             query=query)
@@ -227,10 +228,14 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
         if stream:
             async for token in callback.aiter():
                 # Use server-sent-events to stream the response
-                yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": token},
-                                 ensure_ascii=False)
-            yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "docs": source_documents},
-                             ensure_ascii=False)
+                yield json.dumps(
+                    {"message_id": message_id, "conversation_id": conversation_id, "knowledge_id": knowledge_id,
+                     "answer": token},
+                    ensure_ascii=False)
+            yield json.dumps(
+                {"message_id": message_id, "conversation_id": conversation_id, "knowledge_id": knowledge_id,
+                 "docs": source_documents},
+                ensure_ascii=False)
         else:
             answer = ""
             async for token in callback.aiter():

@@ -63,7 +63,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
         assistant = get_assistant_detail_from_db(assistant_id=assistant_id)
         workflow_config = assistant.get("workflow_config", {})
     if chat_type == ChatType.WORKFLOW_CHAT.value or (workflow_config is not None and len(workflow_config) > 0):
-        return await do_workflow_chat(query=query, stream=stream, assistant_id=assistant_id,
+        return await do_workflow_chat(query=query, stream=stream, assistant_id=assistant_id, knowledge_id=knowledge_id,
                                       conversation_id=conversation_id, extra=extra, store_message=store_message,
                                       workflow_config=workflow_config)
     return await do_chat_router(query=query, chat_type=chat_type, extra=extra, conversation_id=conversation_id,
@@ -102,6 +102,7 @@ async def do_chat_router(query: str,
                          request: Request = None
                          ):
     if un_format_online_llm_model(model_name):
+        extra["knowledge_id"] = knowledge_id
         extra["token"] = get_token()
     if assistant is None and assistant_id >= 0:
         assistant = get_assistant_detail_from_db(assistant_id=assistant_id)

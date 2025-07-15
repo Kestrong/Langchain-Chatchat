@@ -18,24 +18,24 @@ def exec_python(python_code: str, args: Dict[str, Any], _globals: Dict[str, Any]
 
 
 class PythonREPLComponent(Component):
-    display_name = "Python REPL"
-    description = "execute python code."
+    display_name = "${WORKFLOW_DISPLAYNAME_PYTHONREPL}"
+    description = "${WORKFLOW_DESCRIPTION_PYTHONREPL}"
     name = "python_repl"
-    tag = "Tool"
+    tag = "${WORKFLOW_TAG_TOOL}"
     icon: Union[str, None]
 
     inputs = [
         DictInput(
             name='args',
-            display_name='Args',
-            info='The args for python function.',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_ARGS}",
+            info="${WORKFLOW_INPUT_INFO_ARGS}",
             value={"arg1": 1, "arg2": 2}
         ),
         TextInput(
             name='python_code',
-            display_name='Python',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_PYTHON_CODE}",
             required=True,
-            info='python code.',
+            info="${WORKFLOW_INPUT_INFO_PYTHON_CODE}",
             value="""def main(arg1: int, arg2: int) -> dict:
                 return arg1 + arg2
             """
@@ -45,7 +45,7 @@ class PythonREPLComponent(Component):
     outputs = [
         DictOutput(
             name='result',
-            display_name='Result',
+            display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_RESULT}",
         )
     ]
 

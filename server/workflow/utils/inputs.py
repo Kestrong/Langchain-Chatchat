@@ -4,6 +4,8 @@ from typing import Dict, Type, Any, Union, List
 import shortuuid
 from pydantic import BaseModel
 
+from server.memory.message_i18n import i18n_property
+
 
 class FieldTypes(str, Enum):
     TEXT = "str"
@@ -33,6 +35,8 @@ class Input(BaseModel):
 
     def dict(self, *args, **kwargs):
         d = super().dict(*args, **kwargs)
+        d['display_name'] = i18n_property(self.display_name)
+        d['info'] = i18n_property(self.info)
         d['type'] = self.__class__.__name__
         return d
 

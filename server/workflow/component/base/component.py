@@ -7,6 +7,7 @@ from langchain_core.prompts.string import DEFAULT_FORMATTER_MAPPING
 from pydantic import BaseModel, Field
 
 from configs import logger
+from server.memory.message_i18n import i18n_property
 from server.workflow.utils.inputs import InputTypes, InputTypesMap
 from server.workflow.utils.outputs import OutputTypes, OutputTypesMap
 
@@ -27,6 +28,9 @@ class Component(BaseModel):
 
     def __init__(self, **data: Any) -> None:
         super().__init__(**data)
+        self.display_name = i18n_property(self.display_name)
+        self.tag = i18n_property(self.tag)
+        self.description = i18n_property(self.description)
         if self.id is None:
             self.id = self.name + "-" + shortuuid.random(length=6)
         if self.inputs and isinstance(self.inputs[0], dict):

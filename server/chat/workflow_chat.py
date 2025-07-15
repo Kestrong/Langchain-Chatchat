@@ -26,6 +26,7 @@ async def workflow_chat(query: str = Body(..., description="用户输入", examp
                         stream: bool = Body(False, description="流式输出"),
                         extra: dict = Body({}, description="额外的属性"),
                         conversation_id: str = Body("", description="对话框ID"),
+                        knowledge_id: str = Body("", description="临时知识库ID"),
                         store_message: bool = Body(True, description="是否保存消息到数据库"),
                         ):
     assistant = None
@@ -33,12 +34,12 @@ async def workflow_chat(query: str = Body(..., description="用户输入", examp
         assistant = get_assistant_detail_from_db(assistant_id=assistant_id)
     workflow_config = assistant.get("workflow_config", {})
     return await do_workflow_chat(query=query, stream=stream, assistant_id=assistant_id, extra=extra,
-                                  conversation_id=conversation_id,
+                                  conversation_id=conversation_id, knowledge_id=knowledge_id,
                                   store_message=store_message, workflow_config=workflow_config)
 
 
 def get_component_type(name: str):
-    for tag, group in components.items():
+    for tag, group in components().items():
         for g in group:
             if g.__class__.__name__ == name:
                 return type(g)
@@ -51,6 +52,7 @@ async def do_workflow_chat(query: str,
                            stream: bool = False,
                            workflow_config: dict = {},
                            conversation_id: str = None,
+                           knowledge_id: str = "",
                            store_message: bool = True,
                            ):
     if workflow_config is None or len(workflow_config) == 0:
@@ -149,7 +151,7 @@ async def do_workflow_chat(query: str,
                 graph[e.get("source")].append(target_node)
 
             state = {"query": origin_query, "conversation_id": conversation_id, "store_message": store_message,
-                     "assistant_id": assistant_id, "extra": extra}
+                     "assistant_id": assistant_id, "knowledge_id": knowledge_id, "extra": extra}
             next_node = start_node
             task = asyncio.create_task(execute_nodes(graph=graph, state=state, context=context, next_node=next_node,
                                                      queue=queue))
