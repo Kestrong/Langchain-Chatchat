@@ -7,6 +7,7 @@ from fastapi.security import APIKeyHeader
 from starlette.requests import Request
 
 from common.custom_gzip_middleware import CustomGZipMiddleware
+from common.local_variable_middleware import LocaleVariableMiddleware
 from server.memory.token_info_memory import set_token, i18n_context
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -56,18 +57,7 @@ def add_middleware(app: FastAPI):
         )
 
     app.add_middleware(CustomGZipMiddleware, minimum_size=1024)
-
-    @app.middleware("http")
-    async def set_thread_local_variable(request: Request, call_next):
-        token = request.headers.get("Authorization")
-        if token is None or token.strip() == '':
-            token = request.cookies.get(CIAM_TOKEN_COOKIE_NAME)
-        set_token(token)
-        locale = request.cookies.get('LOCALE')
-        if locale:
-            i18n_context.set(locale)
-        response = await call_next(request)
-        return response
+    app.add_middleware(LocaleVariableMiddleware)
 
 
 def mount_app_routes(app: FastAPI, run_mode: str = None):
@@ -236,13 +226,12 @@ def mount_server_routes(app: FastAPI):
 
 
 def mount_workflow_routes(app: FastAPI):
-    from server.workflow import components
+    from server.workflow.workflow_api import get_components, construct_component
 
     workflow_router = APIRouter(prefix="/workflow", tags=["Workflow"])
 
-    @workflow_router.get("/components", summary="工作流组件信息")
-    def get_components() -> BaseResponse:
-        return BaseResponse(code=200, data=components)
+    workflow_router.get("/components", summary="工作流组件信息")(get_components)
+    workflow_router.get("/construct_component", summary="生成一个组件")(construct_component)
 
     app.include_router(workflow_router)
     return workflow_router

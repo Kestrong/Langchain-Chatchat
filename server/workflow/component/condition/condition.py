@@ -6,30 +6,30 @@ from server.workflow.utils.outputs import BooleanOutput
 
 
 class IfElseComponent(Component):
-    display_name = "If-Else"
-    description = "Routes an input to a corresponding output."
+    display_name = "${WORKFLOW_DISPLAYNAME_IFELSE}"
+    description = "${WORKFLOW_DESCRIPTION_IFELSE}"
     name = "conditional_router"
-    tag = "Condition"
+    tag = "${WORKFLOW_TAG_CONDITION}"
     icon: Union[str, None]
 
     inputs = [
         ListInput(
             name="conditions",
-            display_name="Condition Inputs",
-            info="Condition inputs for match.",
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_CONDITIONS}",
+            info="${WORKFLOW_INPUT_INFO_CONDITIONS}",
             value=[]
         ),
         TextInput(
             name="relation",
-            display_name="Relation",
-            info="`AND` or `OR` between conditions.",
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_RELATION}",
+            info="${WORKFLOW_INPUT_INFO_RELATION}",
             value='AND'
         )
     ]
 
     outputs = [
         BooleanOutput(
-            display_name="Result",
+            display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_CONDITION_RESULT}",
             name="condition_result",
         )
     ]

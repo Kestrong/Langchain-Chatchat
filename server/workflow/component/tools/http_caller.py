@@ -10,59 +10,59 @@ from server.workflow.utils.outputs import DictOutput
 
 
 class HttpCallerComponent(Component):
-    display_name = "Http Caller"
-    description = "send a http request to the server."
+    display_name = "${WORKFLOW_DISPLAYNAME_HTTPCALLER}"
+    description = "${WORKFLOW_DESCRIPTION_HTTPCALLER}"
     name = "http_caller"
-    tag = "Tool"
+    tag = "${WORKFLOW_TAG_TOOL}"
     icon: Union[str, None]
 
     inputs = [
         TextInput(
             name='url',
-            display_name='Url',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_URL}",
             required=True,
-            info='server url.'
+            info="${WORKFLOW_INPUT_INFO_URL}",
         ),
         TextInput(
             name='method',
-            display_name='Method',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_METHOD}",
             required=True,
             options=["GET", "POST", "PATCH", "PUT", "DELETE"],
-            info='The HTTP method to use (GET, POST, PATCH, PUT, DELETE).',
+            info="${WORKFLOW_INPUT_INFO_METHOD}",
             value='POST'
         ),
         IntegerInput(
             name="timeout",
-            display_name="Timeout",
-            value=5,
-            info="The timeout to use for the request.",
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_TIMEOUT}",
+            info="${WORKFLOW_INPUT_INFO_TIMEOUT}",
+            value=5
         ),
         DictInput(
             name='cookies',
-            display_name='Cookies',
-            info='The cookies to send with the request as a dictionary.'
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_COOKIES}",
+            info="${WORKFLOW_INPUT_INFO_COOKIES}",
         ),
         DictInput(
             name='headers',
-            display_name='Headers',
-            info='The headers to send with the request as a dictionary.'
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_HEADERS}",
+            info="${WORKFLOW_INPUT_INFO_HEADERS}",
         ),
         DictInput(
             name='body',
-            display_name='Body',
-            info='The body to send with the request as a dictionary(for POST, PATCH, PUT).'
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_BODY}",
+            info="${WORKFLOW_INPUT_INFO_BODY}",
         ),
         DictInput(
             name='params',
-            display_name='Params',
-            info='The query parameters to append to the URL.'
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_PARAMS}",
+            info="${WORKFLOW_INPUT_INFO_PARAMS}",
         ),
     ]
 
     outputs = [
         DictOutput(
             name='data',
-            display_name='Data',
+            display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_DATA}",
         )
     ]
 

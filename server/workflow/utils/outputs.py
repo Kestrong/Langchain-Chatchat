@@ -3,6 +3,7 @@ from typing import Dict, Type, Any, Union
 import shortuuid
 from pydantic import BaseModel
 
+from server.memory.message_i18n import i18n_property
 from server.workflow.utils.inputs import FieldTypes
 
 
@@ -10,6 +11,7 @@ class Output(BaseModel):
     id: str = None
     name: str
     display_name: str
+    info: Union[str, None]
     enable_expr: bool = False
 
     def __init__(self, **data: Any) -> None:
@@ -18,6 +20,8 @@ class Output(BaseModel):
 
     def dict(self, *args, **kwargs):
         d = super().dict(*args, **kwargs)
+        d['display_name'] = i18n_property(self.display_name)
+        d['info'] = i18n_property(self.info)
         d['type'] = self.__class__.__name__
         return d
 

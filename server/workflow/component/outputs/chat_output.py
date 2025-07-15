@@ -6,16 +6,16 @@ from server.workflow.utils.outputs import TextOutput
 
 class ChatOutputComponent(Component):
     name = 'chat_output'
-    display_name = 'Chat Output'
-    description = 'Get chat outputs from the Playground.'
-    tag = 'Output'
+    display_name = "${WORKFLOW_DISPLAYNAME_CHATOUTPUT}"
+    description = "${WORKFLOW_DESCRIPTION_CHATOUTPUT}"
+    tag = "${WORKFLOW_TAG_OUTPUT}"
     icon: Union[str, None]
 
     inputs = []
 
     outputs = [
         TextOutput(
-            display_name="Answer",
+            display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_ANSWER}",
             name="answer",
         )
     ]

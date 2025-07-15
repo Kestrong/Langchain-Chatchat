@@ -8,7 +8,7 @@ class AssistantModel(Base):
     """
     助手模型
     model_config一些配置样例
-    1、文件上传组件：{"attachment_check": {"hint": "请选择相应的任务工单和路由调整的信息附件上传后再对话。", "require_type": [["xlsx", "xls"]]}, "uploader_display": true}
+    1、文件上传组件：{"uploader":{"uploader_display":true,"max_files":1,"allowed_types":["docx"],"third_attachement":{"tab_name":"流程附件","url":"http://ip:port/path/to","search_params":[{"param_name":"keyword","param_type":"string","element_type":"text","param_description":"附件名称关键词搜索"},{"param_name":"type","param_type":"enum","element_type":"tab","values":[{"label":"故障报告附件","value":"fault"},{"label":"应急预案附件","value":"emergency"}],"param_description":"附件类型搜索"}],"show_fields":[{"label":"文件名","field_name":"name"}],"response_show_format":"selector"}}}
     2、对话框嵌入页面：{"form":{"display":true,"url":"https://ip:port/path","width":"500px","height":"400px"}}
     """
     __tablename__ = 'assistant'

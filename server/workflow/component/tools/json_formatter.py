@@ -7,18 +7,18 @@ from server.workflow.utils.outputs import DictOutput
 
 
 class JsonFormatterComponent(Component):
-    display_name = "Json Formatter"
-    description = "convert string to json object."
+    display_name = "${WORKFLOW_DISPLAYNAME_JSONFORMATTER}"
+    description = "${WORKFLOW_DESCRIPTION_JSONFORMATTER}"
     name = "json_formatter"
-    tag = "Tool"
+    tag = "${WORKFLOW_TAG_TOOL}"
     icon: Union[str, None]
 
     inputs = [
         TextInput(
             name='json_str',
-            display_name='Text',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_JSON_STR}",
             required=True,
-            info='string to be convert into json object.'
+            info="${WORKFLOW_INPUT_INFO_JSON_STR}",
         )
     ]
 
