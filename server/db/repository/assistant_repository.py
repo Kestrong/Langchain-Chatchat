@@ -40,13 +40,12 @@ def compress_base64_image(base64_string, output_format='PNG', output_quality=85)
 @with_session
 def add_assistant_to_db(session, name: str, name_en: str, code: str, avatar: str, prompt: str, model_name: str,
                         prologue: str, history_len: int, top_k: int, score_threshold: float, knowledge_base_ids: str,
-                        force_feedback: str, extra: dict, model_config: dict, tool_config: dict, workflow_config: dict,
-                        sort_id: int):
+                        force_feedback: str, state: str, extra: dict, model_config: dict, tool_config: dict,
+                        workflow_config: dict, sort_id: int):
     if not code:
         code = str(uuid())
     c = WorkflowAssistantModel(name=name, name_en=name_en, code=code, avatar=compress_base64_image(avatar),
-                               prompt=prompt,
-                               model_name=model_name,
+                               prompt=prompt, model_name=model_name, state=state or "0BT",
                                prologue=prologue, knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback,
                                history_len=history_len, top_k=top_k, score_threshold=score_threshold,
                                create_by=get_token_info().get("userId"), extra=extra,
@@ -60,13 +59,15 @@ def add_assistant_to_db(session, name: str, name_en: str, code: str, avatar: str
 @with_session
 def update_assistant_to_db(session, name: str, name_en: str, code: str, assistant_id: int, avatar: str, prompt: str,
                            model_name: str, history_len: int, top_k: int, score_threshold: float, prologue: str,
-                           knowledge_base_ids: str, force_feedback: str, extra: dict, model_config: dict,
+                           knowledge_base_ids: str, force_feedback: str, state: str, extra: dict, model_config: dict,
                            tool_config: dict, workflow_config: dict, sort_id: int):
     assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(
         WorkflowAssistantModel.id == assistant_id).first()
     if assistant is not None:
         assistant.name = name
         assistant.name_en = name_en
+        if state:
+            assistant.state = state
         if code and assistant.code != code:
             assistant.code = code
         if not assistant.code:
@@ -101,7 +102,7 @@ def get_assistants_from_db(session, page: int = 1, size: int = 100, keyword: str
     page_size = abs(size)
     page_num = max(page, 1)
     offset = (page_num - 1) * page_size
-    filters = []
+    filters = [AssistantModel.state == '0BT']
     if keyword is not None and keyword.strip() != '':
         filters.append(or_(AssistantModel.name.ilike('%{}%'.format(keyword)),
                            AssistantModel.name_en.ilike('%{}%'.format(keyword))))
@@ -118,8 +119,8 @@ def get_assistants_from_db(session, page: int = 1, size: int = 100, keyword: str
 
 @with_session
 def get_assistant_detail_from_db(session, assistant_id: int):
-    assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(
-        WorkflowAssistantModel.id == assistant_id).first()
+    filters = [WorkflowAssistantModel.id == assistant_id, WorkflowAssistantModel.state == '0BT']
+    assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(*filters).first()
     if assistant is None:
         return None
     data = assistant.dict()
@@ -137,8 +138,8 @@ def get_assistant_detail_from_db(session, assistant_id: int):
 
 @with_session
 def get_assistant_simple_from_db(session, assistant_id: int) -> dict:
-    assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(
-        WorkflowAssistantModel.id == assistant_id).first()
+    filters = [WorkflowAssistantModel.id == assistant_id, WorkflowAssistantModel.state == '0BT']
+    assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(*filters).first()
     if assistant is None:
         return {}
     data = assistant.dict()
@@ -147,7 +148,7 @@ def get_assistant_simple_from_db(session, assistant_id: int) -> dict:
 
 @with_session
 def get_assistant_simple_by_code_from_db(session, assistant_code: str) -> dict:
-    filters = [WorkflowAssistantModel.code == assistant_code]
+    filters = [WorkflowAssistantModel.code == assistant_code, WorkflowAssistantModel.state == '0BT']
     assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(*filters).first()
     if assistant is None:
         return {}
