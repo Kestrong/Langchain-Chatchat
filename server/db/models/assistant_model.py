@@ -22,6 +22,7 @@ class AssistantModel(Base):
     prologue = Column(String(4096), comment='开场白')
     knowledge_base_ids = Column(String(512), comment='记录知识库id')
     force_feedback = Column(String(4), default='0BF', comment='是否强制点赞后才能继续对话')
+    state = Column(String(4), default='0BT', comment='状态：0BF禁用，0BT启用')
     history_len = Column(Integer, default=HISTORY_LEN, comment='历史对话轮数')
     top_k = Column(Integer, default=-1, comment='知识库匹配条数')
     score_threshold = Column(Float, default=-1.0, comment='知识库匹配阈值')
@@ -33,7 +34,7 @@ class AssistantModel(Base):
     sort_id = Column(Integer, default=0, comment='排序顺序,值越小越靠前')
 
     def __repr__(self):
-        return f"<assistant(id='{self.id}', name='{self.name}', name_en='{self.name_en}', code='{self.code}', avatar='{self.avatar}', prompt='{self.prompt}', model_name='{self.model_name}', prologue='{self.prologue}', knowledge_base_ids='{self.knowledge_base_ids}', force_feedback='{self.force_feedback}', history_len='{self.history_len}', top_k='{self.top_k}', score_threshold='{self.score_threshold}', extra='{self.extra}', model_config='{self.model_config}', tool_config='{self.tool_config}', create_time='{self.create_time}', create_by='{self.create_by}', sort_id='{self.sort_id}')>"
+        return f"<assistant(id='{self.id}', name='{self.name}', name_en='{self.name_en}', code='{self.code}', avatar='{self.avatar}', prompt='{self.prompt}', model_name='{self.model_name}', prologue='{self.prologue}', knowledge_base_ids='{self.knowledge_base_ids}', force_feedback='{self.force_feedback}', state='{self.state}', history_len='{self.history_len}', top_k='{self.top_k}', score_threshold='{self.score_threshold}', extra='{self.extra}', model_config='{self.model_config}', tool_config='{self.tool_config}', create_time='{self.create_time}', create_by='{self.create_by}', sort_id='{self.sort_id}')>"
 
     def dict(self):
         return {
@@ -47,6 +48,7 @@ class AssistantModel(Base):
             "prologue": self.prologue,
             "knowledge_base_ids": self.knowledge_base_ids,
             "force_feedback": self.force_feedback,
+            "state": self.state,
             "history_len": self.history_len,
             "top_k": self.top_k,
             "score_threshold": self.score_threshold,
@@ -63,7 +65,7 @@ class WorkflowAssistantModel(AssistantModel):
     workflow_config = Column(JSON, default={}, comment='流程配置')
 
     def __repr__(self):
-        return f"<assistant(id='{self.id}', name='{self.name}', name_en='{self.name_en}', code='{self.code}', avatar='{self.avatar}', prompt='{self.prompt}', model_name='{self.model_name}', prologue='{self.prologue}', knowledge_base_ids='{self.knowledge_base_ids}', force_feedback='{self.force_feedback}', history_len='{self.history_len}', top_k='{self.top_k}', score_threshold='{self.score_threshold}', extra='{self.extra}', model_config='{self.model_config}', tool_config='{self.tool_config}', workflow_config='{self.workflow_config}', create_time='{self.create_time}', create_by='{self.create_by}', sort_id='{self.sort_id}')>"
+        return f"<assistant(id='{self.id}', name='{self.name}', name_en='{self.name_en}', code='{self.code}', avatar='{self.avatar}', prompt='{self.prompt}', model_name='{self.model_name}', prologue='{self.prologue}', knowledge_base_ids='{self.knowledge_base_ids}', force_feedback='{self.force_feedback}', state='{self.state}', history_len='{self.history_len}', top_k='{self.top_k}', score_threshold='{self.score_threshold}', extra='{self.extra}', model_config='{self.model_config}', tool_config='{self.tool_config}', workflow_config='{self.workflow_config}', create_time='{self.create_time}', create_by='{self.create_by}', sort_id='{self.sort_id}')>"
 
     def dict(self):
         d = super().dict()
