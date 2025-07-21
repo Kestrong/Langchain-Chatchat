@@ -97,6 +97,8 @@ class SichuanMassWorker(ApiModelWorker):
         relAppId = model_config.get('relAppId') or role_meta.get("relAppId")
         stream = model_config.get('stream', contentObj.get('stream', True))
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
+        agentlink = model_config.get('agentlink') or role_meta.get("agentlink", {})
+        agentlink['cookie'] = contentObj.get('cookie')
         text = ''
         try:
             token = self.get_token(url, systemKey, systemSecret, accComId, userCode, secret, timeout)
@@ -111,7 +113,8 @@ class SichuanMassWorker(ApiModelWorker):
                 "histories": [{"obj": a.get("role"), "value": a.get("content")} for a in params.messages[0:-1]],
                 "chatContent": contentObj.get('question', '').replace('\n', ' '),
                 "relAppId": relAppId,
-                "stream": stream
+                "stream": stream,
+                "agentlink": agentlink
             }
             logger.debug(f"chat request: {chat_request}, header: {headers}")
             chat_url = f'{url}/core/chat/openChat'
