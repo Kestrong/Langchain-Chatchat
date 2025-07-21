@@ -54,9 +54,9 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
     if un_format_online_llm_model(model_name):
         extra['question'] = query
         extra['stream'] = stream
+        extra["cookie"] = request.headers.get('cookie')
         apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=model_name)
         if apiModelParams.provider in ['DifyWorker', 'FuXiWorker']:
-            extra["cookie"] = request.headers.get('cookie')
             if not extra.get("conversation_id"):
                 m = filter_message(conversation_id=conversation_id, limit=1, not_response=False, reverse=True,
                                    meta_data_key_exists=['third_conversation_id'])
