@@ -3,7 +3,8 @@ from typing import Any, Dict
 from fastapi import Body
 
 from configs import logger, log_verbose, LLM_MODELS
-from server.db.repository import feedback_message_to_db, get_message_by_id
+from server.db.repository import feedback_message_to_db, get_message_by_id, get_conversation_by_id, \
+    get_assistant_simple_from_db
 from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import get_token_info
 from server.model_workers.base import ApiChatWithFeedbackParams
@@ -53,8 +54,14 @@ def post_feedback_to_dify(message_id: str, model_name: str, score: int, reason: 
         if not third_message_id:
             logger.error('没有关联第三方消息id，无法点赞')
             return None
-        headers = {"Authorization": f"Bearer {api_key}",
-                   "Content-Type": "application/json"}
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        conv = get_conversation_by_id(conversation_id=message.get('conversation_id'))
+        if conv:
+            assistant = get_assistant_simple_from_db(assistant_id=conv.get('assistant_id'))
+            if assistant:
+                extra_headers = assistant.get('model_config', {}).get("extra_headers") or params.role_meta.get(
+                    "extra_headers", {})
+                headers.update(extra_headers)
         with get_httpx_client(timeout=5) as client:
             response = client.post(url=params.feedbackUrl.format(message_id=third_message_id), json=data,
                                    headers=headers)
@@ -84,6 +91,13 @@ def post_feedback_to_fastgpt(message_id: str, model_name: str, score: int, reaso
             if 'appId' in meta_data:
                 data['appId'] = meta_data.get('appId')
         headers = {"Authorization": api_key, "Content-Type": "application/json"}
+        conv = get_conversation_by_id(conversation_id=message.get('conversation_id'))
+        if conv:
+            assistant = get_assistant_simple_from_db(assistant_id=conv.get('assistant_id'))
+            if assistant:
+                extra_headers = assistant.get('model_config', {}).get("extra_headers") or params.role_meta.get(
+                    "extra_headers", {})
+                headers.update(extra_headers)
         with get_httpx_client(timeout=5) as client:
             response = client.post(url=params.feedbackUrl, json=data, headers=headers)
             if response.status_code != 200:
