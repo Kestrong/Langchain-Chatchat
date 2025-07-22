@@ -5,6 +5,7 @@ from PIL import Image
 from shortuuid import uuid
 from sqlalchemy import func, or_
 
+from server.db.client.ciam_client import get_resource_action_codes
 from server.db.models.assistant_model import AssistantModel, WorkflowAssistantModel
 from server.db.models.knowledge_base_model import KnowledgeBaseModel
 from server.db.session import with_session
@@ -98,16 +99,22 @@ def delete_assistant_from_db(session, assistant_id: int):
 
 
 @with_session
-def get_assistants_from_db(session, page: int = 1, size: int = 100, keyword: str = None, code: str = None):
+def get_assistants_from_db(session, page: int = 1, size: int = 100, keyword: str = None, code: str = None,
+                           states: list = None):
     page_size = abs(size)
     page_num = max(page, 1)
     offset = (page_num - 1) * page_size
-    filters = [AssistantModel.state == '0BT']
+    if not states:
+        states = ["0BT"]
+    filters = [AssistantModel.state.in_(states)]
     if keyword is not None and keyword.strip() != '':
         filters.append(or_(AssistantModel.name.ilike('%{}%'.format(keyword)),
                            AssistantModel.name_en.ilike('%{}%'.format(keyword))))
     if code is not None and code.strip() != '':
         filters.append(AssistantModel.code == code)
+    action_codes = get_resource_action_codes()
+    if action_codes:
+        filters.append(AssistantModel.code.in_(action_codes))
     assistants = (session.query(AssistantModel).filter(*filters).order_by(AssistantModel.sort_id.asc()).offset(offset)
                   .limit(page_size).all())
     total = session.query(func.count(AssistantModel.id)).filter(*filters).scalar()
@@ -119,7 +126,7 @@ def get_assistants_from_db(session, page: int = 1, size: int = 100, keyword: str
 
 @with_session
 def get_assistant_detail_from_db(session, assistant_id: int):
-    filters = [WorkflowAssistantModel.id == assistant_id, WorkflowAssistantModel.state == '0BT']
+    filters = [WorkflowAssistantModel.id == assistant_id]
     assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(*filters).first()
     if assistant is None:
         return None
@@ -138,7 +145,7 @@ def get_assistant_detail_from_db(session, assistant_id: int):
 
 @with_session
 def get_assistant_simple_from_db(session, assistant_id: int) -> dict:
-    filters = [WorkflowAssistantModel.id == assistant_id, WorkflowAssistantModel.state == '0BT']
+    filters = [WorkflowAssistantModel.id == assistant_id]
     assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(*filters).first()
     if assistant is None:
         return {}
@@ -148,7 +155,7 @@ def get_assistant_simple_from_db(session, assistant_id: int) -> dict:
 
 @with_session
 def get_assistant_simple_by_code_from_db(session, assistant_code: str) -> dict:
-    filters = [WorkflowAssistantModel.code == assistant_code, WorkflowAssistantModel.state == '0BT']
+    filters = [WorkflowAssistantModel.code == assistant_code]
     assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(*filters).first()
     if assistant is None:
         return {}

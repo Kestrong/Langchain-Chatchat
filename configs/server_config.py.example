@@ -17,6 +17,8 @@ OPEN_CROSS_DOMAIN = False
 DEFAULT_BIND_HOST = "0.0.0.0" if sys.platform != "win32" else "127.0.0.1"
 
 # token配置
+CIAM_ADMIN_ENABLED = os.environ.get("CIAM_ADMIN_ENABLED", False)
+CIAM_ADMIN_HOST = os.environ.get("CIAM_ADMIN_HOST", "http://ciam-admin-server:8090")
 CIAM_TOKEN_COOKIE_NAME = "iam-access-token"
 MOCK_TOKEN_INFO_ENABLED = False
 MOCK_TOKEN_INFO = {}

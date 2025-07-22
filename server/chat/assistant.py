@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from fastapi import Body, Query
 
@@ -95,8 +95,12 @@ def get_assistants(page: int = Query(default=1, description="页码"),
                    size: int = Query(default=100, description="分页大小"),
                    group: bool = Query(default=False, description="是否按模型进行分组"),
                    code: str = Query(default=None, description="助手code"),
+                   states: List[str] = Query(default=[], description="助手状态",
+                                             openapi_examples={"全部": {"value": ["0BT", "0BF"]},
+                                                               "启用": {"value": ["0BT"]},
+                                                               "禁用": {"value": ["0BF"]}}),
                    keyword: str = Query(default=None, description="关键字搜索")) -> BaseResponse:
-    assistants, total = get_assistants_from_db(page=page, size=size, keyword=keyword, code=code)
+    assistants, total = get_assistants_from_db(page=page, size=size, keyword=keyword, code=code, states=states)
     result = OrderedDict()
     english = is_english()
     MODEL_METADATA = get_model_metadata_from_db()
