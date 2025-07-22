@@ -1,7 +1,12 @@
 import os
 
 from common.exceptions import ChatBusinessException
-from configs import CIAM_ADMIN_HOST, CIAM_ADMIN_ENABLED, logger
+try:
+    from configs import CIAM_ADMIN_HOST, CIAM_ADMIN_ENABLED
+except ImportError:
+    CIAM_ADMIN_HOST = ""
+    CIAM_ADMIN_ENABLED = False
+from configs import logger
 from server.memory.token_info_memory import get_token
 from server.utils import get_httpx_client
 
