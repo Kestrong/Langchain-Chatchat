@@ -4,17 +4,15 @@ from typing import Literal
 
 import nltk
 from fastapi.security import APIKeyHeader
-from starlette.requests import Request
 
 from common.custom_gzip_middleware import CustomGZipMiddleware
 from common.local_variable_middleware import LocaleVariableMiddleware
-from server.memory.token_info_memory import set_token, i18n_context
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from configs import VERSION
 from configs.model_config import NLTK_DATA_PATH
-from configs.server_config import OPEN_CROSS_DOMAIN, CIAM_TOKEN_COOKIE_NAME
+from configs.server_config import OPEN_CROSS_DOMAIN
 import argparse
 import uvicorn
 from fastapi import Depends, Security, APIRouter, Body

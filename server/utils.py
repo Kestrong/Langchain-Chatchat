@@ -57,8 +57,7 @@ def get_ChatOpenAI(
     config = get_model_worker_config(model_name)
     if model_name == "openai-api" or config.get('resource_name') == "openai-api":
         model_name = config.get("model_name")
-    ChatOpenAI._get_encoding_model = MinxChatOpenAI.get_encoding_model
-    model = ChatOpenAI(
+    model = MinxChatOpenAI(
         streaming=streaming,
         verbose=verbose,
         callbacks=callbacks,
@@ -68,7 +67,9 @@ def get_ChatOpenAI(
         temperature=temperature,
         max_tokens=max_tokens or config.get("max_tokens"),
         openai_proxy=config.get("openai_proxy"),
-        model_kwargs={'top_p': kwargs.get("top_p") if kwargs and 'top_p' in kwargs else config.get("top_p")},
+        model_kwargs={'top_p': kwargs.get("top_p") if kwargs and 'top_p' in kwargs else config.get("top_p"),
+                      'extra_headers': kwargs.get("extra_headers") or config.get('role_meta', {}).get("extra_headers"),
+                      'extra_body': kwargs.get("extra_body") or config.get('role_meta', {}).get("extra_body")},
         **kwargs
     )
     if model.metadata is None:
