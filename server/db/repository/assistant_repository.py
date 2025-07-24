@@ -100,7 +100,7 @@ def delete_assistant_from_db(session, assistant_id: int):
 
 @with_session
 def get_assistants_from_db(session, page: int = 1, size: int = 100, keyword: str = None, code: str = None,
-                           states: list = None):
+                           states: list = None, ids: str = None):
     page_size = abs(size)
     page_num = max(page, 1)
     offset = (page_num - 1) * page_size
@@ -115,6 +115,8 @@ def get_assistants_from_db(session, page: int = 1, size: int = 100, keyword: str
     action_codes = get_resource_action_codes()
     if action_codes:
         filters.append(AssistantModel.code.in_(action_codes))
+    if ids:
+        filters.append(AssistantModel.id.in_([int(_id) for _id in ids.split(",")]))
     assistants = (session.query(AssistantModel).filter(*filters).order_by(AssistantModel.sort_id.asc()).offset(offset)
                   .limit(page_size).all())
     total = session.query(func.count(AssistantModel.id)).filter(*filters).scalar()

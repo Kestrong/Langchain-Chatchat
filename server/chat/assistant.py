@@ -99,8 +99,9 @@ def get_assistants(page: int = Query(default=1, description="页码"),
                                              openapi_examples={"全部": {"value": ["0BT", "0BF"]},
                                                                "启用": {"value": ["0BT"]},
                                                                "禁用": {"value": ["0BF"]}}),
+                   ids: str = Query(default=None, description="助手id列表，多个用英文逗号分隔"),
                    keyword: str = Query(default=None, description="关键字搜索")) -> BaseResponse:
-    assistants, total = get_assistants_from_db(page=page, size=size, keyword=keyword, code=code, states=states)
+    assistants, total = get_assistants_from_db(page=page, size=size, keyword=keyword, code=code, states=states, ids=ids)
     result = OrderedDict()
     english = is_english()
     MODEL_METADATA = get_model_metadata_from_db()

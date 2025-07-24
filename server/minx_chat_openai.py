@@ -1,10 +1,13 @@
+import logging
 from typing import (
     TYPE_CHECKING,
     Any,
-    Tuple
+    Tuple, Dict
 )
-import sys
-import logging
+
+import tiktoken
+from langchain_community.chat_models import ChatOpenAI
+from langchain_community.utils.openai import is_openai_v1
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +15,7 @@ if TYPE_CHECKING:
     import tiktoken
 
 
-class MinxChatOpenAI:
+class MinxChatOpenAI(ChatOpenAI):
 
     @staticmethod
     def import_tiktoken() -> Any:
@@ -26,8 +29,7 @@ class MinxChatOpenAI:
             )
         return tiktoken
 
-    @staticmethod
-    def get_encoding_model(self) -> Tuple[str, "tiktoken.Encoding"]:
+    def _get_encoding_model(self) -> Tuple[str, "tiktoken.Encoding"]:
         tiktoken_ = MinxChatOpenAI.import_tiktoken()
         if self.tiktoken_model_name is not None:
             model = self.tiktoken_model_name
@@ -49,3 +51,19 @@ class MinxChatOpenAI:
             model = "cl100k_base"
             encoding = tiktoken_.get_encoding(model)
         return model, encoding
+
+    @property
+    def _default_params(self) -> Dict[str, Any]:
+        """Get the default parameters for calling OpenAI API."""
+        params = {
+            "model": self.model_name,
+            "stream": self.streaming,
+            "n": self.n,
+            "temperature": self.temperature,
+            **self.model_kwargs,
+        }
+        if self.max_tokens is not None:
+            params["max_tokens"] = self.max_tokens
+        if self.request_timeout is not None and not is_openai_v1():
+            params["request_timeout"] = self.request_timeout
+        return params
