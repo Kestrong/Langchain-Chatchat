@@ -10,6 +10,7 @@ from fastchat.conversation import Conversation
 from configs import logger
 from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
 from server.knowledge_base.oss import default_oss
+from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelWorker, ApiChatParams
 
 # 自定义 MIME 类型和文件类别映射
@@ -258,6 +259,7 @@ class DifyWorker(ApiModelWorker):
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", **extra_headers}
         inputs = self.get_inputs(role_meta, model_config)
         inputs['cookie'] = contentObj.get('cookie')
+        inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
         data = {
             "inputs": inputs,
             "query": contentObj.get('question', ''),

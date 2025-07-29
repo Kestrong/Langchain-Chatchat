@@ -12,15 +12,18 @@ def get_token() -> str:
     return token_context.get()
 
 
-def get_token_info() -> dict:
-    token = get_token()
+def get_token_info(token: str = None) -> dict:
+    if not token:
+        token = get_token()
     if token:
         parts = str(token).split(".")
         if len(parts) < 3:
             return {}
         part = parts[1]
         part = part + '=' * ((4 - (len(part) % 4)) % 4)
-        return json.loads(base64.b64decode(part, b'-_').decode('utf-8'))
+        token_info = json.loads(base64.b64decode(part, b'-_').decode('utf-8'))
+        token_info['token'] = token
+        return token_info
     return MOCK_TOKEN_INFO or {} if MOCK_TOKEN_INFO_ENABLED else {}
 
 
