@@ -679,8 +679,12 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
                 chart_json['tooltip'] = {}
             if chart_type == 'pie':
                 chart_json['tooltip'] = {"trigger": "item"}
+                for s in chart_json['series']:
+                    s['label'] = {"show": True, "formatter": "{b}: {c}"}
             else:
                 chart_json['tooltip'] = {"trigger": "axis"}
+                for s in chart_json['series']:
+                    s['label'] = {"show": True, "position": "top"}
             # 坐标太多时旋转标签角度 并设置显示间隔为0
             if 'xAxis' in chart_json:
                 xAxis = chart_json['xAxis']
