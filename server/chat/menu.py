@@ -1,3 +1,5 @@
+from typing import List
+
 from fastapi import Body, Query
 
 from configs.basic_config import logger, log_verbose
@@ -58,8 +60,12 @@ def delete_menu(id: int = Query(description="菜单id")) -> BaseResponse:
 
 def get_menus(page: int = Query(default=1, description="页码"),
               size: int = Query(default=10, description="分页大小"),
+              states: List[str] = Query(default=[], description="菜单状态",
+                                        openapi_examples={"全部": {"value": ["0BT", "0BF"]},
+                                                          "启用": {"value": ["0BT"]},
+                                                          "禁用": {"value": ["0BF"]}}),
               keyword: str = Query(default=None, description="关键字搜索")) -> BaseResponse:
-    menus, total = get_menu_from_db(page=page, size=size, keyword=keyword)
+    menus, total = get_menu_from_db(page=page, size=size, keyword=keyword, states=states)
     if is_english():
         for menu in menus:
             if menu.get("menu_name_en"):

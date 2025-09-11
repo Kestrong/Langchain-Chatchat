@@ -745,6 +745,9 @@ def text2sql(query: str):
             streaming=True,
             verbose=True,
         )
+        sql_cmd = model_container.TOOL_ARGS.get("sql_cmd")
+        if not sql_cmd:
+            db_infos = {k: v for k, v in db_infos.items() if v.get("generation", True) is True}
         database_comments = {k: v.get("description") for k, v in db_infos.items()}
         if len(db_infos) > 1:
             db_name_from_chain = model_container.TOOL_ARGS.get("db_name")
@@ -770,7 +773,6 @@ def text2sql(query: str):
             db_info = next(iter(db_infos.values()))
             db_name = next(iter(db_infos.keys()))
             knowledgebase = db_name
-        sql_cmd = model_container.TOOL_ARGS.get("sql_cmd")
         engine = create_engine_wrapper(uri=db_info.get("sqlalchemy_connect_str"), pool_size=1,
                                        connect_args=db_info.get('connect_args') or {})
         db = CustomSQLDatabase(engine=engine, schema=db_info.get("sqlalchemy_schema"),
