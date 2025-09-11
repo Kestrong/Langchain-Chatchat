@@ -41,11 +41,13 @@ def delete_menu_from_db(session, menu_id: int):
 
 
 @with_session
-def get_menu_from_db(session, page: int = 1, size: int = 10, keyword: str = None):
+def get_menu_from_db(session, page: int = 1, size: int = 10, keyword: str = None, states: list = None):
     page_size = abs(size)
     page_num = max(page, 1)
     offset = (page_num - 1) * page_size
-    filters = []
+    if not states:
+        states = ["0BT"]
+    filters = [ChatMenuModel.enabled.in_(states)]
     userId = get_token_info().get("userId")
     auth_level = 0
     if userId and str(userId) == '1':
