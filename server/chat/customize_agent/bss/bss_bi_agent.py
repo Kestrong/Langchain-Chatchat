@@ -145,7 +145,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                             3. 时间范围的表达方式，例如：最近几天、自然周/月/年、具体日期等依此类推。
                             4. 根据上一步的判断，得出伪代码返回的值，标记为变量result。
                             5. 直接输出变量result的值，只允许输出True或者False，不允许输出其他内容。
-                            现在，以纯文本的格式输出你的答案：
+                            现在，请直接输出你的答案，不要思考过程：
                         """
             step_template0 = PromptTemplate(input_variables=["input", "history"],
                                             template=step_prompt0,
