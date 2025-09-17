@@ -76,7 +76,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         if not self.agent:
             self.generated_tokens.append(token)
             apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=self.model_name)
-            if apiModelParams.provider in ['DifyWorker', 'FuXiWorker']:
+            if apiModelParams.provider in ['DifyWorker']:
                 self.update_message(answer="".join(self.generated_tokens))
 
 
