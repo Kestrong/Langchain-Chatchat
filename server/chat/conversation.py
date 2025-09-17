@@ -12,9 +12,10 @@ from server.utils import BaseResponse
 def create_conversation(chat_type: str = Body(
     description="会话类型，可选值：llm_chat，knowledge_base_chat，search_engine_chat，agent_chat"),
         assistant_id: int = Body(description="助手ID"),
-        name: str = Body(description="会话名称")) -> BaseResponse:
+        name: str = Body(description="会话名称"),
+        tag: str = Body(default="", description="会话标签")) -> BaseResponse:
     try:
-        conversation_id = add_conversation_to_db(chat_type=chat_type, name=name, assistant_id=assistant_id)
+        conversation_id = add_conversation_to_db(chat_type=chat_type, name=name, tag=tag, assistant_id=assistant_id)
     except Exception as e:
         msg = f"创建会话出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
@@ -24,9 +25,10 @@ def create_conversation(chat_type: str = Body(
 
 
 def update_conversation(id: str = Body(description="会话id"),
-                        name: str = Body(description="会话名称")) -> BaseResponse:
+                        name: str = Body(description="会话名称"),
+                        tag: str = Body(default=None, description="会话标签，传null不更新")) -> BaseResponse:
     try:
-        conversation_id = update_conversation_to_db(conversation_id=id, name=name)
+        conversation_id = update_conversation_to_db(conversation_id=id, name=name, tag=tag)
     except Exception as e:
         msg = f"修改会话出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
@@ -77,9 +79,10 @@ def filter_conversation(assistant_id: int = Query(-1, description="助手ID"),
                         limit: int = Query(default=10, description='会话数量'),
                         start_time: str = Query(default=None, description='开始时间:yyyy-MM-dd HH:mm:ss'),
                         end_time: str = Query(default=None, description='结束时间:yyyy-MM-dd HH:mm:ss'),
-                        keyword: str = Query(default=None, description="关键字搜索")) -> BaseResponse:
+                        keyword: str = Query(default=None, description="关键字搜索"),
+                        tag: str = Query(default=None, description="会话标签")) -> BaseResponse:
     conversations, total = get_conversation_from_db(assistant_id=assistant_id, page=page, limit=min(abs(limit), 1000),
-                                                    start_time=start_time, end_time=end_time, keyword=keyword)
+                                                    start_time=start_time, end_time=end_time, keyword=keyword, tag=tag)
     return BaseResponse(code=200, data={'conversations': conversations, 'total': total})
 
 

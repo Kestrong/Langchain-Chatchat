@@ -48,6 +48,7 @@ def get_available_tools(tool_names: List[str], api_names: List[str], tool_config
 
 
 async def agent_chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
+                     tag: str = Body(default="", description="会话标签"),
                      extra: Dict[str, Any] = Body({}, description="额外的属性"),
                      assistant_id: int = Body(-1, description="助手ID"),
                      conversation_id: str = Body("", description="对话框ID"),
@@ -107,7 +108,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
 
         callbacks = [callback]
         message_id = add_message_to_db(chat_type=ChatType.AGENT_CHAT.value, query=query,
-                                       conversation_id=conversation_id,
+                                       conversation_id=conversation_id, tag=tag,
                                        store=store_message, assistant_id=assistant_id)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type=ChatType.AGENT_CHAT.value,
@@ -267,6 +268,7 @@ async def do_call_tool_chain(walk_results: List[Any], tool_name: str, api_names:
 
 
 async def tool_chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
+                    tag: str = Body(default="", description="会话标签"),
                     assistant_id: int = Body(-1, description="助手ID"),
                     knowledge_id: str = Body("", description="临时知识库ID"),
                     extra: Dict[str, Any] = Body({}, description="额外的属性"),
@@ -284,7 +286,7 @@ async def tool_chat(query: str = Body(..., description="用户输入", examples=
     async def chat_iterator() -> AsyncIterable[str]:
         message_id = add_message_to_db(chat_type=ChatType.AGENT_CHAT.value, query=query if query else f"{extra}",
                                        metadata=extra if query else None, conversation_id=conversation_id,
-                                       store=store_message, assistant_id=assistant_id)
+                                       store=store_message, assistant_id=assistant_id, tag=tag, )
         yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": ""},
                          ensure_ascii=False)
         result = None

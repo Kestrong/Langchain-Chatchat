@@ -34,6 +34,7 @@ from server.utils import wrap_done, get_ChatOpenAI, get_model_path
 
 
 async def knowledge_base_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
+                              tag: str = Body(default="", description="会话标签"),
                               assistant_id: int = Body(-1, description="助手ID"),
                               conversation_id: str = Body("", description="对话框ID"),
                               knowledge_base_names: List[str] = Body([], description="知识库名称",
@@ -97,7 +98,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         callback = AsyncIteratorCallbackHandler()
         # 负责保存llm response到message db
         message_id = add_message_to_db(chat_type=ChatType.KNOWLEDGE_BASE_CHAT.value, query=query,
-                                       assistant_id=assistant_id,
+                                       assistant_id=assistant_id, tag=tag,
                                        conversation_id=conversation_id, store=store_message)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, query=query,

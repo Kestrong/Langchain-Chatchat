@@ -27,6 +27,7 @@ from server.utils import wrap_done, get_ChatOpenAI
 
 
 async def chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
+               tag: str = Body(default="", description="会话标签"),
                assistant_id: int = Body(-1, description="助手ID"),
                extra: dict = Body({}, description="额外的属性"),
                conversation_id: str = Body("", description="对话框ID"),
@@ -76,7 +77,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
 
         # 负责保存llm response到message db
         add_message_to_db(chat_type=ChatType.LLM_CHAT.value, query=origin_query, conversation_id=conversation_id,
-                          store=store_message, message_id=message_id, assistant_id=assistant_id)
+                          store=store_message, message_id=message_id, assistant_id=assistant_id, tag=tag)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type=ChatType.LLM_CHAT.value,
                                                             query=origin_query)

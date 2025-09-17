@@ -23,6 +23,7 @@ from server.utils import wrap_done, get_prompt_template, get_ChatOpenAI
 
 
 async def bss_bi_agent(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
+                       tag: str = Body(default="", description="会话标签"),
                        extra: Dict[str, Any] = Body({}, description="额外的属性"),
                        assistant_id: int = Body(-1, description="助手ID"),
                        conversation_id: str = Body("", description="对话框ID"),
@@ -55,7 +56,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
 
     async def agent_chat_iterator():
         message_id = add_message_to_db(chat_type=ChatType.AGENT_CHAT.value, query=query,
-                                       conversation_id=conversation_id,
+                                       conversation_id=conversation_id, tag=tag,
                                        store=store_message, assistant_id=assistant_id)
         waiting_tips = extra.get("waiting_tips", "正在查询相关信息，请耐心等待，我们将尽快为您提供答案...")
         yield json.dumps(obj={"thought": waiting_tips, "message_id": message_id,
@@ -145,7 +146,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                             3. 时间范围的表达方式，例如：最近几天、自然周/月/年、具体日期等依此类推。
                             4. 根据上一步的判断，得出伪代码返回的值，标记为变量result。
                             5. 直接输出变量result的值，只允许输出True或者False，不允许输出其他内容。
-                            现在，以纯文本的格式输出你的答案：
+                            现在，请直接输出你的答案，不要思考过程：
                         """
             step_template0 = PromptTemplate(input_variables=["input", "history"],
                                             template=step_prompt0,
