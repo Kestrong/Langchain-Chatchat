@@ -117,6 +117,7 @@ def upload_temp_docs(
 
 
 async def file_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
+                    tag: str = Body(default="", description="会话标签"),
                     assistant_id: int = Body(-1, description="助手ID"),
                     conversation_id: str = Body("", description="对话框ID"),
                     knowledge_id: str = Body("", description="临时知识库ID"),
@@ -158,7 +159,7 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
 
         callbacks = [callback]
         message_id = add_message_to_db(chat_type=ChatType.FILE_CHAT.value, query=query, assistant_id=assistant_id,
-                                       conversation_id=conversation_id, store=store_message,
+                                       conversation_id=conversation_id, store=store_message, tag=tag,
                                        metadata={"knowledge_id": knowledge_id})
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type=ChatType.FILE_CHAT.value,

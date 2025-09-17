@@ -11,6 +11,7 @@ from langchain_core.outputs import GenerationChunk, ChatGenerationChunk
 from common.exceptions import ChatBusinessException
 from server.db.repository import update_message
 from server.memory.message_i18n import Message_I18N
+from server.model_workers import ApiModelParams
 
 
 class ConversationCallbackHandler(BaseCallbackHandler):
@@ -25,7 +26,6 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         self.query = query
         self.agent = agent
         self.updated = False
-        self.first_metadata_updated = False
         self.generated_tokens = []
         self.docs = None
 
@@ -75,25 +75,10 @@ class ConversationCallbackHandler(BaseCallbackHandler):
     ) -> Any:
         if not self.agent:
             self.generated_tokens.append(token)
-            if not self.first_metadata_updated:
-                self.first_metadata_updated = self.update_third_conversation(token)
+            apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=self.model_name)
+            if apiModelParams.provider in ['DifyWorker', 'FuXiWorker']:
+                self.update_message(answer="".join(self.generated_tokens))
 
-    def update_third_conversation(self, token: str):
-        mark = f'###[{self.model_name}]###'
-        metadata = {}
-        if mark in token:
-            parts = token.split(mark)
-            extra_key_map = {"message_id": "third_message_id", "conversation_id": "third_conversation_id"}
-            for part in parts:
-                if part is not None and part.strip() != '':
-                    if part.startswith('{') and part.endswith('}'):
-                        json_obj = json.loads(part)
-                        for key, value in extra_key_map.items():
-                            if key in json_obj:
-                                metadata[value] = json_obj.get(key)
-        if len(metadata) > 0:
-            update_message(self.message_id, metadata=metadata)
-        return len(metadata) > 0
 
     def update_message(self, answer: str, metadata: dict = None, error: str = None):
         mark = f'###[{self.model_name}]###'

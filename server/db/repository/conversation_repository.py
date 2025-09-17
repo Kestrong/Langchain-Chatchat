@@ -10,7 +10,7 @@ from server.memory.token_info_memory import get_token_info
 
 
 @with_session
-def add_conversation_to_db(session, chat_type, name="", conversation_id=None, assistant_id=None):
+def add_conversation_to_db(session, chat_type, name="", tag="", conversation_id=None, assistant_id=None):
     """
     新增聊天记录
     """
@@ -21,7 +21,8 @@ def add_conversation_to_db(session, chat_type, name="", conversation_id=None, as
         if conversation is not None:
             return conversation.id
     name = name if name is None or len(name) <= 50 else name[:50]
-    c = ConversationModel(id=conversation_id, chat_type=chat_type, name=name, assistant_id=assistant_id,
+    tag = tag if tag is None or len(tag) <= 100 else tag[:100]
+    c = ConversationModel(id=conversation_id, chat_type=chat_type, name=name, tag=tag or None, assistant_id=assistant_id,
                           create_by=get_token_info().get("userId"))
 
     session.add(c)
@@ -29,10 +30,13 @@ def add_conversation_to_db(session, chat_type, name="", conversation_id=None, as
 
 
 @with_session
-def update_conversation_to_db(session, name, conversation_id):
+def update_conversation_to_db(session, name, tag, conversation_id):
     conversation = session.query(ConversationModel).filter(ConversationModel.id == conversation_id).first()
     if conversation is not None:
-        conversation.name = name if name is None or len(name) <= 50 else name[:50]
+        if name is not None and name.strip() != '':
+            conversation.name = name if name is None or len(name) <= 50 else name[:50]
+        if tag is not None:
+            conversation.tag = tag if tag is None or len(tag) <= 100 else tag[:100]
     else:
         raise ValueError("Conversation with id {} does not exist".format(conversation_id))
     return conversation.id
@@ -63,7 +67,7 @@ def delete_user_conversation_from_db(session, assistant_id: int):
 
 @with_session
 def get_conversation_from_db(session, assistant_id: int = -1, page: int = 1, limit: int = 10, start_time: str = None,
-                             end_time: str = None, keyword: str = None):
+                             end_time: str = None, keyword: str = None, tag: str = None):
     userId = get_token_info().get("userId")
     if userId is None or userId == "":
         return [], 0
@@ -72,7 +76,9 @@ def get_conversation_from_db(session, assistant_id: int = -1, page: int = 1, lim
     offset = (page_num - 1) * page_size
     filters = [ConversationModel.create_by == str(userId)]
     if keyword is not None and keyword.strip() != '':
-        filters.append(ConversationModel.name.ilike('%{}%'.format(keyword)))
+        filters.append(ConversationModel.name.like('%{}%'.format(keyword)))
+    if tag is not None and tag.strip() != '':
+        filters.append(ConversationModel.tag.like('%{}%'.format(tag)))
     if assistant_id >= 0:
         filters.append(ConversationModel.assistant_id == assistant_id)
     if start_time is not None and start_time != '':

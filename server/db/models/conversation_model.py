@@ -10,6 +10,7 @@ class ConversationModel(Base):
     __tablename__ = 'conversation'
     id = Column(String(32), primary_key=True, comment='对话框ID')
     name = Column(String(50), comment='对话框名称')
+    tag = Column(String(100), comment='标签')
     assistant_id = Column(Integer, comment='助手ID')
     # chat/agent_chat等
     chat_type = Column(String(50), comment='聊天类型')
@@ -17,12 +18,13 @@ class ConversationModel(Base):
     create_by = Column(String(50), index=True, comment='创建人id')
 
     def __repr__(self):
-        return f"<Conversation(id='{self.id}', name='{self.name}', assistant_id='{self.assistant_id}', chat_type='{self.chat_type}', create_time='{self.create_time}', create_by='{self.create_by}')>"
+        return f"<Conversation(id='{self.id}', name='{self.name}', tag='{self.tag}', assistant_id='{self.assistant_id}', chat_type='{self.chat_type}', create_time='{self.create_time}', create_by='{self.create_by}')>"
 
     def dict(self):
         return {
             "id": self.id,
             "name": self.name,
+            "tag": self.tag,
             "assistant_id": self.assistant_id,
             "chat_type": self.chat_type,
             "create_by": self.create_by,
