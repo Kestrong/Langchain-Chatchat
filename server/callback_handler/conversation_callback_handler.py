@@ -12,7 +12,6 @@ from langchain_core.outputs import GenerationChunk, ChatGenerationChunk
 from common.exceptions import ChatBusinessException
 from server.db.repository import update_message
 from server.memory.message_i18n import Message_I18N
-from server.model_workers import ApiModelParams
 
 
 class ConversationCallbackHandler(BaseCallbackHandler):
@@ -20,7 +19,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
     token_save_interval: int = os.environ.get("TOKEN_SAVE_INTERVAL", 100)
 
     def __init__(self, model_name: str, conversation_id: str, message_id: str, chat_type: str, query: str,
-                 agent: bool = False):
+                 agent: bool = False, realtime_token_save: bool = False):
         self.model_name = model_name
         self.conversation_id = conversation_id
         self.message_id = message_id
@@ -30,6 +29,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         self.updated = False
         self.generated_tokens = []
         self.docs = None
+        self.realtime_token_save = realtime_token_save
         self.accumulated_tokens = {'answer': '', 'metadata': {}}
 
     @property
@@ -78,8 +78,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
     ) -> Any:
         if not self.agent:
             self.generated_tokens.append(token)
-            apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=self.model_name)
-            if apiModelParams.provider in ['DifyWorker', 'FuXiWorker']:
+            if self.realtime_token_save and os.environ.get("REALTIME_TOKEN_SAVE", True):
                 answer, metadata = self.parse_token(token)
                 self.accumulated_tokens['answer'] = self.accumulated_tokens.get('answer', '') + answer
                 self.accumulated_tokens['metadata'].update(metadata)
