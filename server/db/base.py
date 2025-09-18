@@ -1,3 +1,5 @@
+import os
+
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.ext.declarative import declarative_base, DeclarativeMeta
 from sqlalchemy.orm import sessionmaker
@@ -15,8 +17,9 @@ import json
 def create_engine_wrapper(
         uri=SQLALCHEMY_DATABASE_URI,
         json_serializer=lambda obj: json.dumps(obj, ensure_ascii=False),
-        pool_size=30, pool_recycle=1800, pool_pre_ping=True, pool_timeout=30, echo=ECHO_SQL,
-        connect_args=None
+        pool_size=os.environ.get("DB_POOL_SIZE", 30), pool_recycle=os.environ.get("DB_POOL_RECYCLE", 1800),
+        pool_pre_ping=True, pool_timeout=os.environ.get("DB_POOL_TIMEOUT", 30),
+        echo=ECHO_SQL, connect_args=None
 ):
     if connect_args is None:
         connect_args = {}
