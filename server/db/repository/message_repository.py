@@ -30,14 +30,17 @@ def add_message_to_db(session, conversation_id: str, chat_type, query, response=
 
 
 @with_session
-def update_message(session, message_id, response: str = None, metadata: Dict = None):
+def update_message(session, message_id, response: str = None, metadata: Dict = None, append: bool = False):
     """
     更新已有的聊天记录
     """
     m = session.query(MessageModel).filter_by(id=message_id).first()
     if m is not None:
         if response is not None:
-            m.response = response
+            if m.response and append:
+                m.response += response
+            else:
+                m.response = response
         if isinstance(metadata, dict):
             if m.meta_data is None:
                 m.meta_data = metadata

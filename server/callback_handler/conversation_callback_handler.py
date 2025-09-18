@@ -1,4 +1,5 @@
 import json
+import os
 from asyncio import CancelledError
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
@@ -16,6 +17,7 @@ from server.model_workers import ApiModelParams
 
 class ConversationCallbackHandler(BaseCallbackHandler):
     raise_error: bool = True
+    token_save_interval: int = os.environ.get("TOKEN_SAVE_INTERVAL", 100)
 
     def __init__(self, model_name: str, conversation_id: str, message_id: str, chat_type: str, query: str,
                  agent: bool = False):
@@ -28,6 +30,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         self.updated = False
         self.generated_tokens = []
         self.docs = None
+        self.accumulated_tokens = {'answer': '', 'metadata': {}}
 
     @property
     def always_verbose(self) -> bool:
@@ -77,16 +80,22 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             self.generated_tokens.append(token)
             apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=self.model_name)
             if apiModelParams.provider in ['DifyWorker']:
-                self.update_message(answer="".join(self.generated_tokens))
+                answer, metadata = self.parse_token(token)
+                self.accumulated_tokens['answer'] = self.accumulated_tokens.get('answer', '') + answer
+                self.accumulated_tokens['metadata'].update(metadata)
+                if len(self.accumulated_tokens['answer']) >= self.token_save_interval:
+                    update_message(message_id=self.message_id, response=self.accumulated_tokens['answer'],
+                                   metadata=self.accumulated_tokens['metadata'], append=True)
+                    self.accumulated_tokens['answer'] = ''
+                    self.accumulated_tokens['metadata'].clear()
 
-
-    def update_message(self, answer: str, metadata: dict = None, error: str = None):
+    def parse_token(self, token: str, metadata: dict = None, error: str = None):
         mark = f'###[{self.model_name}]###'
+        answer = ''
         if metadata is None:
             metadata = {}
-        if mark in answer:
-            parts = answer.split(mark)
-            answer = ''
+        if mark in token:
+            parts = token.split(mark)
             extra_key_map = {"message_id": "third_message_id", "conversation_id": "third_conversation_id",
                              "user": "user", "api_key": "api_key", "appId": "appId"}
             for part in parts:
@@ -99,11 +108,17 @@ class ConversationCallbackHandler(BaseCallbackHandler):
                                 metadata[value] = json_obj.get(key)
                     else:
                         answer += part
+        else:
+            answer = token
         if error:
             metadata["error_info"] = error
         else:
             if self.docs:
                 metadata["docs"] = self.docs
+        return answer, metadata
+
+    def update_message(self, answer: str, metadata: dict = None, error: str = None):
+        answer, metadata = self.parse_token(answer, metadata, error)
         update_message(self.message_id, answer, metadata if len(metadata) > 0 else None)
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
