@@ -57,7 +57,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         extra['stream'] = stream
         extra["cookie"] = request.headers.get('cookie')
         apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=model_name)
-        if apiModelParams.provider in ['DifyWorker', 'FuXiWorker']:
+        if apiModelParams.provider in ['DifyWorker', 'FuXiWorker', 'QimingWorker']:
             if not extra.get("conversation_id"):
                 m = filter_message(conversation_id=conversation_id, limit=1, not_response=False, reverse=True,
                                    meta_data_key_exists=['third_conversation_id'])
@@ -135,19 +135,20 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
 
         d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
         yield json.dumps(d, ensure_ascii=False)
-        if stream:
-            async for token in callback.aiter():
-                # Use server-sent-events to stream the response
-                d.update(parse_llm_token_inner_json(model_name, token))
+        if not extra.get('backend'):
+            if stream:
+                async for token in callback.aiter():
+                    # Use server-sent-events to stream the response
+                    d.update(parse_llm_token_inner_json(model_name, token))
+                    yield json.dumps(d, ensure_ascii=False)
+            else:
+                answer = ""
+                async for token in callback.aiter():
+                    answer += str(token)
+                d.update(parse_llm_token_inner_json(model_name, answer))
                 yield json.dumps(d, ensure_ascii=False)
-        else:
-            answer = ""
-            async for token in callback.aiter():
-                answer += str(token)
-            d.update(parse_llm_token_inner_json(model_name, answer))
-            yield json.dumps(d, ensure_ascii=False)
 
-        await task
+            await task
 
     return EventSourceResponse(wrap_event_response(chat_iterator()))
 

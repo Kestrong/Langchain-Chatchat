@@ -11,6 +11,7 @@ from fastchat.conversation import Conversation
 
 from configs import logger
 from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
+from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelWorker, ApiChatParams
 
 
@@ -99,6 +100,7 @@ class SichuanMassWorker(ApiModelWorker):
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
         agentlink = model_config.get('agentlink') or role_meta.get("agentlink", {})
         agentlink['cookie'] = contentObj.get('cookie')
+        agentlink['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
         text = ''
         try:
             token = self.get_token(url, systemKey, systemSecret, accComId, userCode, secret, timeout)
