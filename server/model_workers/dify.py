@@ -165,7 +165,7 @@ class DifyWorker(ApiModelWorker):
             else:
                 return None
 
-    def upload_files(self, url, api_key, user, contentObj, file_type):
+    def upload_files(self, url, api_key, user, contentObj, file_type, extra_headers):
         result = []
         knowledge_id = contentObj.get('knowledge_id')
         files = contentObj.get('files')
@@ -173,6 +173,10 @@ class DifyWorker(ApiModelWorker):
             logger.debug("knowledge_id和files都为空，不需要上传")
             return result
         headers = {'Authorization': f'Bearer {api_key}'}
+        if 'X-APP-ID' in extra_headers:
+            headers['X-APP-ID'] = extra_headers['X-APP-ID']
+        if 'X-APP-KEY' in extra_headers:
+            headers['X-APP-KEY'] = extra_headers['X-APP-KEY']
         data = {'user': user}
         match = re.search(r'https?://[^?]*?/v1(?=/|$)', url)
         upload_url = f"{match.group(0)}/files/upload" if match else url
@@ -270,7 +274,7 @@ class DifyWorker(ApiModelWorker):
         text = ""
         mark = f'###[{self.model_names[0]}]###'
         try:
-            files = self.upload_files(url, api_key, user, contentObj, file_type)
+            files = self.upload_files(url, api_key, user, contentObj, file_type, extra_headers)
             data['files'] = files
             logger.debug(f"请求dify接口参数：{data}")
             data.update({"input_data": inputs, "mode": data.get('response_mode')})

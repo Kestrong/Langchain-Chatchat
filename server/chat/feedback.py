@@ -11,8 +11,13 @@ from server.model_workers.base import ApiChatWithFeedbackParams
 from server.utils import BaseResponse, get_httpx_client
 
 
-def post_feedback_to_qiming(model_name: str, score: int, reason: str, extra: dict):
+def post_feedback_to_qiming(message_id: str, model_name: str, score: int, reason: str, extra: dict):
     if model_name == 'qiming-api':
+        message = get_message_by_id(message_id=message_id)
+        if message:
+            meta_data = message.get('meta_data', {})
+            if 'third_message_id' in meta_data:
+                return None
         params = ApiChatWithFeedbackParams(messages=[]).load_config(worker_name=model_name)
         headers = {"X-APP-ID": params.api_key, "X-APP-KEY": params.secret_key}
         extra['feedbackProvice'] = params.role_meta['prov']
@@ -116,7 +121,7 @@ def chat_feedback(message_id: str = Body(..., max_length=32, description="聊天
                   reason: str = Body("", description="用户评分理由，比如不符合事实等")
                   ):
     try:
-        post_feedback_to_qiming(model_name, score, reason, extra)
+        post_feedback_to_qiming(message_id, model_name, score, reason, extra)
         post_feedback_to_dify(message_id, model_name, score, reason)
         post_feedback_to_fastgpt(message_id, model_name, score, reason)
         feedback_message_to_db(message_id, score, reason)
