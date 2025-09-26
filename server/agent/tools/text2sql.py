@@ -80,6 +80,7 @@ Instructions:
 5. For questions involving "today", utilize the `CURRENT_DATE` function to get the current date. 
 6. Not allowed to use LIKE in JOIN conditions. Use the IN clause instead of multiple OR conditions for better readability and performance.
 7. If no time column specify in this question, and create time column exist in SQL prefer to use create time.
+8. Complete in one SQL, do not allow to use SET statements.
 
 Follow this format strictly:
 Question: Your question here
@@ -300,9 +301,16 @@ class CustomSQLDatabaseSequentialChain(SQLDatabaseSequentialChain):
             table_names_comment_map = {t: _table_comments.get(t) or "" for t in _table_names}
             llm_inputs["table_names"] = f"{table_names_comment_map}"
         _lowercased_table_names = [name.lower() for name in _table_names]
-        table_names_predict = self.decider_chain.predict(**llm_inputs)
-        _run_manager.on_text(f"Table names predict:{table_names_predict}", end="\n", verbose=self.verbose)
-        table_names_predict = [t for t in json.loads(parse_json_md(table_names_predict).replace("'", '"'))]
+        table_names_predict_ = self.decider_chain.predict(**llm_inputs)
+        _run_manager.on_text(f"Table names predict:{table_names_predict_}", end="\n", verbose=self.verbose)
+        table_names_predict = []
+        for t in json.loads(parse_json_md(table_names_predict_).replace("'", '"')):
+            if isinstance(t, str):
+                table_names_predict.append(t)
+            elif isinstance(t, dict):
+                if len(t) > 0:
+                    table_names_predict.append(next(iter(t)))
+
         table_names_to_use = []
         for name in table_names_predict:
             if name.lower() in _lowercased_table_names:

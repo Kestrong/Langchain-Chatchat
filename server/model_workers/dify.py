@@ -274,7 +274,7 @@ class DifyWorker(ApiModelWorker):
         text = ""
         mark = f'###[{self.model_names[0]}]###'
         try:
-            files = self.upload_files(url, api_key, user, contentObj, file_type,extra_headers)
+            files = self.upload_files(url, api_key, user, contentObj, file_type, extra_headers)
             data['files'] = files
             logger.debug(f"请求dify接口参数：{data}")
             data.update({"input_data": inputs, "mode": data.get('response_mode')})

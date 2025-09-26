@@ -49,10 +49,10 @@ class QimingWorker(ApiModelWorker):
         xappkey = model_config.get('secret_key') or params.secret_key
         version = model_config.get('version', self.version)
         if version == "workflow":
-            self.do_chat_workflow(uri=uri, params=params, model_config=model_config, contentObj=contentObj,
+            yield from self.do_chat_workflow(uri=uri, params=params, model_config=model_config, contentObj=contentObj,
                                   xappid=xappid, xappkey=xappkey)
         else:
-            self.do_chat_common(uri=uri, params=params, model_config=model_config, contentObj=contentObj,
+            yield from self.do_chat_common(uri=uri, params=params, model_config=model_config, contentObj=contentObj,
                                 xappid=xappid, xappkey=xappkey)
 
     def upload_files(self, url, app_id, user, contentObj, file_type, extra_headers):
@@ -164,8 +164,8 @@ class QimingWorker(ApiModelWorker):
         websocket = None
         text = ''
         timeout = model_config.get("timeout") or params.role_meta.get("timeout", 30)
+        stream = model_config.get('stream', contentObj.get('stream', True))
         try:
-            stream = model_config.get('stream', contentObj.get('stream', True))
             conversation_id = contentObj.get('conversation_id')
             if conversation_id:
                 message['session_id'] = conversation_id
@@ -241,8 +241,8 @@ class QimingWorker(ApiModelWorker):
         # 构建apiData
         api_data = {
             "files": files,
-            "response_mode": "blocking" if stream else "streaming",  # Agent只能使用流式输出
-            "user": get_token_info(contentObj.get('token').get('userId', user or '1')),
+            "response_mode": "streaming" if stream else "blocking",  # Agent只能使用流式输出
+            "user": get_token_info(contentObj.get('token')).get('userId', user or '1'),
             "conversation_id": contentObj.get('conversation_id', ''),
             "opening_statement": model_config.get('opening_statement') or params.role_meta.get("opening_statement", {}),
             "suggested_questions": model_config.get('suggested_questions') or params.role_meta.get(
@@ -258,8 +258,7 @@ class QimingWorker(ApiModelWorker):
         }
 
         mark = f'###[{self.model_names[0]}]###'
-        text = ""
-
+        text = ''
         try:
             logger.debug(f"请求qiming-v2接口参数: {data}")
             timeout = model_config.get("timeout") or params.role_meta.get("timeout", 30)
@@ -284,11 +283,11 @@ class QimingWorker(ApiModelWorker):
                     if stream:
                         # 处理流式响应
                         for chunk in response.iter_lines():
+                            logger.debug(f"接收到流式响应: {chunk}")
                             if chunk is None or len(chunk) == 0:
                                 continue
-                            decoded_chunk = chunk.decode('utf-8')
-                            if decoded_chunk.startswith('data:'):
-                                json_str = decoded_chunk[5:].strip()
+                            if chunk.startswith(b'data:'):
+                                json_str = chunk.decode('utf-8')[6:]
                                 try:
                                     json_data = json.loads(json_str)
                                     event = json_data.get('event')
@@ -310,7 +309,6 @@ class QimingWorker(ApiModelWorker):
                                         break
                                 except json.JSONDecodeError as e:
                                     logger.error(f"JSON解析错误: {e}")
-
         except Exception as e:
             logger.error(f"调用启明V2接口异常: {e}")
             if text == '':
