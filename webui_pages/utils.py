@@ -344,6 +344,7 @@ class ApiRequest:
         '''
         data = {
             "query": query,
+            "tag": "",
             "extra": extra,
             "conversation_id": conversation_id,
             "history": history,

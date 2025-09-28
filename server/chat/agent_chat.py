@@ -78,7 +78,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                                                     model_name=model_name))
     customize_agent_type = extra.get("customize_agent_type") if extra else None
     if customize_agent_type and customize_agent_type in customize_agent_types:
-        return await customize_agent_types.get(customize_agent_type)(query=query, history_len=history_len,
+        return await customize_agent_types.get(customize_agent_type)(query=query, history_len=history_len, tag=tag,
                                                                      history=history, tool_names=tool_names,
                                                                      stream=stream, model_name=model_name, extra=extra,
                                                                      temperature=temperature, assistant_id=assistant_id,
