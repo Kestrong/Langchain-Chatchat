@@ -305,30 +305,31 @@ class CustomSQLDatabaseSequentialChain(SQLDatabaseSequentialChain):
                 _table_comments[a.name] = a.comment
             table_names_comment_map = {t: _table_comments.get(t) or "" for t in _table_names}
             llm_inputs["table_names"] = f"{table_names_comment_map}"
-        _lowercased_table_names = [name.lower() for name in _table_names]
         table_names_predict_ = self.decider_chain.predict(**llm_inputs)
         _run_manager.on_text(f"Table names predict:{table_names_predict_}", end="\n", verbose=self.verbose)
         table_names_predict = []
         for t in json.loads(parse_json_md(table_names_predict_).replace("'", '"')):
             if isinstance(t, str):
-                table_names_predict.append(t)
+                table_names_predict.append(t.lower())
             elif isinstance(t, dict):
                 if len(t) > 0:
-                    table_names_predict.append(next(iter(t)))
+                    table_names_predict.append(next(iter(t)).lower())
 
         table_names_to_use = []
-        for name in table_names_predict:
-            if name.lower() in _lowercased_table_names:
-                table_names_to_use.append(name)
-                continue
-            for _name in _lowercased_table_names:
-                if name.strip(SQL_WRAPPER.get(self.sql_chain.database.dialect)).lower() == _name.strip(
-                        SQL_WRAPPER.get(self.sql_chain.database.dialect)).lower():
-                    table_names_to_use.append(_name)
+        for name_predict in table_names_predict:
+            for _table_name in _table_names:
+                lower_table_name = _table_name.lower()
+                if name_predict == lower_table_name:
+                    table_names_to_use.append(_table_name)
                     break
-                parts = _name.split(".")
-                if len(parts) > 1 and name.lower() == parts[1]:
-                    table_names_to_use.append(f"{parts[0]}.{name}")
+                if name_predict.replace(SQL_WRAPPER.get(self.sql_chain.database.dialect),
+                                        '') == lower_table_name.replace(
+                        SQL_WRAPPER.get(self.sql_chain.database.dialect), ''):
+                    table_names_to_use.append(_table_name)
+                    break
+                parts = lower_table_name.split(".")
+                if len(parts) > 1 and name_predict == parts[1]:
+                    table_names_to_use.append(_table_name)
                     break
         _run_manager.on_text("Table names to use:", end="\n", verbose=self.verbose)
         _run_manager.on_text(
