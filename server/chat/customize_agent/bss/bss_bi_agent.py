@@ -107,12 +107,14 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
             memory = ConversationBufferWindowMemory(k=max(HISTORY_LEN * 2, len(history) if history else 0))
             history_var = []
             if history:
-                history_var = history
                 for message in history:
                     if message.role == 'user':
                         memory.chat_memory.add_user_message(message.content)
+                        history_var.append({"role": message.role, "content": message.content})
                     else:
-                        memory.chat_memory.add_user_message(parse_history_message(message.content))
+                        parse_message = parse_history_message(message.content)
+                        memory.chat_memory.add_user_message(parse_message)
+                        history_var.append({"role": message.role, "content": parse_message})
             elif conversation_id and history_len > 0:
                 memory_ = ConversationBufferDBMemory(conversation_id=conversation_id,
                                                      llm=model,
@@ -129,17 +131,28 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                             问题: {{ input }}
                             给定伪代码如下：
                             def function() -> bool:
+                                # 条件一：语义相关性判断
                                 flag1 = False
-                                接下来想问的问题 = 推理(历史对话上下文 + 问题)
-                                if 接下来想问的问题 关于 数据查询 or 统计分析 or 告警 or 调度单:
+                                current_intent = 分析意图(历史对话上下文 + 当前问题)
+                                
+                                if (当前问题是对历史对话的追问、澄清、延续、补充、总结或评价) or \
+                                   (当前问题与历史对话涉及相同主题、实体或意图):
                                     flag1 = True
-                                flag2 = False    
-                                if 接下来想问的问题 包含 时间范围 or 员工姓名 or 省市区域:
+                                elif (current_intent 属于 ["数据查询", "统计分析", "告警信息", "调度单"]) and \
+                                     (当前问题明确指向告警或调度单相关的实体或指标):
+                                    flag1 = True
+                            
+                                # 条件二：查询条件完整性判断
+                                flag2 = False
+                                提取的条件 = 提取查询参数(current_intent)
+                                
+                                if ("时间范围" in 提取的条件) or \
+                                   ("员工姓名" in 提取的条件) or \
+                                   ("省市区域" in 提取的条件):
                                     flag2 = True
-                                if flag1 and flag2:
-                                    return True
-                                else:
-                                    return False
+                            
+                                # 只有当语义相关且具备基本查询条件时，才允许执行查询
+                                return flag1 and flag2
                             请你深吸一口气，让我们一步一步来思考：
                             1. 结合历史对话上下文和问题，判断function()函数的执行过程，记住每个变量的结果。
                             2. 注意判断if里面的条件，or表示只要满足一个条件即可，and表示要全部满足。
