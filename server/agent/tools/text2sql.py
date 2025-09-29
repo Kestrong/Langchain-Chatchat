@@ -198,7 +198,7 @@ class CustomSQLDatabaseChain(SQLDatabaseChain):
             ).strip()
             if self.return_sql:
                 return {self.output_key: sql_cmd, INTERMEDIATE_STEPS_KEY: None}
-            if not self.use_query_checker or inputs["sql_cmd"]:
+            if inputs["sql_cmd"]:
                 _run_manager.on_text(sql_cmd, color="green", verbose=self.verbose)
                 intermediate_steps.append(
                     sql_cmd
@@ -208,27 +208,32 @@ class CustomSQLDatabaseChain(SQLDatabaseChain):
                 result = self.database.run(command=sql_cmd, include_columns=True)
                 intermediate_steps.append(result)  # output: sql exec
             else:
-                query_checker_prompt = self.query_checker_prompt or PromptTemplate(
-                    template=QUERY_CHECKER, input_variables=["query", "dialect"]
-                )
-                query_checker_chain = LLMChain(
-                    llm=self.llm_chain.llm, prompt=query_checker_prompt
-                )
-                query_checker_inputs = {
-                    "query": sql_cmd,
-                    "dialect": self.database.dialect,
-                }
-                checked_sql_command: str = query_checker_chain.predict(
-                    callbacks=_run_manager.get_child(), **query_checker_inputs
-                ).strip()
+                if self.use_query_checker:
+                    query_checker_prompt = self.query_checker_prompt or PromptTemplate(
+                        template=QUERY_CHECKER, input_variables=["query", "dialect"]
+                    )
+                    query_checker_chain = LLMChain(
+                        llm=self.llm_chain.llm, prompt=query_checker_prompt
+                    )
+                    query_checker_inputs = {
+                        "query": sql_cmd,
+                        "dialect": self.database.dialect,
+                    }
+                    checked_sql_command: str = query_checker_chain.predict(
+                        callbacks=_run_manager.get_child(), **query_checker_inputs
+                    ).strip()
+                    _run_manager.on_text(
+                        checked_sql_command, color="green", verbose=self.verbose
+                    )
+                else:
+                    checked_sql_command = sql_cmd
+                checked_sql_command = parse_sql_md(checked_sql_command)
+                if SQL_QUERY in checked_sql_command:
+                    checked_sql_command = checked_sql_command.split(SQL_QUERY)[1].strip()
+                checked_sql_command, result = self.execute_with_retry(checked_sql_command, llm_inputs)
                 intermediate_steps.append(
                     checked_sql_command
                 )  # output: sql generation (checker)
-                _run_manager.on_text(
-                    checked_sql_command, color="green", verbose=self.verbose
-                )
-                checked_sql_command, result = self.execute_with_retry(checked_sql_command, llm_inputs)
-                intermediate_steps[1] = checked_sql_command
                 intermediate_steps.append(result)  # output: sql exec
                 sql_cmd = checked_sql_command
 
@@ -543,9 +548,9 @@ def complex_handler(obj):
     if isinstance(obj, Decimal):
         return float(obj)
     elif isinstance(obj, date):
-        return obj.isoformat()
+        return obj.strftime("%Y-%m-%d %H:%M:%S")
     elif isinstance(obj, datetime):
-        return obj.isoformat()
+        return obj.strftime("%Y-%m-%d %H:%M:%S")
     else:
         raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
@@ -649,16 +654,18 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
         }
         """
     }
+    result_types = set()
     if "折线图" in query:
         chart_type = "line"
     elif "饼图" in query:
         chart_type = "pie"
     elif "柱状图" in query:
         chart_type = "bar"
-    elif "表格" in query:
-        chart_type = "table"
     else:
         chart_type = "table"
+    result_types.add(chart_type)
+    if "表格" in query:
+        result_types.add("table")
     chart_json = {}
     if records and chart_type in chart_json_example:
         prompt = """
@@ -704,7 +711,7 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
         except Exception as e:
             logger.error(f"generate echart json error, error:{e}, json:{chart_json}")
             chart_json = {}
-    return chart_type, chart_json
+    return list(result_types), chart_json
 
 
 def get_clean_translate_column(column: str, separator="_"):
@@ -716,19 +723,16 @@ def get_clean_translate_column(column: str, separator="_"):
 
 
 class Text2SqlInput(BaseModel):
-    query: str = Field(description="user input")
+    natural_language_question: str = Field(description="The user's question in natural language.")
 
 
 @register_tool(title="文本转SQL",
-               description="Use this tool to chat with database,Input natural language, then it will convert it into SQL and execute it in the database, then return the execution result.",
+               description="Use this tool to answer questions about the database by natural language. This tool will convert the natural language question into SQL, execute it, and return the result.",
                args_schema=Text2SqlInput)
-def text2sql(query: str):
+def text2sql(natural_language_question: str):
     model_container = get_model_container() or ModelContainer()
     model_container.TOOL_RERUN = False
-    tool_arg_query = model_container.TOOL_ARGS.get("query")
-    if tool_arg_query and 'select' in query.lower():
-        query = tool_arg_query
-    model_container.TOOL_ARGS["query"] = query
+    query = natural_language_question
     origin_query = query
 
     text2sql_config_bak = get_tool_config().TOOL_CONFIG.get("text2sql", {})
@@ -739,6 +743,7 @@ def text2sql(query: str):
     return_sql = text2sql_config.get('return_sql', text2sql_config_bak.get('return_sql', False))
     return_format = text2sql_config.get('return_format', text2sql_config_bak.get('return_format', 'str'))
     top_k = text2sql_config.get("top_k", text2sql_config_bak.get("top_k", 3))
+    use_query_checker = text2sql_config.get("use_query_checker", text2sql_config_bak.get("use_query_checker", False))
     max_string_length = text2sql_config.get("max_string_length", text2sql_config_bak.get("max_string_length", 100))
     sample_rows_in_table_info = text2sql_config.get("sample_rows_in_table_info",
                                                     text2sql_config_bak.get("sample_rows_in_table_info", 0))
@@ -855,7 +860,7 @@ def text2sql(query: str):
             top_k=top_k,
             return_sql=return_sql,
             return_direct=True,
-            use_query_checker=True,
+            use_query_checker=use_query_checker,
             return_intermediate_steps=True,
         )
 
