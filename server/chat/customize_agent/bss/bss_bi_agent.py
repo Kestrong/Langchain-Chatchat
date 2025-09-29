@@ -124,8 +124,9 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                         memory.chat_memory.add_user_message(a.content)
                         history_var.append({"role": a.type, "content": a.content})
                     else:
-                        memory.chat_memory.add_ai_message(parse_history_message(a.content))
-                        history_var.append({"role": a.type, "content": parse_history_message(a.content)})
+                        parse_message = parse_history_message(a.content)
+                        memory.chat_memory.add_ai_message(parse_message)
+                        history_var.append({"role": a.type, "content": parse_message})
             step_prompt0 = """你是一个资深的python程序员，请仔细阅读以下输入的问题和历史对话上下文。
                             历史对话上下文: {{ history }}
                             问题: {{ input }}
