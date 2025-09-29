@@ -322,6 +322,9 @@ class CustomSQLDatabaseSequentialChain(SQLDatabaseSequentialChain):
                 table_names_to_use.append(name)
                 continue
             for _name in _lowercased_table_names:
+                if name.strip('`').lower() == _name.strip('`').lower():
+                    table_names_to_use.append(_name)
+                    break
                 parts = _name.split(".")
                 if len(parts) > 1 and name.lower() == parts[1]:
                     table_names_to_use.append(f"{parts[0]}.{name}")
