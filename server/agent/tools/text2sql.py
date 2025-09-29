@@ -322,7 +322,8 @@ class CustomSQLDatabaseSequentialChain(SQLDatabaseSequentialChain):
                 table_names_to_use.append(name)
                 continue
             for _name in _lowercased_table_names:
-                if name.strip('`').lower() == _name.strip('`').lower():
+                if name.strip(SQL_WRAPPER.get(self.sql_chain.database.dialect)).lower() == _name.strip(
+                        SQL_WRAPPER.get(self.sql_chain.database.dialect)).lower():
                     table_names_to_use.append(_name)
                     break
                 parts = _name.split(".")
