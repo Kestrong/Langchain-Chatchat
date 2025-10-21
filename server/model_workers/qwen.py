@@ -1,3 +1,4 @@
+import json
 import ssl
 import sys
 from typing import List, Literal, Dict
@@ -30,10 +31,18 @@ class QwenWorker(ApiModelWorker):
         super().__init__(**kwargs)
         self.version = version
 
+    def parse_thinking(self, extra_body: dict, enable_thinking: bool = None):
+        if enable_thinking is not None:
+            extra_body.update(
+                {"enable_thinking": enable_thinking, "chat_template_kwargs": {"enable_thinking": enable_thinking}})
+
     def do_chat(self, params: ApiChatParams) -> Dict:
         params.load_config(self.model_names[0])
         if log_verbose:
             logger.info(f'{self.__class__.__name__}:params: {params}')
+        extra_body = params.role_meta.get("extra_body", {})
+        enable_thinking = params.enable_thinking
+        self.parse_thinking(extra_body, enable_thinking)
         think_mark = params.role_meta.get('think_mark')
         if think_mark:
             params.messages[-1]['content'] = params.messages[-1]['content'] + think_mark
@@ -58,25 +67,42 @@ class QwenWorker(ApiModelWorker):
                         stream=True,
                         max_tokens=params.max_tokens,
                         top_p=params.top_p,
-                        extra_body=params.role_meta.get("extra_body", {}),
+                        extra_body=extra_body,
                         extra_headers=params.role_meta.get("extra_headers", {}),
                 ) as responses:
                     text = ''
-                    mark = True
+                    temp = ''
+                    flag = True
+                    mark = f'###[{self.model_names[0]}]###'
                     truncate_mark = params.role_meta.get('truncate_mark')
                     for resp in responses:
-                        if resp.choices and resp.choices[0].delta and resp.choices[0].delta.content:
-                            text += resp.choices[0].delta.content
-                            if mark and truncate_mark:
-                                if not text.endswith(truncate_mark):
-                                    continue
+                        if resp.choices and resp.choices[0].delta:
+                            try:
+                                reasoning_content = resp.choices[0].delta.reasoning_content
+                            except Exception:
+                                reasoning_content = None
+                            if reasoning_content and enable_thinking:
+                                text += mark + json.dumps({'thought': reasoning_content}) + mark
+                                yield {"error_code": 0, "text": text}
+                            content = resp.choices[0].delta.content
+                            if content:
+                                if flag and truncate_mark and enable_thinking:
+                                    temp += content
+                                    if truncate_mark not in temp:
+                                        text += mark + json.dumps({'thought': content}) + mark
+                                    else:
+                                        truncate_index = content.find(truncate_mark)
+                                        answer = text[truncate_index + len(truncate_mark):]
+                                        thinking_content = text[:truncate_index + len(truncate_mark)]
+                                        text += mark + json.dumps({'thought': thinking_content}) + mark + answer
+                                        temp = ''
+                                        flag = False
                                 else:
-                                    text = ''
-                                    mark = False
-                            yield {
-                                "error_code": 0,
-                                "text": text,
-                            }
+                                    text += content
+                                yield {
+                                    "error_code": 0,
+                                    "text": text,
+                                }
             except Exception as e:
                 data = {
                     "error_code": 500,

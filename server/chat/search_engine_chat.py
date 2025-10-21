@@ -18,12 +18,12 @@ from sse_starlette import EventSourceResponse
 from strsimpy.normalized_levenshtein import NormalizedLevenshtein
 
 from configs import (BING_SEARCH_URL, BING_SUBSCRIPTION_KEY, METAPHOR_API_KEY,
-                     LLM_MODELS, SEARCH_ENGINE_TOP_K, TEMPERATURE, OVERLAP_SIZE)
+                     LLM_MODELS, SEARCH_ENGINE_TOP_K, TEMPERATURE, OVERLAP_SIZE, TOP_P)
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, wrap_event_response, un_format_online_llm_model
+from server.chat.utils import History, wrap_event_response, un_format_online_llm_model, parse_llm_token_inner_json
 from server.db.repository import add_message_to_db
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
@@ -126,6 +126,7 @@ async def lookup_search_engine(
 async def search_engine_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
                              tag: str = Body(default="", description="会话标签"),
                              assistant_id: int = Body(-1, description="助手ID"),
+                             extra: dict = Body({}, description="额外的属性"),
                              conversation_id: str = Body("", description="对话框ID"),
                              search_engine_name: str = Body(..., description="搜索引擎名称", examples=["duckduckgo"]),
                              top_k: int = Body(SEARCH_ENGINE_TOP_K, description="检索结果数量"),
@@ -143,6 +144,8 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
                              temperature: float = Body(TEMPERATURE, description="LLM 采样温度", ge=0.0, le=1.0),
                              max_tokens: Optional[int] = Body(None,
                                                               description="限制LLM生成Token数量，默认None代表模型最大值"),
+                             top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0,
+                                                 lt=1.0),
                              prompt_name: str = Body("default",
                                                      description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                              split_result: bool = Body(False,
@@ -198,6 +201,8 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
             temperature=temperature,
             max_tokens=max_tokens,
             callbacks=[callback],
+            top_p=top_p,
+            enable_thinking=extra.get("enable_thinking")
         )
 
         docs = await lookup_search_engine(query, search_engine_name, top_k, split_result=split_result)
@@ -239,16 +244,17 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
         if stream:
             async for token in callback.aiter():
                 # Use server-sent-events to stream the response
-                yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": token},
-                                 ensure_ascii=False)
+                d.update(parse_llm_token_inner_json(model_name, token))
+                yield json.dumps(d, ensure_ascii=False)
             yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "docs": source_documents},
                              ensure_ascii=False)
         else:
             answer = ""
             async for token in callback.aiter():
                 answer += str(token)
-            yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": answer,
-                              "docs": source_documents}, ensure_ascii=False)
+            d.update(parse_llm_token_inner_json(model_name, answer))
+            d["docs"] = source_documents
+            yield json.dumps(d, ensure_ascii=False)
         await task
 
     return EventSourceResponse(wrap_event_response(search_engine_chat_iterator(query=query,

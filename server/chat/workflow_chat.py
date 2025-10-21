@@ -22,6 +22,7 @@ from server.workflow.component.base.component import Component
 
 
 async def workflow_chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
+                        tag: str = Body(default="", description="会话标签"),
                         assistant_id: int = Body(-1, description="助手ID"),
                         stream: bool = Body(False, description="流式输出"),
                         extra: dict = Body({}, description="额外的属性"),
@@ -34,7 +35,7 @@ async def workflow_chat(query: str = Body(..., description="用户输入", examp
         assistant = get_assistant_detail_from_db(assistant_id=assistant_id)
     workflow_config = assistant.get("workflow_config", {})
     return await do_workflow_chat(query=query, stream=stream, assistant_id=assistant_id, extra=extra,
-                                  conversation_id=conversation_id, knowledge_id=knowledge_id,
+                                  conversation_id=conversation_id, knowledge_id=knowledge_id, tag=tag,
                                   store_message=store_message, workflow_config=workflow_config)
 
 
@@ -47,6 +48,7 @@ def get_component_type(name: str):
 
 
 async def do_workflow_chat(query: str,
+                           tag: str = '',
                            assistant_id: int = -1,
                            extra: dict = {},
                            stream: bool = False,
@@ -133,7 +135,7 @@ async def do_workflow_chat(query: str,
         task = None
         try:
             add_message_to_db(chat_type=ChatType.WORKFLOW_CHAT.value, query=origin_query,
-                              conversation_id=conversation_id,
+                              conversation_id=conversation_id, tag=tag,
                               store=store_message, message_id=message_id, assistant_id=assistant_id)
             nodes = workflow_config.get("nodes", [])
             node_map = {}

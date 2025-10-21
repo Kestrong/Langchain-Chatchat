@@ -1,23 +1,10 @@
+import asyncio
+import os
 import re
 from base64 import b64encode, b64decode
-from datetime import datetime
-
-import pydantic
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad, unpad
-from pydantic import BaseModel
-from typing import List
-from fastapi import FastAPI
-from pathlib import Path
-import asyncio
-from configs import (LLM_MODELS, LLM_DEVICE, EMBEDDING_DEVICE,
-                     MODEL_PATH, MODEL_ROOT_PATH, ONLINE_LLM_MODEL, logger, log_verbose,
-                     FSCHAT_MODEL_WORKERS, HTTPX_DEFAULT_TIMEOUT)
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from langchain.chat_models import ChatOpenAI
-from langchain.llms import OpenAI
-import httpx
+from datetime import datetime
+from typing import List
 from typing import (
     Literal,
     Optional,
@@ -30,6 +17,19 @@ from typing import (
     Tuple
 )
 
+import httpx
+import pydantic
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+from fastapi import FastAPI
+from langchain.chat_models import ChatOpenAI
+from langchain.llms import OpenAI
+from pathlib import Path
+from pydantic import BaseModel
+
+from configs import (LLM_MODELS, LLM_DEVICE, EMBEDDING_DEVICE,
+                     MODEL_PATH, MODEL_ROOT_PATH, ONLINE_LLM_MODEL, logger, log_verbose,
+                     FSCHAT_MODEL_WORKERS, HTTPX_DEFAULT_TIMEOUT)
 from server.minx_chat_openai import MinxChatOpenAI
 
 
@@ -57,6 +57,14 @@ def get_ChatOpenAI(
     config = get_model_worker_config(model_name)
     if model_name == "openai-api" or config.get('resource_name') == "openai-api":
         model_name = config.get("model_name")
+    extra_body = kwargs.get("extra_body") or config.get('role_meta', {}).get("extra_body", {})
+    if kwargs and "enable_thinking" in kwargs:
+        enable_thinking = kwargs.pop("enable_thinking")
+        if enable_thinking is not None:
+            extra_body["enable_thinking"] = enable_thinking
+    top_p = kwargs.get("top_p") if kwargs and 'top_p' in kwargs else config.get("top_p")
+    if top_p:
+        extra_body["top_p"] = top_p
     model = MinxChatOpenAI(
         streaming=streaming,
         verbose=verbose,
@@ -69,8 +77,7 @@ def get_ChatOpenAI(
         openai_proxy=config.get("openai_proxy"),
         model_kwargs={'top_p': kwargs.get("top_p") if kwargs and 'top_p' in kwargs else config.get("top_p"),
                       'extra_headers': kwargs.get("extra_headers") or config.get('role_meta', {}).get("extra_headers"),
-                      'extra_body': kwargs.get("extra_body") or config.get('role_meta', {}).get("extra_body")},
-        **kwargs
+                      'extra_body': extra_body},
     )
     if model.metadata is None:
         model.metadata = {}
@@ -663,27 +670,6 @@ def get_server_configs() -> Dict:
     '''
     获取configs中的原始配置项，供前端使用
     '''
-    from configs.kb_config import (
-        DEFAULT_KNOWLEDGE_BASE,
-        DEFAULT_VS_TYPE,
-        CHUNK_SIZE,
-        OVERLAP_SIZE,
-        SCORE_THRESHOLD,
-        VECTOR_SEARCH_TOP_K,
-        ZH_TITLE_ENHANCE,
-        text_splitter_dict,
-        TEXT_SPLITTER_NAME,
-    )
-    from configs.tool_config import (
-        DEFAULT_SEARCH_ENGINE,
-        SEARCH_ENGINE_TOP_K,
-    )
-    from configs.model_config import (
-        LLM_MODELS,
-        HISTORY_LEN,
-        TEMPERATURE,
-    )
-    from configs.prompt_config import PROMPT_TEMPLATES
 
     _custom = {
         "controller_address": fschat_controller_address(),

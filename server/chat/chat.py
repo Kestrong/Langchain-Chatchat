@@ -12,7 +12,7 @@ from langchain_core.prompts import PromptTemplate
 from sse_starlette.sse import EventSourceResponse
 from starlette.requests import Request
 
-from configs import LLM_MODELS, TEMPERATURE, logger
+from configs import LLM_MODELS, TEMPERATURE, logger, TOP_P
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
@@ -43,7 +43,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                model_name: str = Body(LLM_MODELS[0], description="LLM 模型名称。"),
                temperature: float = Body(TEMPERATURE, description="LLM 采样温度", ge=0.0, le=2.0),
                max_tokens: Optional[int] = Body(None, description="限制LLM生成Token数量，默认None代表模型最大值"),
-               # top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
+               top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
                prompt_name: str = Body("default", description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                store_message: bool = Body(True, description="是否保存消息到数据库"),
                request: Request = None
@@ -104,6 +104,8 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
             temperature=temperature,
             max_tokens=max_tokens,
             callbacks=[callback],
+            top_p=top_p,
+            enable_thinking=extra.get("enable_thinking")
         )
 
         prompt_template = get_prompt_template("llm_chat", prompt_name)

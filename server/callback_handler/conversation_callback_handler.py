@@ -101,7 +101,8 @@ class ConversationCallbackHandler(BaseCallbackHandler):
                 if part is not None and part.strip() != '':
                     if part.startswith('{') and part.endswith('}'):
                         json_obj = json.loads(part)
-                        answer += json_obj.get('answer')
+                        if 'answer' in json_obj:
+                            answer += json_obj.get('answer')
                         for key, value in extra_key_map.items():
                             if key in json_obj:
                                 metadata[value] = json_obj.get(key)

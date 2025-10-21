@@ -39,6 +39,8 @@ MAX_TOKENS_INPUT = 32 * 1024
 
 TEMPERATURE = 0.7
 
+TOP_P = 0.8
+
 ONLINE_LLM_MODEL = {
     "openai-api": {
         "model_name": "gpt-4",
@@ -145,7 +147,7 @@ ONLINE_LLM_MODEL = {
     "claude-api": {
         "api_key": "",
         "version": "2023-06-01",
-        "model_name":"claude-3-opus-20240229",
+        "model_name":"claude-3-opus-20240229", 
         "provider": "ClaudeWorker",
     },
     "dify-api": {

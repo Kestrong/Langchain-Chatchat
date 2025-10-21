@@ -254,8 +254,8 @@ class DifyWorker(ApiModelWorker):
         api_key = model_config.get('api_key') or contentObj.get('api_key') or params.api_key
         response_mode = model_config.get('stream', contentObj.get('stream', True))
         is_workflow = model_config.get('is_workflow') or role_meta.get('is_workflow', False)
-        events = model_config.get('events') or role_meta.get('events', [])
-        node_types = model_config.get('node_types') or role_meta.get('node_types', [])
+        events = model_config.get('events', role_meta.get('events', []))
+        node_types = model_config.get('node_types', role_meta.get('node_types', []))
         user = model_config.get('user') or role_meta.get("user")
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
         file_type = model_config.get('file_type') or role_meta.get("file_type")
