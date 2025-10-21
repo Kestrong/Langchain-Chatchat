@@ -32,6 +32,7 @@ class ApiConfigParams(BaseModel):
     is_v2: bool = False  # for xinghuo
 
     worker_name: Optional[str] = None
+    override_fields: dict = {}
 
     class Config:
         extra = "allow"
@@ -48,7 +49,7 @@ class ApiConfigParams(BaseModel):
         self.worker_name = worker_name
         if config := get_model_worker_config(worker_name):
             for n in self.__fields__:
-                if n in config:
+                if n in config and not self.override_fields.get(n):
                     setattr(self, n, config[n])
         return self
 
@@ -65,7 +66,8 @@ class ApiModelParams(ApiConfigParams):
 
     temperature: float = TEMPERATURE
     max_tokens: Optional[int] = None
-    top_p: Optional[float] = 1.0
+    top_p: Optional[float] = 0.8
+    enable_thinking: Optional[bool] = None
     provider: Optional[str] = None
 
 
@@ -150,6 +152,11 @@ class ApiModelWorker(BaseModelWorker):
                 top_p=params.get("top_p"),
                 max_tokens=params.get("max_new_tokens"),
                 version=self.version,
+                enable_thinking=params.get("enable_thinking"),
+                override_fields={"top_p": params.get("top_p") is not None,
+                                 "max_tokens": params.get("max_new_tokens") is not None,
+                                 "temperature": params.get("temperature") is not None,
+                                 "enable_thinking": params.get("enable_thinking") is not None},
             )
             for resp in self.do_chat(p):
                 yield self._jsonify(resp)

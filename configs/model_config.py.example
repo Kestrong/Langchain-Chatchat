@@ -39,6 +39,8 @@ MAX_TOKENS_INPUT = 32 * 1024
 
 TEMPERATURE = 0.7
 
+TOP_P = 0.8
+
 ONLINE_LLM_MODEL = {
     "openai-api": {
         "model_name": "gpt-4",
@@ -231,16 +233,15 @@ ONLINE_LLM_MODEL = {
     },
     "sichuanmass-api": {
         "version": "sichuanmass-v1",
-        "api_proxy": "http://ip:port/knowledge/knowledgeService",
+        "api_proxy": "http://ip:port/whaleagent/knowledgeService/api/v1/chat/completions",
         "api_key": "EMPTY",
+        "enable_thinking": False,
         "provider": "SichuanMassWorker",
         "role_meta": {
-            "systemKey": "xxx",
-            "systemSecret": "xxx",
-            "secret": "1",
-            "accComId ": 1,
-            "userCode ": "1",
-            "relAppId": "xxx"
+            "truncate_mark": "</think>",
+            "timeout": 30,
+            "refs": [],
+            "agentlink": {}
         }
     },
 }

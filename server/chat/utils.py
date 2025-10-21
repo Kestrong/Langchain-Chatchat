@@ -58,18 +58,31 @@ class History(BaseModel):
 
 def parse_llm_token_inner_json(model_name: str, token: str):
     mark = f'###[{model_name}]###'
-    if token.startswith(mark) and token.endswith(mark):
-        inner_json = json.loads(token.lstrip(mark).rstrip(mark))
-        d = {"answer": inner_json.get('answer')}
-        extra = {}
-        if 'conversation_id' in inner_json:
-            extra['conversation_id'] = inner_json['conversation_id']
-        if 'message_id' in inner_json:
-            extra['message_id'] = inner_json['message_id']
-        if len(extra) > 0:
-            d['extra'] = extra
-        return d
-    return {"answer": token}
+    answer = ''
+    thought = ''
+    extra = {}
+    d = {}
+    if mark in token:
+        parts = token.split(mark)
+        for part in parts:
+            if part is not None and part.strip() != '':
+                if part.startswith('{') and part.endswith('}'):
+                    inner_json = json.loads(part)
+                    answer += inner_json.get('answer', '')
+                    thought += inner_json.get('thought', '')
+                    if 'conversation_id' in inner_json:
+                        extra['conversation_id'] = inner_json['conversation_id']
+                    if 'message_id' in inner_json:
+                        extra['message_id'] = inner_json['message_id']
+                else:
+                    answer += part
+    else:
+        answer = token
+    d["answer"] = answer
+    d["thought"] = thought
+    if len(extra) > 0:
+        d["extra"] = extra
+    return d
 
 
 class MaxInputTokenException(BaseException):

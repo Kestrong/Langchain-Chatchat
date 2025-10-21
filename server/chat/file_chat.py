@@ -9,12 +9,12 @@ from langchain.chains import LLMChain
 from langchain.prompts.chat import ChatPromptTemplate
 from sse_starlette.sse import EventSourceResponse
 
-from configs import (LLM_MODELS, TEMPERATURE, MAX_TEMP_FILE_SIZE, MAX_TEMP_FILE_NUM)
+from configs import (LLM_MODELS, TEMPERATURE, MAX_TEMP_FILE_SIZE, MAX_TEMP_FILE_NUM, TOP_P)
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, wrap_event_response, un_format_online_llm_model
+from server.chat.utils import History, wrap_event_response, un_format_online_llm_model, parse_llm_token_inner_json
 from server.db.repository import add_message_to_db
 from server.knowledge_base.oss import default_oss, OssType, oss_factory
 from server.knowledge_base.utils import KnowledgeFile, get_file_path
@@ -119,6 +119,7 @@ def upload_temp_docs(
 async def file_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
                     tag: str = Body(default="", description="会话标签"),
                     assistant_id: int = Body(-1, description="助手ID"),
+                    extra: dict = Body({}, description="额外的属性"),
                     conversation_id: str = Body("", description="对话框ID"),
                     knowledge_id: str = Body("", description="临时知识库ID"),
                     history_len: int = Body(-1, description="从数据库中取历史消息的数量"),
@@ -134,6 +135,7 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
                     model_name: str = Body(LLM_MODELS[0], description="LLM 模型名称。"),
                     temperature: float = Body(TEMPERATURE, description="LLM 采样温度", ge=0.0, le=1.0),
                     max_tokens: Optional[int] = Body(None, description="限制LLM生成Token数量，默认None代表模型最大值"),
+                    top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
                     prompt_name: str = Body("default",
                                             description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                     store_message: bool = Body(True, description="是否保存消息到数据库"),
@@ -184,6 +186,8 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
             temperature=temperature,
             max_tokens=max_tokens,
             callbacks=[callback],
+            top_p=top_p,
+            enable_thinking=extra.get("enable_thinking")
         )
         source_documents = []
         context = ""
@@ -229,10 +233,9 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
         if stream:
             async for token in callback.aiter():
                 # Use server-sent-events to stream the response
-                yield json.dumps(
-                    {"message_id": message_id, "conversation_id": conversation_id, "knowledge_id": knowledge_id,
-                     "answer": token},
-                    ensure_ascii=False)
+                d.update(parse_llm_token_inner_json(model_name, token))
+                d['knowledge_id'] = knowledge_id
+                yield json.dumps(d, ensure_ascii=False)
             yield json.dumps(
                 {"message_id": message_id, "conversation_id": conversation_id, "knowledge_id": knowledge_id,
                  "docs": source_documents},
@@ -241,8 +244,10 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
             answer = ""
             async for token in callback.aiter():
                 answer += str(token)
-            yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": answer,
-                              "docs": source_documents}, ensure_ascii=False)
+            d.update(parse_llm_token_inner_json(model_name, answer))
+            d["docs"] = source_documents
+            d['knowledge_id'] = knowledge_id
+            yield json.dumps(d, ensure_ascii=False)
         await task
 
     return EventSourceResponse(wrap_event_response(knowledge_base_chat_iterator()))

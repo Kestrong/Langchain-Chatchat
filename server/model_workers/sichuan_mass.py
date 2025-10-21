@@ -1,8 +1,5 @@
 import hashlib
 import json
-import random
-import threading
-import time
 from typing import List, Dict, Literal
 
 import requests
@@ -28,54 +25,18 @@ class SichuanMassWorker(ApiModelWorker):
         kwargs.update(model_names=model_names, controller_addr=controller_addr, worker_addr=worker_addr)
         super().__init__(**kwargs)
         self.version = version
-        self.lock = threading.Lock()
-        self.token = None
-        self.token_expired_at = -1
 
-    def get_token(self, url, systemKey, systemSecret, accComId, userCode, secret, timeout):
-        if self.token and self.token_expired_at > time.time():
-            return self.token
-        with self.lock:
-            if self.token and self.token_expired_at > time.time():
-                return self.token
-            nonce = random.randint(10000, 99999)
-            timestamp = int(round(time.time() * 1000))
-            md5 = hashlib.md5()
-            md5.update((f"{systemKey}:{systemSecret}:{timestamp}:{nonce}" + "{" + secret + "}").encode())
-            signature = md5.hexdigest()
-            get_token_request = {
-                "systemKey": systemKey,
-                "systemSecret": systemSecret,
-                "secret": secret,
-                "timestamp": timestamp,
-                "nonce": nonce,
-                "signature": signature,
-                "accComId": accComId,
-                "userCode": userCode
-            }
-            headers = {
-                "content-type": "application/json;charset=utf-8",
-                "Accept": "application/json",
-                "charset": "utf-8",
-            }
-            get_token_url = f'{url}/support/user/v1/getToken'
-            logger.debug(f"getToken request: {get_token_request}, headers: {headers}")
-            with requests.post(get_token_url, timeout=timeout, json=get_token_request, headers=headers,
-                               verify=False) as response:
-                if response.status_code != 200:
-                    logger.error(response.text)
-                response.raise_for_status()
-                encoding = response.encoding
-                if encoding is None:
-                    encoding = requests.utils.get_encoding_from_headers(response.headers)
-                if encoding is None:
-                    encoding = "utf-8"
-                resultStr = response.content.decode(encoding)
-                response_data = json.loads(resultStr)
-                token = response_data["resultObject"]["token"]
-                self.token = token
-                self.token_expired_at = time.time() + response_data["resultObject"]["expireTime"] - 600
-                return self.token
+    def uuid_to_12id(self, uuid_str: str) -> str:
+        # 大规模使用（>10 亿）时有显著碰撞风险
+        uuid_str = uuid_str.strip().lower().replace('-', '')
+        hash_bytes = hashlib.sha256(uuid_str.encode()).digest()
+        num = int.from_bytes(hash_bytes, 'big')
+        chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        s = ''
+        for _ in range(12):
+            s = chars[num % 62] + s
+            num //= 62
+        return s[-12:].zfill(12)
 
     def do_chat(self, params: ApiChatParams) -> Dict:
         params = params.load_config(self.model_names[0])
@@ -89,97 +50,100 @@ class SichuanMassWorker(ApiModelWorker):
         model_config = {}
         if assistant:
             model_config = assistant.get('model_config', {})
-        url = model_config.get('api_proxy', params.api_proxy)
-        systemKey = model_config.get('systemKey') or role_meta.get("systemKey")
-        systemSecret = model_config.get('systemSecret') or role_meta.get("systemSecret")
-        accComId = model_config.get('accComId') or role_meta.get("accComId")
-        userCode = model_config.get('userCode') or role_meta.get("userCode")
-        secret = model_config.get('secret') or role_meta.get("secret")
-        relAppId = model_config.get('relAppId') or role_meta.get("relAppId")
+        api_proxy = model_config.get('api_proxy', params.api_proxy)
+        api_key = model_config.get('api_key') or contentObj.get('api_key') or params.api_key
         stream = model_config.get('stream', contentObj.get('stream', True))
+        multi_conv = model_config.get('multi_conv', role_meta.get('multi_conv', True))
+        enable_thinking = model_config.get('enable_thinking', contentObj.get('enable_thinking', False))
+        truncate_mark = model_config.get('truncate_mark') or role_meta.get('truncate_mark', '</think>')
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
+        refs = model_config.get('refs') or role_meta.get("refs", [])
         agentlink = model_config.get('agentlink') or role_meta.get("agentlink", {})
         agentlink['cookie'] = contentObj.get('cookie')
         agentlink['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
         text = ''
+        mark = f'###[{self.model_names[0]}]###'
         try:
-            token = self.get_token(url, systemKey, systemSecret, accComId, userCode, secret, timeout)
             headers = {
-                "content-type": "application/json;charset=utf-8",
-                "Accept": "application/json",
-                "charset": "utf-8",
-                "systemKey": systemKey,
-                "token": token,
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
             }
+            conversation_id = contentObj.get('conversation_id')
             chat_request = {
-                "histories": [{"obj": a.get("role"), "value": a.get("content")} for a in params.messages[0:-1]],
-                "chatContent": contentObj.get('question', '').replace('\n', ' '),
-                "relAppId": relAppId,
+                "chatId": self.uuid_to_12id(conversation_id) if multi_conv and conversation_id else None,
+                "messages": [{"role": "user", "content": contentObj.get('question', '')}],
                 "stream": stream,
+                "refs": refs,
                 "agentlink": agentlink
             }
-            logger.debug(f"chat request: {chat_request}, header: {headers}")
-            chat_url = f'{url}/core/chat/openChat'
-            response = None
-            try:
-                response = requests.post(chat_url, timeout=timeout, json=chat_request, headers=headers,
-                                         stream=stream, verify=False)
-                if response.status_code == 401 or response.status_code == 403:
-                    logger.error(response.text)
-                    with self.lock:
-                        if self.token and token == self.token:
-                            self.token = None
-                            self.token_expired_at = -1
-                    try:
-                        response.close()
-                    except Exception:
-                        pass
-                    headers['token'] = self.get_token(url, systemKey, systemSecret, accComId, userCode, secret, timeout)
-                    response = requests.post(chat_url, timeout=timeout, json=chat_request, headers=headers,
-                                             stream=stream, verify=False)
-                if response.status_code != 200:
-                    logger.error(response.text)
-                response.raise_for_status()
-                if stream:
-                    event_type = None
-                    for line in response.iter_lines():
-                        logger.debug(f"chat response: {line}")
-                        if not line:
-                            continue
+            logger.debug(f"multi_conv: {multi_conv}, chat request: {chat_request}, header: {headers}")
+            response = requests.post(api_proxy, timeout=timeout, json=chat_request, headers=headers,
+                                     stream=stream, verify=False)
+            if response.status_code != 200:
+                logger.error(response.text)
+            response.raise_for_status()
+            if stream:
+                event_type = None
+                temp = ''
+                flag = True
+                for line in response.iter_lines():
+                    logger.debug(f"chat response: {line}")
+                    if not line:
+                        continue
+                    if isinstance(line, bytes):
                         decoded_line = line.decode('utf-8')
-                        if decoded_line.startswith('event:'):
-                            event_type = decoded_line.split(":")[1].strip()
-                        if event_type != 'answer':
-                            continue
-                        if decoded_line.startswith('data:'):
-                            json_str = decoded_line[5:].strip()
-                            if json_str == "[DONE]":
-                                break
-                            try:
-                                response_data = json.loads(json_str)
-                                if "choices" in response_data and len(response_data["choices"]) > 0:
-                                    content = response_data["choices"][0]["delta"].get("content", "")
-                                    if content:
+                    else:
+                        decoded_line = line
+                    if decoded_line.startswith('event:'):
+                        event_type = decoded_line.split(":")[1].strip()
+                    if event_type != 'answer':
+                        continue
+                    if decoded_line.startswith('data:'):
+                        json_str = decoded_line[5:].strip()
+                        if json_str == "[DONE]":
+                            break
+                        try:
+                            response_data = json.loads(json_str)
+                            if "choices" in response_data and len(response_data["choices"]) > 0:
+                                try:
+                                    reasoning_content = response_data["choices"][0]["delta"].get("reasoning_content")
+                                except Exception:
+                                    reasoning_content = None
+                                if reasoning_content and enable_thinking:
+                                    text += mark + json.dumps({'thought': reasoning_content}) + mark
+                                    yield {"error_code": 0, "text": text}
+                                content = response_data["choices"][0]["delta"].get("content")
+                                if content:
+                                    if flag and truncate_mark and enable_thinking:
+                                        temp += content
+                                        if truncate_mark not in temp:
+                                            text += mark + json.dumps({'thought': content}) + mark
+                                        else:
+                                            truncate_index = content.find(truncate_mark)
+                                            answer = text[truncate_index + len(truncate_mark):]
+                                            thinking_content = text[:truncate_index + len(truncate_mark)]
+                                            text += mark + json.dumps({'thought': thinking_content}) + mark + answer
+                                            temp = ''
+                                            flag = False
+                                    else:
                                         text += content
-                                        yield {"error_code": 0, "text": text}
-                            except json.JSONDecodeError:
-                                pass
+                                    yield {
+                                        "error_code": 0,
+                                        "text": text,
+                                    }
+                        except json.JSONDecodeError:
+                            pass
+            else:
+                response_data = response.json()
+                content = response_data["choices"][0]["message"]["content"]
+                if enable_thinking and truncate_mark in text:
+                    truncate_index = text.find(truncate_mark)
+                    answer = text[truncate_index + len(truncate_mark):]
+                    thinking_content = text[:truncate_index + len(truncate_mark)]
+                    text += mark + json.dumps({'thought': thinking_content}) + mark + answer
                 else:
-                    encoding = response.encoding
-                    if encoding is None:
-                        encoding = requests.utils.get_encoding_from_headers(response.headers)
-                    if encoding is None:
-                        encoding = "utf-8"
-                    resultStr = response.content.decode(encoding)
-                    response_data = json.loads(resultStr)
-                    text = response_data["choices"][0]["message"]["content"]
-                    yield {"error_code": 0, "text": text}
-            finally:
-                if response:
-                    try:
-                        response.close()
-                    except Exception:
-                        pass
+                    text = content
+                yield {"error_code": 0, "text": text}
         except Exception as e:
             logger.error(f"{e}")
             if text == '':

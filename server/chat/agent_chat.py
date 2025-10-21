@@ -7,7 +7,7 @@ from fastapi import Body
 from langchain.memory import ConversationBufferWindowMemory
 from sse_starlette.sse import EventSourceResponse
 
-from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, logger
+from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, logger, TOP_P
 from server.agent import create_model_container
 from server.agent.callbacks import AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
 from server.agent.tools.http_request import _http_request
@@ -64,6 +64,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                      model_name: str = Body(LLM_MODELS[0], description="LLM 模型名称。"),
                      temperature: float = Body(TEMPERATURE, description="LLM 采样温度", ge=0.0, le=1.0),
                      max_tokens: Optional[int] = Body(None, description="限制LLM生成Token数量，默认None代表模型最大值"),
+                     top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
                      prompt_name: str = Body("default",
                                              description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                      tool_names: List[str] = Body([], description="工具的名称"),
@@ -82,7 +83,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                                      history=history, tool_names=tool_names,
                                                                      stream=stream, model_name=model_name, extra=extra,
                                                                      temperature=temperature, assistant_id=assistant_id,
-                                                                     conversation_id=conversation_id,
+                                                                     conversation_id=conversation_id, top_p=top_p,
                                                                      store_message=store_message, max_tokens=max_tokens,
                                                                      prompt_name=prompt_name, api_names=api_names, )
     history = [History.from_data(h) for h in history]
@@ -130,6 +131,8 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             temperature=temperature,
             max_tokens=max_tokens,
             callbacks=[callback],
+            top_p=top_p,
+            enable_thinking=False
         )
 
         prompt_template = get_prompt_template("agent_chat", prompt_name)

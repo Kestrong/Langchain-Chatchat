@@ -3,7 +3,7 @@ from typing import List, Optional, Union, Dict, Any
 from fastapi import Body
 from starlette.requests import Request
 
-from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD, HISTORY_LEN
+from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD, HISTORY_LEN, TOP_P
 from server.agent import create_model_container
 from server.chat.agent_chat import agent_chat, tool_chat
 from server.chat.chat import chat
@@ -48,7 +48,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                       temperature: float = Body(TEMPERATURE, description="LLM 采样温度", ge=0.0, le=2.0),
                       max_tokens: Optional[int] = Body(None,
                                                        description="限制LLM生成Token数量，默认None代表模型最大值"),
-                      # top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
+                      top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
                       prompt_name: str = Body("default",
                                               description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                       store_message: bool = Body(True, description="是否保存消息到数据库"),
@@ -66,12 +66,12 @@ async def chat_router(query: str = Body(..., description="用户输入", example
     if chat_type == ChatType.WORKFLOW_CHAT.value or (workflow_config is not None and len(workflow_config) > 0):
         return await do_workflow_chat(query=query, stream=stream, assistant_id=assistant_id, knowledge_id=knowledge_id,
                                       conversation_id=conversation_id, extra=extra, store_message=store_message,
-                                      workflow_config=workflow_config)
+                                      workflow_config=workflow_config, tag=tag)
     return await do_chat_router(query=query, chat_type=chat_type, extra=extra, conversation_id=conversation_id,
                                 assistant_id=assistant_id, assistant=assistant, knowledge_id=knowledge_id,
                                 knowledge_base_names=knowledge_base_names, search_engine_name=search_engine_name,
                                 top_k=top_k, score_threshold=score_threshold, history_len=history_len, history=history,
-                                stream=stream, model_name=model_name, tag=tag,
+                                stream=stream, model_name=model_name, tag=tag, top_p=top_p,
                                 temperature=temperature, max_tokens=max_tokens, prompt_name=prompt_name,
                                 store_message=store_message, split_result=split_result, tool_names=tool_names,
                                 api_names=api_names, request=request)
@@ -96,6 +96,7 @@ async def do_chat_router(query: str,
                          model_name: str = LLM_MODELS[0],
                          temperature: float = TEMPERATURE,
                          max_tokens: Optional[int] = None,
+                         top_p: float = TOP_P,
                          prompt_name: str = "default",
                          store_message: bool = True,
                          split_result: bool = False,
@@ -147,7 +148,7 @@ async def do_chat_router(query: str,
                                         search_engine_name=search_engine_name, top_k=top_k, assistant_id=assistant_id,
                                         history_len=history_len, history=history, stream=stream, model_name=model_name,
                                         temperature=temperature, max_tokens=max_tokens, prompt_name=prompt_name,
-                                        split_result=split_result, tag=tag)
+                                        split_result=split_result, tag=tag, extra=extra, top_p=top_p)
 
     elif chat_type == ChatType.AGENT_CHAT.value or tool_names:
         if assistant:
@@ -162,7 +163,7 @@ async def do_chat_router(query: str,
 
         return await agent_chat(query=query, history_len=history_len, history=history, stream=stream,
                                 model_name=model_name, temperature=temperature, tool_names=tool_names,
-                                conversation_id=conversation_id, extra=extra,
+                                conversation_id=conversation_id, extra=extra, top_p=top_p,
                                 store_message=store_message, max_tokens=max_tokens, prompt_name=prompt_name,
                                 api_names=api_names, assistant_id=assistant_id, tag=tag)
 
@@ -171,25 +172,26 @@ async def do_chat_router(query: str,
         return await file_chat(query=query, knowledge_id=knowledge_id, history_len=history_len, history=history,
                                stream=stream, model_name=model_name, temperature=temperature, max_tokens=max_tokens,
                                prompt_name=prompt_name, conversation_id=conversation_id, store_message=store_message,
-                               assistant_id=assistant_id, tag=tag)
+                               assistant_id=assistant_id, tag=tag, extra=extra, top_p=top_p, )
 
     elif chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or knowledge_base_names:
 
         return await knowledge_base_chat(query=query, conversation_id=conversation_id, assistant_id=assistant_id,
-                                         knowledge_base_names=knowledge_base_names, top_k=top_k,
+                                         knowledge_base_names=knowledge_base_names, top_k=top_k, extra=extra,
                                          score_threshold=score_threshold, history_len=history_len, history=history,
                                          stream=stream, model_name=model_name, temperature=temperature, tag=tag,
-                                         max_tokens=max_tokens, prompt_name=prompt_name, store_message=store_message)
+                                         max_tokens=max_tokens, prompt_name=prompt_name, store_message=store_message,
+                                         top_p=top_p, )
 
     elif chat_type == ChatType.COMPLETION.value:
 
-        return await completion(query=query, extra=extra, stream=stream,
+        return await completion(query=query, extra=extra, stream=stream, top_p=top_p,
                                 model_name=model_name, temperature=temperature, max_tokens=max_tokens,
                                 prompt_name=prompt_name)
 
     else:
 
-        return await chat(query=query, extra=extra, conversation_id=conversation_id, tag=tag,
+        return await chat(query=query, extra=extra, conversation_id=conversation_id, tag=tag, top_p=top_p,
                           history_len=history_len, history=history, stream=stream, request=request,
                           model_name=model_name, temperature=temperature, max_tokens=max_tokens,
                           prompt_name=prompt_name, store_message=store_message, assistant_id=assistant_id)

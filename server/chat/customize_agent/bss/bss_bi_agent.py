@@ -10,7 +10,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.prompts import PromptTemplate
 from sse_starlette import EventSourceResponse
 
-from configs import TEMPERATURE, LLM_MODELS, HISTORY_LEN
+from configs import TEMPERATURE, LLM_MODELS, HISTORY_LEN, TOP_P
 from server.agent import create_model_container, text2sql, AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
@@ -41,6 +41,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                        temperature: float = Body(TEMPERATURE, description="LLM 采样温度", ge=0.0, le=1.0),
                        max_tokens: Optional[int] = Body(None,
                                                         description="限制LLM生成Token数量，默认None代表模型最大值"),
+                       top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
                        prompt_name: str = Body("default",
                                                description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                        tool_names: List[str] = Body([], description="工具的名称"),
@@ -96,6 +97,8 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                 model_name=model_name,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                top_p=top_p,
+                enable_thinking=False
             )
 
             def parse_history_message(content: str):

@@ -2,7 +2,7 @@ import json
 
 from fastapi import Body
 from sse_starlette.sse import EventSourceResponse
-from configs import LLM_MODELS, TEMPERATURE
+from configs import LLM_MODELS, TEMPERATURE, TOP_P
 from server.chat.utils import EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
     wrap_event_response, un_format_online_llm_model
 from server.utils import wrap_done, get_ChatOpenAI
@@ -21,7 +21,7 @@ async def completion(query: str = Body(..., description="用户输入", examples
                      model_name: str = Body(LLM_MODELS[0], description="LLM 模型名称。"),
                      temperature: float = Body(TEMPERATURE, description="LLM 采样温度", ge=0.0, le=1.0),
                      max_tokens: Optional[int] = Body(1024, description="限制LLM生成Token数量，默认None代表模型最大值"),
-                     # top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
+                     top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
                      prompt_name: str = Body("default",
                                              description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                      ):
@@ -44,7 +44,9 @@ async def completion(query: str = Body(..., description="用户输入", examples
             model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
-            callbacks=[callback]
+            callbacks=[callback],
+            top_p=top_p,
+            enable_thinking=extra.get("enable_thinking")
         )
         if un_format_online_llm_model(model_name):
             prompt = EMPTY_LLM_CHAT_PROMPT
