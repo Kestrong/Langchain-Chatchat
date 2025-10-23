@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 from asyncio import CancelledError
@@ -19,7 +20,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
     token_save_interval: int = os.environ.get("TOKEN_SAVE_INTERVAL", 100)
 
     def __init__(self, model_name: str, conversation_id: str, message_id: str, chat_type: str, query: str,
-                 agent: bool = False, realtime_token_save: bool = False):
+                 agent: bool = False, stream: bool = False, realtime_token_save: bool = False):
         self.model_name = model_name
         self.conversation_id = conversation_id
         self.message_id = message_id
@@ -29,8 +30,8 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         self.updated = False
         self.generated_tokens = []
         self.docs = None
-        self.realtime_token_save = realtime_token_save
-        self.accumulated_tokens = {'answer': '', 'metadata': {}}
+        self.extra = {'stream': stream, 'realtime_token_save': realtime_token_save, 'answer': '', 'metadata': {},
+                      'response_time_updated': False}
 
     @property
     def always_verbose(self) -> bool:
@@ -78,15 +79,23 @@ class ConversationCallbackHandler(BaseCallbackHandler):
     ) -> Any:
         if not self.agent:
             self.generated_tokens.append(token)
-            if self.realtime_token_save and os.environ.get("REALTIME_TOKEN_SAVE", True):
+            realtime_token_save = self.extra.get("realtime_token_save", False)
+            if realtime_token_save and os.environ.get("REALTIME_TOKEN_SAVE", True):
                 answer, metadata = self.parse_token(token)
-                self.accumulated_tokens['answer'] = self.accumulated_tokens.get('answer', '') + answer
-                self.accumulated_tokens['metadata'].update(metadata)
-                if len(self.accumulated_tokens['answer']) >= self.token_save_interval:
-                    update_message(message_id=self.message_id, response=self.accumulated_tokens['answer'],
-                                   metadata=self.accumulated_tokens['metadata'], append=True)
-                    self.accumulated_tokens['answer'] = ''
-                    self.accumulated_tokens['metadata'].clear()
+                self.extra['answer'] = self.extra.get('answer', '') + answer
+                self.extra['metadata'].update(metadata)
+                if len(self.extra['answer']) >= self.token_save_interval:
+                    update_message(message_id=self.message_id, response=self.extra['answer'],
+                                   metadata=self.extra['metadata'], append=True,
+                                   response_time=datetime.datetime.now())
+                    self.extra['answer'] = ''
+                    self.extra['metadata'].clear()
+            else:
+                stream = self.extra.get("stream", False)
+                response_time_updated = self.extra.get("response_time_updated", False)
+                if stream and not response_time_updated and token:
+                    update_message(message_id=self.message_id, response_time=datetime.datetime.now(), )
+                    self.extra['response_time_updated'] = True
 
     def parse_token(self, token: str, metadata: dict = None, error: str = None):
         mark = f'###[{self.model_name}]###'
@@ -109,7 +118,8 @@ class ConversationCallbackHandler(BaseCallbackHandler):
                     else:
                         answer += part
         else:
-            answer = token
+            if token:
+                answer = token
         if error:
             metadata["error_info"] = error
         else:
@@ -119,7 +129,8 @@ class ConversationCallbackHandler(BaseCallbackHandler):
 
     def update_message(self, answer: str, metadata: dict = None, error: str = None):
         answer, metadata = self.parse_token(answer, metadata, error)
-        update_message(self.message_id, answer, metadata if len(metadata) > 0 else None)
+        update_message(self.message_id, answer, metadata if len(metadata) > 0 else None,
+                       response_time=datetime.datetime.now())
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         if not self.agent and not self.updated:

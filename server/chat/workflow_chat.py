@@ -194,6 +194,6 @@ async def do_workflow_chat(query: str,
             task_manager.remove(message_id)
             if store_message:
                 update_message(message_id=message_id, response=json.dumps(db_message_response),
-                               metadata={"trace": response_all_nodes})
+                               metadata={"trace": response_all_nodes}, response_time=datetime.now())
 
     return EventSourceResponse(chat_iterator())

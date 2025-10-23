@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import json
 import uuid
 from typing import AsyncIterable, Optional, List, Dict, Any, Union
@@ -113,7 +114,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                        store=store_message, assistant_id=assistant_id)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type=ChatType.AGENT_CHAT.value,
-                                                            query=query, agent=True)
+                                                            query=query, agent=True, stream=stream)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id, agent=True)
         callbacks.extend([conversation_callback, task_callback])
         # Enable langchain-chatchat to support langfuse
@@ -307,7 +308,7 @@ async def tool_chat(query: str = Body(..., description="用户输入", examples=
                              ensure_ascii=False)
         finally:
             if result:
-                update_message(message_id=message_id, response=result)
+                update_message(message_id=message_id, response=result, response_time=datetime.datetime.now(),)
 
     return EventSourceResponse(wrap_event_response(chat_iterator()))
 

@@ -104,7 +104,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                        assistant_id=assistant_id, tag=tag,
                                        conversation_id=conversation_id, store=store_message)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
-                                                            message_id=message_id, query=query,
+                                                            message_id=message_id, query=query, stream=stream,
                                                             chat_type=ChatType.KNOWLEDGE_BASE_CHAT.value)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         if isinstance(max_tokens, int) and max_tokens <= 0:
