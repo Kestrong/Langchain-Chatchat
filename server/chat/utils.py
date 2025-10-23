@@ -1,3 +1,4 @@
+import datetime
 import json
 from typing import List, Tuple, Dict, Union, AsyncIterable
 
@@ -105,7 +106,7 @@ async def wrap_event_response(event_response: AsyncIterable[str]) -> AsyncIterab
         d["answer"] = f"{e}"
         d["error"] = True
         if d.get("message_id"):
-            update_message(message_id=d.get("message_id"), response=d["answer"])
+            update_message(message_id=d.get("message_id"), response=d["answer"], response_time=datetime.datetime.now())
         yield json.dumps(d, ensure_ascii=False)
     except BaseException as e:
         d["error"] = True
@@ -120,7 +121,7 @@ async def wrap_event_response(event_response: AsyncIterable[str]) -> AsyncIterab
             d["answer"] = Message_I18N.WORKER_CHAT_ERROR.value
             if d.get("message_id"):
                 update_message(message_id=d.get("message_id"), response=d["answer"], metadata={"error_info": msg},
-                               append=True)
+                               append=True, response_time=datetime.datetime.now())
             yield json.dumps(d, ensure_ascii=False)
 
 

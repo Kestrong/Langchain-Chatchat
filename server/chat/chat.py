@@ -76,12 +76,14 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         callbacks = [callback]
 
         # 负责保存llm response到message db
-        add_message_to_db(chat_type=ChatType.LLM_CHAT.value, query=origin_query, conversation_id=conversation_id,
+        realtime_token_save = extra.get("realtime_token_save", False)
+        add_message_to_db(chat_type=ChatType.LLM_CHAT.value, query=origin_query,
+                          response='' if realtime_token_save else None, conversation_id=conversation_id,
                           store=store_message, message_id=message_id, assistant_id=assistant_id, tag=tag)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type=ChatType.LLM_CHAT.value,
-                                                            query=origin_query,
-                                                            realtime_token_save=extra.get("realtime_token_save", False))
+                                                            query=origin_query, realtime_token_save=realtime_token_save,
+                                                            stream=stream)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         callbacks.extend([conversation_callback, task_callback])
         # message_id = uuid.uuid4().hex

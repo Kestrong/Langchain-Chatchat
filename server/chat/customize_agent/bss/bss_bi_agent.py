@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import json
 import random
 from typing import Dict, Any, List, Optional
@@ -79,7 +80,8 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                 result = json.dumps(result, ensure_ascii=False)
             else:
                 result = sql_result
-            update_message(message_id=message_id, response=result, metadata=metadata)
+            update_message(message_id=message_id, response=result, metadata=metadata,
+                           response_time=datetime.datetime.now(), )
             yield json.dumps({"answer": result, "message_id": message_id,
                               "conversation_id": conversation_id}, ensure_ascii=False)
         else:
@@ -181,7 +183,8 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                 question2 = random.choice(question_schedule)
                 d = {"message_id": message_id, "conversation_id": conversation_id,
                      "answer": f"请确保您的提问跟数据库的查询与分析有关，您可以提问有关告警或者调度单查询方面的问题。请确保您提供了以下查询条件之一：时间范围、员工姓名、省份区域。您也可以尝试提问以下内容：\n1. {question1}；\n2. {question2}。\n\n💡**小提示**：有时候是我没理解您的意思，重新提问一次也许会得到更好的结果。"}
-                update_message(message_id=message_id, response=d.get("answer"), metadata=None)
+                update_message(message_id=message_id, response=d.get("answer"), metadata=None,
+                               response_time=datetime.datetime.now())
                 yield json.dumps(d, ensure_ascii=False)
 
             if continue_flag:

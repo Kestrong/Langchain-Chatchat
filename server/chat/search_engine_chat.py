@@ -183,7 +183,7 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
         message_id = add_message_to_db(chat_type=ChatType.SEARCH_ENGINE_CHAT.value, query=query, tag=tag,
                                        conversation_id=conversation_id, store=store_message, assistant_id=assistant_id)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
-                                                            message_id=message_id, query=query,
+                                                            message_id=message_id, query=query, stream=stream,
                                                             chat_type=ChatType.SEARCH_ENGINE_CHAT.value, )
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         callbacks.extend([conversation_callback, task_callback])

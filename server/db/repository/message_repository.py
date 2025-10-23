@@ -1,3 +1,4 @@
+import datetime
 import uuid
 from typing import Dict
 
@@ -30,12 +31,15 @@ def add_message_to_db(session, conversation_id: str, chat_type, query, response=
 
 
 @with_session
-def update_message(session, message_id, response: str = None, metadata: Dict = None, append: bool = False):
+def update_message(session, message_id, response: str = None, metadata: Dict = None, append: bool = False,
+                   response_time: datetime.datetime = None):
     """
     更新已有的聊天记录
     """
     m = session.query(MessageModel).filter_by(id=message_id).first()
     if m is not None:
+        if m.response_time is None and response_time is not None:
+            m.response_time = response_time
         if response is not None:
             if m.response and append:
                 m.response += response
@@ -106,6 +110,10 @@ def filter_message_page(session, conversation_id: str, page: int = 1, limit: int
     # 直接返回 List[MessageModel] 报错
     data = []
     for m in messages:
+        is_response = m.response is not None and m.response.strip() != ''
+        expired = datetime.datetime.now() - m.create_time >= datetime.timedelta(minutes=30)
+        if m.response_time is None and (is_response or expired):
+            m.response_time = m.create_time + datetime.timedelta(seconds=3)
         data.append(m.dict())
     return data, total
 
