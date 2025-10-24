@@ -40,7 +40,7 @@ class FastgptWorker(ApiModelWorker):
             assistant = get_assistant_simple_from_db(assistant_id)
         model_config = {}
         if assistant:
-            model_config = assistant.get('model_config', {})
+            model_config = assistant.get('model_config') or {}
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key', params.api_key)
         extra_headers = model_config.get("extra_headers") or role_meta.get("extra_headers", {})
