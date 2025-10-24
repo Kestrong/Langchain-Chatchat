@@ -43,7 +43,7 @@ class QimingWorker(ApiModelWorker):
             assistant = get_assistant_simple_from_db(assistant_id)
         model_config = {}
         if assistant:
-            model_config = assistant.get('model_config', {})
+            model_config = assistant.get('model_config') or {}
         uri = model_config.get('api_proxy', params.api_proxy)
         xappid = model_config.get('api_key') or params.api_key
         xappkey = model_config.get('secret_key') or params.secret_key
