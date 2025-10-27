@@ -324,7 +324,7 @@ class CustomSQLDatabaseSequentialChain(SQLDatabaseSequentialChain):
                     break
                 if name_predict.replace(SQL_WRAPPER.get(self.sql_chain.database.dialect),
                                         '') == lower_table_name.replace(
-                        SQL_WRAPPER.get(self.sql_chain.database.dialect), ''):
+                    SQL_WRAPPER.get(self.sql_chain.database.dialect), ''):
                     table_names_to_use.append(_table_name)
                     break
                 parts = lower_table_name.split(".")
@@ -926,7 +926,7 @@ def text2sql(natural_language_question: str):
                     表信息: {{ table_info }},
                     现在深吸一口气，让我们一步一步来思考，请将这些列名翻译成中文：{{ columns }}。
                     1. 如果某个列名已经是中文，则直接使用列名作为翻译后的内容；
-                    2. 确保翻译后的内容仅包含中文字符，忽略下划线后无实际意义的字符，并且尽可能简短；
+                    2. 确保翻译后的内容仅包含中文字符但是括号内的单位要保留，忽略下划线后无实际意义的字符，并且尽可能简短；
                     3. 如果某个列名无法直接翻译则通过sql和表信息推断其实际含义，推断不出时直接使用列名作为翻译。
                     现在，请根据以上要求直接输出一个JSON对象，其中key是列名，value是翻译后的内容。
                     """
