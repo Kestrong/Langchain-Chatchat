@@ -28,7 +28,7 @@ from server.knowledge_base.kb_doc_api import search_docs
 from server.knowledge_base.kb_service.base import KBServiceFactory
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
-from server.utils import BaseResponse, get_prompt_template
+from server.utils import BaseResponse, get_prompt_template, truncate_text
 from server.utils import embedding_device
 from server.utils import wrap_done, get_ChatOpenAI, get_model_path
 
@@ -175,7 +175,8 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             context += doc.page_content + "\n"
             filename = doc.metadata["source"]
             if filename not in exist_file:
-                source_documents.append({"filename": filename, "knowledge_base_name": doc.metadata.get("kb_name")})
+                source_documents.append({"filename": filename, "knowledge_base_name": doc.metadata.get("kb_name"),
+                                         "page_content": truncate_text(doc.page_content)})
                 exist_file.append(filename)
         conversation_callback.docs = source_documents
 

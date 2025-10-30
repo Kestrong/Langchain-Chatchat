@@ -105,7 +105,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         if mark in token:
             parts = token.split(mark)
             extra_key_map = {"message_id": "third_message_id", "conversation_id": "third_conversation_id",
-                             "user": "user", "api_key": "api_key", "appId": "appId"}
+                             "user": "user", "api_key": "api_key", "appId": "appId", "docs": "docs"}
             for part in parts:
                 if part is not None and part.strip() != '':
                     if part.startswith('{') and part.endswith('}'):

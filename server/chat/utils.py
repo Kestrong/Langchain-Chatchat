@@ -75,6 +75,8 @@ def parse_llm_token_inner_json(model_name: str, token: str):
                         extra['conversation_id'] = inner_json['conversation_id']
                     if 'message_id' in inner_json:
                         extra['message_id'] = inner_json['message_id']
+                    if 'docs' in inner_json:
+                        d["docs"] = inner_json['docs']
                 else:
                     answer += part
     else:

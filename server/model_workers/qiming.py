@@ -16,6 +16,7 @@ from server.knowledge_base.oss import default_oss
 from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelWorker, ApiChatParams
 from server.model_workers.dify import analyze_file
+from server.utils import truncate_text
 
 
 class QimingWorker(ApiModelWorker):
@@ -50,10 +51,10 @@ class QimingWorker(ApiModelWorker):
         version = model_config.get('version', self.version)
         if version == "workflow":
             yield from self.do_chat_workflow(uri=uri, params=params, model_config=model_config, contentObj=contentObj,
-                                  xappid=xappid, xappkey=xappkey)
+                                             xappid=xappid, xappkey=xappkey)
         else:
             yield from self.do_chat_common(uri=uri, params=params, model_config=model_config, contentObj=contentObj,
-                                xappid=xappid, xappkey=xappkey)
+                                           xappid=xappid, xappkey=xappkey)
 
     def upload_files(self, url, app_id, user, contentObj, file_type, extra_headers):
         result = []
@@ -263,7 +264,8 @@ class QimingWorker(ApiModelWorker):
             logger.debug(f"请求qiming-v2接口参数: {data}")
             timeout = model_config.get("timeout") or params.role_meta.get("timeout", 30)
             # 发送POST请求
-            with requests.post(uri, headers=headers, json=data, stream=stream, timeout=timeout, verify=False) as response:
+            with requests.post(uri, headers=headers, json=data, stream=stream, timeout=timeout,
+                               verify=False) as response:
                 if response.status_code != 200:
                     logger.error(f"请求失败，状态码: {response.status_code}, 响应: {response.text}")
                     response.raise_for_status()
@@ -306,6 +308,20 @@ class QimingWorker(ApiModelWorker):
                                         thought = json_data.get('thought', '')
                                     elif event == "message_end":
                                         # 结束消息
+                                        metadata = json_data.get('metadata') or {}
+                                        retriever_resources = metadata.get('retriever_resources') or []
+                                        if retriever_resources:
+                                            conversation_id = json_data.get('conversation_id')
+                                            message_id = json_data.get('message_id')
+                                            docs = [{'knowledge_base_name': r.get('dataset_name'),
+                                                     'filename': r.get('document_name'),
+                                                     "page_content": truncate_text(r.get('content'))} for r in
+                                                    retriever_resources]
+                                            inner_json = json.dumps(
+                                                {"conversation_id": conversation_id, "message_id": message_id,
+                                                 "docs": docs})
+                                            text += mark + inner_json + mark
+                                            yield {"error_code": 0, "text": text}
                                         break
                                 except json.JSONDecodeError as e:
                                     logger.error(f"JSON解析错误: {e}")
