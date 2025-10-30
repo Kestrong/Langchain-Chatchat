@@ -72,6 +72,7 @@ def mount_app_routes(app: FastAPI, run_mode: str = None):
     mount_server_routes(app=app)
     mount_tool_routes(app=app)
     mount_workflow_routes(app=app)
+    mount_openapi_routes(app=app)
 
     # 其它接口
     app.post("/other/completion", tags=["Other"], summary="要求llm模型补全(通过LLMChain)", )(completion)
@@ -233,6 +234,16 @@ def mount_workflow_routes(app: FastAPI):
 
     app.include_router(workflow_router)
     return workflow_router
+
+
+def mount_openapi_routes(app: FastAPI):
+    from server.knowledge_base.kb_doc_api import retrieval
+
+    openapi_router = APIRouter(prefix="/openapi", tags=["Openapi"])
+    openapi_router.post("/retrieval", summary="搜索知识库")(retrieval)
+    app.include_router(openapi_router)
+
+    return openapi_router
 
 
 def run_api(host, port, **kwargs):

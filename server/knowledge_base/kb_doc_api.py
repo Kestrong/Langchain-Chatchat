@@ -11,10 +11,12 @@ from pydantic import Json
 from sse_starlette import EventSourceResponse
 from starlette.responses import StreamingResponse
 
+from common.exceptions import ChatBusinessException
 from configs import (DEFAULT_VS_TYPE, EMBEDDING_MODEL,
                      VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD,
                      CHUNK_SIZE, OVERLAP_SIZE, ZH_TITLE_ENHANCE,
                      logger, log_verbose, MAX_KNOWLEDGE_FILE_SIZE)
+from server.db.repository import get_kb_detail_by_id
 from server.db.repository.knowledge_file_repository import get_file_detail
 from server.knowledge_base.kb_service.base import KBServiceFactory
 from server.knowledge_base.model.kb_document_model import DocumentWithVSId
@@ -22,7 +24,35 @@ from server.knowledge_base.oss import default_oss
 from server.knowledge_base.utils import (validate_kb_name, list_files_from_folder, files2docs_in_thread, KnowledgeFile)
 from server.memory.message_i18n import Message_I18N
 from server.utils import BaseResponse, run_in_thread_pool, PageResponse, Page
-from common.exceptions import ChatBusinessException
+
+
+def retrieval(
+        query: str = Body("", description="用户输入", examples=["你好"]),
+        knowledge_id: str = Body(..., description="知识库名称", examples=["samples"]),
+        retrieval_setting: Dict = Body({}, description="向量检索设置"),
+        metadata_condition: Dict = Body({}, description="根据 metadata 进行过滤"), ):
+    try:
+        kb_id = int(knowledge_id)
+        kb = get_kb_detail_by_id(kb_id=kb_id)
+        if kb:
+            knowledge_id = kb["kb_name"]
+    except Exception:
+        pass
+    top_k = retrieval_setting.get("top_k", VECTOR_SEARCH_TOP_K)
+    score_threshold = retrieval_setting.get("score_threshold", SCORE_THRESHOLD)
+    docs = search_docs(
+        query=query,
+        knowledge_base_name=knowledge_id,
+        top_k=top_k,
+        score_threshold=score_threshold,
+        file_name="",
+        metadata={}
+    )
+    records = []
+    for doc in docs:
+        record = {"metadata": {}, "score": doc.score, "title": doc.metadata.get('source'), "content": doc.page_content}
+        records.append(record)
+    return {"records": records}
 
 
 def search_docs(
@@ -37,6 +67,7 @@ def search_docs(
         file_name: str = Body("", description="文件名称，支持 sql 通配符"),
         metadata: dict = Body({}, description="根据 metadata 进行过滤，仅支持一级键"),
 ) -> List[DocumentWithVSId]:
+    logger.debug(f"query: {query}, kb_name: {knowledge_base_name}, top_k: {top_k}, score_threshold: {score_threshold}")
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     data = []
     if kb is not None:

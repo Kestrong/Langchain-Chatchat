@@ -666,18 +666,29 @@ def get_httpx_client(
         return httpx.Client(**kwargs)
 
 
-def get_server_configs() -> Dict:
+def get_server_configs() -> BaseResponse:
     '''
     获取configs中的原始配置项，供前端使用
     '''
-
-    _custom = {
-        "controller_address": fschat_controller_address(),
-        "openai_api_address": fschat_openai_api_address(),
-        "api_address": api_address(),
+    from configs.kb_config import CHUNK_SIZE, OVERLAP_SIZE, ZH_TITLE_ENHANCE
+    server = {
+        "server_endpoints": {
+            "controller_endpoint": fschat_controller_address(),
+            "openai_api_endpoint": fschat_openai_api_address(),
+            "api_endpoint": api_address(),
+        }
     }
 
-    return {**{k: v for k, v in locals().items() if k[0] != "_"}, **_custom}
+    kb_config = {
+        "splitter_config": {
+            "chunk_size": CHUNK_SIZE,
+            "overlap_size": OVERLAP_SIZE,
+            "zh_title_enhance": ZH_TITLE_ENHANCE,
+            "separators": []
+        }
+    }
+
+    return BaseResponse(code=200, data={"server_config": server, "kb_config": kb_config})
 
 
 def list_online_embed_models() -> List[str]:
@@ -770,3 +781,11 @@ def parse_json_md(command):
         if match:
             command = match.group(2)
     return command
+
+
+def truncate_text(text, max_length=250):
+    if not text:
+        return text
+    if len(text) <= max_length:
+        return text
+    return text[:max_length] + "..."

@@ -75,3 +75,12 @@ def get_kb_detail(session, kb_name: str) -> dict:
         return kb.dict()
     else:
         return {}
+
+
+@with_session
+def get_kb_detail_by_id(session, kb_id: int) -> dict:
+    kb: KnowledgeBaseModel = session.query(KnowledgeBaseModel).filter(KnowledgeBaseModel.id == kb_id).first()
+    if kb:
+        return kb.dict()
+    else:
+        return {}
