@@ -17,7 +17,7 @@ from typing import (
 )
 
 import sqlalchemy
-from sqlalchemy import delete
+from sqlalchemy import delete, MetaData
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Session, relationship
 
@@ -33,6 +33,7 @@ from langchain_core.utils import get_from_dict_or_env
 from langchain_core.vectorstores import VectorStore
 
 from langchain_community.vectorstores.utils import maximal_marginal_relevance
+from configs.kb_config import kbs_config
 
 
 class DistanceStrategy(str, enum.Enum):
@@ -45,7 +46,7 @@ class DistanceStrategy(str, enum.Enum):
 
 DEFAULT_DISTANCE_STRATEGY = DistanceStrategy.COSINE
 
-Base = declarative_base()  # type: Any
+Base = declarative_base(metadata=MetaData(schema=kbs_config.get("pg").get("schema")))  # type: Any
 
 _LANGCHAIN_DEFAULT_COLLECTION_NAME = "langchain"
 
@@ -70,7 +71,7 @@ def _get_embedding_collection_store(vector_dimension: Optional[int] = None) -> A
 
         __tablename__ = "langchain_pg_collection"
 
-        name = sqlalchemy.Column(sqlalchemy.String)
+        name = sqlalchemy.Column(sqlalchemy.String, index=True)
         cmetadata = sqlalchemy.Column(JSON)
 
         embeddings = relationship(
@@ -118,6 +119,7 @@ def _get_embedding_collection_store(vector_dimension: Optional[int] = None) -> A
                 f"{CollectionStore.__tablename__}.uuid",
                 ondelete="CASCADE",
             ),
+            index=True,
         )
         collection = relationship(CollectionStore, back_populates="embeddings")
 
@@ -126,7 +128,7 @@ def _get_embedding_collection_store(vector_dimension: Optional[int] = None) -> A
         cmetadata = sqlalchemy.Column(JSON, nullable=True)
 
         # custom_id : any user defined id
-        custom_id = sqlalchemy.Column(sqlalchemy.String, nullable=True)
+        custom_id = sqlalchemy.Column(sqlalchemy.String, nullable=True, index=True)
 
     _classes = (EmbeddingStore, CollectionStore)
 

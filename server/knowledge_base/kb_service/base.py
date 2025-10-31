@@ -1,31 +1,36 @@
 import operator
-import os
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import List, Union, Dict, Tuple
 
-import numpy as np
-from langchain.docstore.document import Document
-from langchain.embeddings.base import Embeddings
+import os
+from datetime import datetime
+
 from pathlib import Path
+import numpy as np
+from langchain.embeddings.base import Embeddings
+from langchain.docstore.document import Document
+
+from server.db.repository.knowledge_base_repository import (
+    add_kb_to_db, delete_kb_from_db, list_kbs_from_db, kb_exists,
+    load_kb_from_db, get_kb_detail,
+)
+from server.db.repository.knowledge_file_repository import (
+    add_file_to_db, delete_file_from_db, delete_files_from_db, file_exists_in_db,
+    count_files_from_db, list_files_from_db, get_file_detail, delete_file_from_db,
+    list_docs_from_db,
+)
 
 from configs import (kbs_config, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD,
                      EMBEDDING_MODEL, KB_INFO)
-from server.db.repository.knowledge_base_repository import (
-    add_kb_to_db, delete_kb_from_db, list_kbs_from_db, kb_exists,
-    load_kb_from_db, )
-from server.db.repository.knowledge_file_repository import (
-    add_file_to_db, delete_files_from_db, file_exists_in_db,
-    count_files_from_db, list_files_from_db, delete_file_from_db,
-    list_docs_from_db,
-)
-from server.embeddings_api import embed_texts, aembed_texts, embed_documents
-from server.knowledge_base.model.kb_document_model import DocumentWithVSId
 from server.knowledge_base.oss import default_oss
 from server.knowledge_base.utils import (
     get_kb_path, get_doc_path, KnowledgeFile,
     list_kbs_from_folder, list_files_from_folder,
 )
+
+from typing import List, Union, Dict, Optional, Tuple
+
+from server.embeddings_api import embed_texts, aembed_texts, embed_documents
+from server.knowledge_base.model.kb_document_model import DocumentWithVSId
 
 
 def normalize(embeddings: List[List[float]]) -> np.ndarray:
@@ -324,7 +329,6 @@ class KBService(ABC):
 
 
 class KBServiceFactory:
-    service_map: Dict[str, KBService] = {}
 
     @staticmethod
     def get_service(kb_name: str,
@@ -333,42 +337,34 @@ class KBServiceFactory:
                     ) -> KBService:
         if isinstance(vector_store_type, str):
             vector_store_type = getattr(SupportedVSType, vector_store_type.upper())
-        if vector_store_type in KBServiceFactory.service_map:
-            return KBServiceFactory.service_map[vector_store_type]
-        service_instance = None
         if SupportedVSType.FAISS == vector_store_type:
             from server.knowledge_base.kb_service.faiss_kb_service import FaissKBService
-            service_instance = FaissKBService(kb_name, embed_model=embed_model)
+            return FaissKBService(kb_name, embed_model=embed_model)
         elif SupportedVSType.PG == vector_store_type:
             from server.knowledge_base.kb_service.pg_kb_service import PGKBService
-            service_instance = PGKBService(kb_name, embed_model=embed_model)
+            return PGKBService(kb_name, embed_model=embed_model)
         elif SupportedVSType.RELYT == vector_store_type:
             from server.knowledge_base.kb_service.relyt_kb_service import RelytKBService
-            service_instance = RelytKBService(kb_name, embed_model=embed_model)
+            return RelytKBService(kb_name, embed_model=embed_model)
         elif SupportedVSType.MILVUS == vector_store_type:
             from server.knowledge_base.kb_service.milvus_kb_service import MilvusKBService
-            service_instance = MilvusKBService(kb_name, embed_model=embed_model)
+            return MilvusKBService(kb_name, embed_model=embed_model)
         elif SupportedVSType.ZILLIZ == vector_store_type:
             from server.knowledge_base.kb_service.zilliz_kb_service import ZillizKBService
-            service_instance = ZillizKBService(kb_name, embed_model=embed_model)
+            return ZillizKBService(kb_name, embed_model=embed_model)
         elif SupportedVSType.DEFAULT == vector_store_type:
             from server.knowledge_base.kb_service.milvus_kb_service import MilvusKBService
-            service_instance = MilvusKBService(kb_name,
-                                               embed_model=embed_model)  # other milvus parameters are set in model_config.kbs_config
+            return MilvusKBService(kb_name,
+                                   embed_model=embed_model)  # other milvus parameters are set in model_config.kbs_config
         elif SupportedVSType.ES == vector_store_type:
             from server.knowledge_base.kb_service.es_kb_service import ESKBService
-            service_instance = ESKBService(kb_name, embed_model=embed_model)
+            return ESKBService(kb_name, embed_model=embed_model)
         elif SupportedVSType.CHROMADB == vector_store_type:
             from server.knowledge_base.kb_service.chromadb_kb_service import ChromaKBService
-            service_instance = ChromaKBService(kb_name, embed_model=embed_model)
+            return ChromaKBService(kb_name, embed_model=embed_model)
         elif SupportedVSType.DEFAULT == vector_store_type:  # kb_exists of default kbservice is False, to make validation easier.
             from server.knowledge_base.kb_service.default_kb_service import DefaultKBService
-            service_instance = DefaultKBService(kb_name)
-
-        if service_instance:
-            KBServiceFactory.service_map[vector_store_type] = service_instance
-
-        return service_instance
+            return DefaultKBService(kb_name)
 
     @staticmethod
     def get_service_by_name(kb_name: str) -> KBService:
