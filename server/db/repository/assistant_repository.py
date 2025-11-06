@@ -112,7 +112,7 @@ def get_assistants_from_db(session, page: int = 1, size: int = 100, keyword: str
                            AssistantModel.name_en.ilike('%{}%'.format(keyword))))
     if code is not None and code.strip() != '':
         filters.append(AssistantModel.code == code)
-    action_codes = get_resource_action_codes()
+    action_codes = get_resource_action_codes(resource_code="flm-chat-assistant-data")
     if action_codes:
         filters.append(AssistantModel.code.in_(action_codes))
     if ids:

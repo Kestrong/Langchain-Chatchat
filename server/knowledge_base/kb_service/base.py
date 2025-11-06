@@ -1,36 +1,31 @@
 import operator
-from abc import ABC, abstractmethod
-
 import os
+from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import List, Union, Dict, Tuple
 
-from pathlib import Path
 import numpy as np
-from langchain.embeddings.base import Embeddings
 from langchain.docstore.document import Document
-
-from server.db.repository.knowledge_base_repository import (
-    add_kb_to_db, delete_kb_from_db, list_kbs_from_db, kb_exists,
-    load_kb_from_db, get_kb_detail,
-)
-from server.db.repository.knowledge_file_repository import (
-    add_file_to_db, delete_file_from_db, delete_files_from_db, file_exists_in_db,
-    count_files_from_db, list_files_from_db, get_file_detail, delete_file_from_db,
-    list_docs_from_db,
-)
+from langchain.embeddings.base import Embeddings
+from pathlib import Path
 
 from configs import (kbs_config, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD,
                      EMBEDDING_MODEL, KB_INFO)
+from server.db.repository.knowledge_base_repository import (
+    add_kb_to_db, delete_kb_from_db, list_kbs_from_db, kb_exists,
+    load_kb_from_db, )
+from server.db.repository.knowledge_file_repository import (
+    add_file_to_db, delete_files_from_db, file_exists_in_db,
+    count_files_from_db, list_files_from_db, delete_file_from_db,
+    list_docs_from_db,
+)
+from server.embeddings_api import embed_texts, aembed_texts, embed_documents
+from server.knowledge_base.model.kb_document_model import DocumentWithVSId
 from server.knowledge_base.oss import default_oss
 from server.knowledge_base.utils import (
     get_kb_path, get_doc_path, KnowledgeFile,
     list_kbs_from_folder, list_files_from_folder,
 )
-
-from typing import List, Union, Dict, Optional, Tuple
-
-from server.embeddings_api import embed_texts, aembed_texts, embed_documents
-from server.knowledge_base.model.kb_document_model import DocumentWithVSId
 
 
 def normalize(embeddings: List[List[float]]) -> np.ndarray:
@@ -66,6 +61,8 @@ class KBService(ABC):
         self.embed_model = embed_model
         self.kb_path = get_kb_path(self.kb_name)
         self.doc_path = get_doc_path(self.kb_name)
+        self.kb_type = None
+        self.tag = None
         self.do_init()
 
     def __repr__(self) -> str:
@@ -77,14 +74,15 @@ class KBService(ABC):
         '''
         pass
 
-    def create_kb(self):
+    def create_kb(self, update=True):
         """
         创建知识库
         """
         if not os.path.exists(self.doc_path):
             os.makedirs(self.doc_path)
         self.do_create_kb()
-        status = add_kb_to_db(self.kb_name, self.kb_name_cn, self.kb_info, self.vs_type(), self.embed_model)
+        status = add_kb_to_db(self.kb_name, self.kb_name_cn, self.kb_info, self.kb_type, self.tag, self.vs_type(),
+                              self.embed_model, update)
         return status
 
     def clear_vs(self):
@@ -137,6 +135,7 @@ class KBService(ABC):
                 status = add_file_to_db(kb_file,
                                         custom_docs=custom_docs,
                                         docs_count=len(docs),
+                                        word_count=sum(len(doc.page_content) for doc in docs),
                                         doc_infos=doc_infos)
             except Exception as e:
                 status = False
@@ -154,15 +153,6 @@ class KBService(ABC):
         status = delete_file_from_db(kb_file)
         if delete_content:
             default_oss().delete_object(kb_file.kb_name, kb_file.filename)
-        return status
-
-    def update_info(self, kb_name_cn: str, kb_info: str):
-        """
-        更新知识库介绍
-        """
-        self.kb_info = kb_info
-        self.kb_name_cn = kb_name_cn
-        status = add_kb_to_db(self.kb_name, self.kb_name_cn, self.kb_info, self.vs_type(), self.embed_model)
         return status
 
     def update_doc(self, kb_file: KnowledgeFile, docs: List[Document] = [], **kwargs):
@@ -424,6 +414,8 @@ def get_kb_file_details(kb_name: str) -> List[Dict]:
     result = {}
 
     for doc in files_in_folder:
+        if not doc:
+            continue
         result[doc] = {
             "kb_name": kb_name,
             "file_name": doc,

@@ -598,20 +598,31 @@ class PGVector(VectorStore):
 
             _type = self.EmbeddingStore
 
-            results: List[Any] = (
-                session.query(
-                    self.EmbeddingStore,
-                    self.distance_strategy(embedding).label("distance"),  # type: ignore
-                )
-                .filter(filter_by)
-                .order_by(sqlalchemy.asc("distance"))
-                .join(
-                    self.CollectionStore,
-                    self.EmbeddingStore.collection_id == self.CollectionStore.uuid,
-                )
-                .limit(k)
-                .all()
+            # 优化查询，添加更多选项以提高准确性
+            query = session.query(
+                self.EmbeddingStore,
+                self.distance_strategy(embedding).label("distance"),  # type: ignore
+            ).filter(filter_by)
+            
+            # 添加特定的连接条件以确保数据完整性
+            query = query.join(
+                self.CollectionStore,
+                self.EmbeddingStore.collection_id == self.CollectionStore.uuid,
             )
+            
+            # 根据不同距离策略优化排序和限制结果
+            if self._distance_strategy == DistanceStrategy.COSINE:
+                # 对于余弦距离，值越小表示越相似(范围通常在0-2之间，0表示完全相同)
+                query = query.order_by(sqlalchemy.asc("distance"))
+            elif self._distance_strategy == DistanceStrategy.EUCLIDEAN:
+                # 对于欧几里得距离，值越小表示越相似
+                query = query.order_by(sqlalchemy.asc("distance"))
+            elif self._distance_strategy == DistanceStrategy.MAX_INNER_PRODUCT:
+                # 对于最大内积，值越大表示越相似
+                query = query.order_by(sqlalchemy.desc("distance"))
+                
+            results: List[Any] = query.limit(k).all()
+            
         return results
 
     def similarity_search_by_vector(

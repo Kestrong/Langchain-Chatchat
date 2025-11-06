@@ -1,5 +1,6 @@
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, and_
 
+from server.db.client.ciam_client import get_resource_action_codes
 from server.db.models.chat_menu_model import ChatMenuModel
 from server.db.session import with_session
 from server.memory.token_info_memory import get_token_info
@@ -52,7 +53,15 @@ def get_menu_from_db(session, page: int = 1, size: int = 10, keyword: str = None
     auth_level = 0
     if userId and str(userId) == '1':
         auth_level = 1
-    filters.append(ChatMenuModel.auth_level <= auth_level)
+        filters.append(ChatMenuModel.auth_level <= auth_level)
+    else:
+        filters.append(or_(
+            ChatMenuModel.auth_level <= auth_level,
+            func.concat(',', ChatMenuModel.auth_users, ',').contains(f',{userId},')
+        ))
+    action_codes = get_resource_action_codes(resource_code="flm-chat-menu-data")
+    if action_codes:
+        filters.append(ChatMenuModel.id.in_(action_codes))
     if keyword is not None and keyword.strip() != '':
         filters.append(or_(ChatMenuModel.menu_name.ilike('%{}%'.format(keyword)),
                            ChatMenuModel.menu_name_en.ilike('%{}%'.format(keyword))))

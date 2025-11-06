@@ -4,7 +4,7 @@ import uuid
 from collections import OrderedDict
 from typing import AsyncIterable, List, Optional
 
-from fastapi import Body
+from fastapi import Body, BackgroundTasks
 from fastapi.concurrency import run_in_threadpool
 from langchain.callbacks import AsyncIteratorCallbackHandler
 from langchain.chains import LLMChain
@@ -71,6 +71,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                   description="使用的prompt模板名称(在configs/prompt_config.py中配置)"
                               ),
                               store_message: bool = Body(True, description="是否保存消息到数据库"),
+                              background_tasks: BackgroundTasks = None
                               ):
     if not knowledge_base_names:
         return BaseResponse(code=500, msg=Message_I18N.API_PARAM_NOT_PRESENT.value.format(name='knowledge_base_names'))
@@ -137,7 +138,8 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                                 top_k=top_k,
                                                 score_threshold=score_threshold,
                                                 file_name="",
-                                                metadata={})
+                                                metadata={},
+                                                background_tasks=background_tasks)
             for d in docs_part:
                 d.metadata['kb_name'] = knowledge_base_name
                 docs.append(d)

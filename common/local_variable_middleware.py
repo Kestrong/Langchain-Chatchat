@@ -62,7 +62,10 @@ class LocaleVariableMiddleware(BaseHTTPMiddleware):
         if token:
             if "/openapi/" in request.url.path and token.startswith("Bearer "):
                 app_code = token.split("Bearer ")[1]
-                check_app_code(app_code)
+                app = check_app_code(app_code)
+                set_token_context(
+                    {'token_type': 'sign',
+                     'token': json.dumps({'appCode': app_code, 'userId': f"app-{app.get('id')}", 'tenantId': None})})
                 logger.info(f"Operator by app code: {app_code}")
             else:
                 set_token_context({'token_type': 'jwt', 'token': token})

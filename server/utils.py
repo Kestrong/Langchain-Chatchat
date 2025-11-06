@@ -670,7 +670,9 @@ def get_server_configs() -> BaseResponse:
     '''
     获取configs中的原始配置项，供前端使用
     '''
-    from configs.kb_config import CHUNK_SIZE, OVERLAP_SIZE, ZH_TITLE_ENHANCE
+    from configs import kb_config
+    import importlib
+    importlib.reload(kb_config)
     server = {
         "server_endpoints": {
             "controller_endpoint": fschat_controller_address(),
@@ -681,9 +683,9 @@ def get_server_configs() -> BaseResponse:
 
     kb_config = {
         "splitter_config": {
-            "chunk_size": CHUNK_SIZE,
-            "overlap_size": OVERLAP_SIZE,
-            "zh_title_enhance": ZH_TITLE_ENHANCE,
+            "chunk_size": kb_config.CHUNK_SIZE,
+            "overlap_size": kb_config.OVERLAP_SIZE,
+            "zh_title_enhance": kb_config.ZH_TITLE_ENHANCE,
             "separators": []
         }
     }
