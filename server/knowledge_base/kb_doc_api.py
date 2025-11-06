@@ -404,6 +404,23 @@ def download_doc(
                                      content_disposition_type, quote(filename)
                                  )})
     except Exception as e:
+        try:
+            if knowledge_base_name == 'samples' and path == 'template':
+                media_types = mimetypes.guess_type(filename)
+                # 使用 os.path.join 和 __file__ 来构建相对于当前文件的路径
+                import os
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                template_path = os.path.join(current_dir, '..', '..', 'knowledge_base', knowledge_base_name, 'content',
+                                             path, filename)
+                template_path = os.path.abspath(template_path)
+                data = open(template_path, 'rb')
+                return StreamingResponse(content=data,
+                                         media_type=media_types[0] if media_types else "application/octet-stream",
+                                         headers={'Content-Disposition': "{}; filename*=utf-8''{}".format(
+                                             content_disposition_type, quote(filename)
+                                         )})
+        except BaseException:
+            pass
         msg = f"{filename} 读取文件失败，错误信息是：{e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
                      exc_info=e if log_verbose else None)
