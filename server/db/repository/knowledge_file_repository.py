@@ -133,7 +133,8 @@ def list_files_from_db(session, kb_name,
                        keyword: str = None,
                        create_time_begin: datetime = None,
                        create_time_end: datetime = None,
-                       only_name: bool = True):
+                       only_name: bool = True,
+                       states: list = None):
     kb = session.query(KnowledgeBaseModel).filter(KnowledgeBaseModel.kb_name == kb_name).first()
     if kb is None:
         if only_name:
@@ -143,6 +144,8 @@ def list_files_from_db(session, kb_name,
     page_num = max(page_num, 1)
     offset = (page_num - 1) * page_size
     filters = [KnowledgeFileModel.kb_id == kb.id]
+    if states:
+        filters.append(KnowledgeFileModel.enabled.in_(states))
     if keyword is not None and keyword.strip() != "":
         filters.append(KnowledgeFileModel.file_name.like(f"%{keyword}%"))
 

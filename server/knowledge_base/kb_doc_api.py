@@ -1,5 +1,4 @@
 import json
-import json
 import mimetypes
 import urllib
 from datetime import datetime
@@ -116,6 +115,10 @@ def list_files(
         knowledge_base_name: str = Query(description="知识库名称"),
         page_size: int = Query(default=10, description="分页大小"),
         page_num: int = Query(default=1, description="页数"),
+        states: List[str] = Query(default=[], description="文件状态",
+                                  openapi_examples={"全部": {"value": ["0BT", "0BF"]},
+                                                    "启用": {"value": ["0BT"]},
+                                                    "禁用": {"value": ["0BF"]}}),
         keyword: str = Query(None, allow_inf_nan=True, description="模糊搜索文件名称"),
         create_time_begin: datetime = Query(None, allow_inf_nan=True, description="创建时间开始"),
         create_time_end: datetime = Query(None, allow_inf_nan=True, description="创建时间结束"),
@@ -131,7 +134,7 @@ def list_files(
     else:
         data, total = kb.list_files(page_size=min(abs(page_size), 1000), page_num=page_num, keyword=keyword,
                                     create_time_begin=create_time_begin, create_time_end=create_time_end,
-                                    only_name=False)
+                                    only_name=False, states=states)
         return PageResponse(data=Page(records=data, total=total))
 
 

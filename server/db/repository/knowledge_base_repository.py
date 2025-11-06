@@ -61,9 +61,9 @@ def list_kbs_from_db(session, page_size: int = 10, page_num: int = 1, kb_type: s
         filters.append(
             or_(KnowledgeBaseModel.kb_name.like(f"%{keyword}%"), KnowledgeBaseModel.kb_name_cn.like(f"%{keyword}%")))
     if kb_type is not None and kb_type.strip() != "":
-        filters.append(KnowledgeBaseModel.kb_type.like(f"%{kb_type}%"))
+        filters.append(KnowledgeBaseModel.kb_type == kb_type)
     if tag is not None and tag.strip() != "":
-        filters.append(KnowledgeBaseModel.tag.like(f"%{tag}%"))
+        filters.append(KnowledgeBaseModel.tag == tag)
     if not all_kbs:
         kbs = session.query(KnowledgeBaseModel).filter(*filters).offset(offset).limit(page_size).all()
         total = session.query(func.count(KnowledgeBaseModel.id)).filter(*filters).scalar()

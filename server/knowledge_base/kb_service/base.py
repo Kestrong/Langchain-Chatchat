@@ -174,10 +174,11 @@ class KBService(ABC):
                    keyword: str = None,
                    create_time_begin: datetime = None,
                    create_time_end: datetime = None,
-                   only_name: bool = True):
+                   only_name: bool = True,
+                   states: list = None):
         return list_files_from_db(self.kb_name, page_size=page_size, page_num=page_num, keyword=keyword,
                                   create_time_begin=create_time_begin, create_time_end=create_time_end,
-                                  only_name=only_name)
+                                  only_name=only_name,states=states)
 
     def count_files(self):
         return count_files_from_db(self.kb_name)
