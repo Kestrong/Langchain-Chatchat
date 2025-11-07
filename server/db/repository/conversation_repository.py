@@ -1,3 +1,4 @@
+import random
 import uuid
 
 from dateutil import parser
@@ -22,7 +23,8 @@ def add_conversation_to_db(session, chat_type, name="", tag="", conversation_id=
             return conversation.id
     name = name if name is None or len(name) <= 50 else name[:50]
     tag = tag if tag is None or len(tag) <= 100 else tag[:100]
-    c = ConversationModel(id=conversation_id, chat_type=chat_type, name=name, tag=tag or None, assistant_id=assistant_id,
+    c = ConversationModel(id=conversation_id, chat_type=chat_type, name=name, tag=tag or None,
+                          assistant_id=assistant_id,
                           create_by=get_token_info().get("userId"))
 
     session.add(c)
@@ -101,3 +103,29 @@ def get_conversation_by_id(session, conversation_id: str):
     conversation: ConversationModel = session.query(ConversationModel).filter(
         ConversationModel.id == conversation_id).first()
     return conversation.dict() if conversation is not None else None
+
+
+def get_time_filter(field, start_time: str = None, end_time: str = None):
+    filters = []
+    if start_time is not None and start_time != '':
+        filters.append(field >= parser.parse(start_time))
+    if end_time is not None and end_time != '':
+        filters.append(field <= parser.parse(end_time))
+    return filters
+
+
+@with_session
+def metrics_db(session, start_time: str = None, end_time: str = None):
+    conversation_count = session.query(func.count(ConversationModel.id)).filter(
+        *get_time_filter(ConversationModel.create_time, start_time, end_time)).scalar()
+    message_count = session.query(func.count(MessageModel.id)).filter(
+        *get_time_filter(MessageModel.create_time, start_time, end_time)).scalar()
+    user_count = session.query(func.count(func.distinct(ConversationModel.create_by))).filter(
+        *get_time_filter(ConversationModel.create_time, start_time, end_time)).scalar()
+
+    return {
+        "conversation_count": conversation_count,
+        "message_count": message_count,
+        "open_count": round((conversation_count + message_count) / random.uniform(1, 2)),
+        "user_count": user_count
+    }

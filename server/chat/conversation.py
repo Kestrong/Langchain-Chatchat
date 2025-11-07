@@ -8,7 +8,8 @@ from openpyxl import Workbook
 
 from configs.basic_config import logger, log_verbose
 from server.db.repository.conversation_repository import add_conversation_to_db, update_conversation_to_db, \
-    delete_conversation_from_db, get_conversation_from_db, delete_user_conversation_from_db, get_conversation_by_id
+    delete_conversation_from_db, get_conversation_from_db, delete_user_conversation_from_db, get_conversation_by_id, \
+    metrics_db
 from server.db.repository.message_repository import delete_message_from_db, \
     filter_message_page, list_user_feedback_messages
 from server.memory.message_i18n import Message_I18N
@@ -235,3 +236,10 @@ def export_feedback_to_excel(query: str = Query(None, description="查询关键�
         msg = f"导出用户反馈消息到Excel出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.COMMON_CALL_FAILED.value)
+
+
+def metrics(start_time: str = Query(None, description="开始时间:yyyy-MM-dd HH:mm:ss"),
+            end_time: str = Query(None, description="结束时间:yyyy-MM-dd HH:mm:ss")) -> BaseResponse:
+    logger.debug(f"start_time: {start_time}, end_time:{end_time}")
+    data = metrics_db(start_time=start_time, end_time=end_time)
+    return BaseResponse(code=200, data=data)

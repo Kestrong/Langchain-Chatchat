@@ -20,7 +20,7 @@ class MessageModel(Base):
     feedback_score = Column(Integer, default=None, comment='用户评分')
     feedback_reason = Column(String(255), default=None, comment='用户评分理由')
     feedback_time = Column(DateTime, default=None, comment='反馈时间')
-    create_time = Column(DateTime, default=func.now(), comment='创建时间')
+    create_time = Column(DateTime, default=func.now(), index=True, comment='创建时间')
     create_by = Column(String(50), comment='创建人id')
     response_time = Column(DateTime, default=None, comment='回复时间')
 
@@ -28,7 +28,6 @@ class MessageModel(Base):
         return f"<message(id='{self.id}', conversation_id='{self.conversation_id}', chat_type='{self.chat_type}', query='{self.query}', response='{self.response}',meta_data='{self.meta_data}',feedback_score='{self.feedback_score}',feedback_reason='{self.feedback_reason}', feedback_time='{self.feedback_time}', create_time='{self.create_time}', create_by='{self.create_by}', response_time='{self.response_time}')>"
 
     def dict(self):
-
         return {
             "id": self.id,
             "conversation_id": self.conversation_id,

@@ -79,19 +79,19 @@ def search_docs(
         if query:
             docs = kb.search_docs(query, top_k, score_threshold)
             data = [DocumentWithVSId(**x[0].dict(), score=x[1], id=x[0].metadata.get("id")) for x in docs]
+            filenames = list(set([x.metadata.get('source') for x in data]))
+            filenames = get_enabled_filenames(kb_id=kb_db.get("id"), filenames=filenames)
+            if filenames:
+                data = [x for x in data if x.metadata.get('source') in filenames]
+            else:
+                data = []
+            if background_tasks:
+                background_tasks.add_task(batch_increment_files_hit_count, kb_id=kb_db.get("id"), filenames=filenames)
         elif file_name or metadata:
             data = kb.list_docs(file_name=file_name, metadata=metadata)
             for d in data:
                 if "vector" in d.metadata:
                     del d.metadata["vector"]
-        filenames = list(set([x.metadata.get('source') for x in data]))
-        filenames = get_enabled_filenames(kb_id=kb_db.get("id"), filenames=filenames)
-        if filenames:
-            data = [x for x in data if x.metadata.get('source') in filenames]
-        else:
-            data = []
-        if background_tasks:
-            background_tasks.add_task(batch_increment_files_hit_count, kb_id=kb_db.get("id"), filenames=filenames)
     return data
 
 

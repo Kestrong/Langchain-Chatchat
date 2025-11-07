@@ -1,6 +1,6 @@
 import datetime
 
-from sqlalchemy import func, or_
+from sqlalchemy import func
 
 from common.exceptions import ChatBusinessException
 from server.db.models.knowledge_base_model import KnowledgeBaseModel
@@ -58,8 +58,7 @@ def list_kbs_from_db(session, page_size: int = 10, page_num: int = 1, kb_type: s
     if tenant_id is not None and tenant_id != "":
         filters.append(KnowledgeBaseModel.tenant_id == tenant_id)
     if keyword is not None and keyword.strip() != "":
-        filters.append(
-            or_(KnowledgeBaseModel.kb_name.like(f"%{keyword}%"), KnowledgeBaseModel.kb_name_cn.like(f"%{keyword}%")))
+        filters.append(KnowledgeBaseModel.kb_name_cn.like(f"%{keyword}%"))
     if kb_type is not None and kb_type.strip() != "":
         filters.append(KnowledgeBaseModel.kb_type == kb_type)
     if tag is not None and tag.strip() != "":
