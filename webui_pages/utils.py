@@ -99,8 +99,7 @@ class ApiRequest:
     def delete(
             self,
             url: str,
-            data: Dict = None,
-            json: Dict = None,
+            params: Dict = None,
             retry: int = 3,
             stream: bool = False,
             **kwargs: Any
@@ -108,9 +107,9 @@ class ApiRequest:
         while retry > 0:
             try:
                 if stream:
-                    return self.client.stream("DELETE", url, data=data, json=json, **kwargs)
+                    return self.client.stream("DELETE", url, params=params, **kwargs)
                 else:
-                    return self.client.delete(url, data=data, json=json, **kwargs)
+                    return self.client.delete(url, params=params, **kwargs)
             except Exception as e:
                 msg = f"error when delete {url}: {e}"
                 logger.error(f'{e.__class__.__name__}: {msg}',
@@ -383,7 +382,7 @@ class ApiRequest:
         data = {
             "query": query,
             "knowledge_base_names": knowledge_base_names,
-            "conversation_id":  conversation_id,
+            "conversation_id": conversation_id,
             "top_k": top_k,
             "score_threshold": score_threshold,
             "history": history,
@@ -561,9 +560,9 @@ class ApiRequest:
         '''
         对应api.py/knowledge_base/delete_knowledge_base接口
         '''
-        response = self.post(
+        response = self.delete(
             "/knowledge_base/delete_knowledge_base",
-            json=f"{knowledge_base_name}",
+            params={"knowledge_base_name": knowledge_base_name},
         )
         return self._get_response_value(response, as_json=True)
 

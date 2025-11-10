@@ -1,5 +1,6 @@
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, and_
 
+from server.db.client.ciam_client import get_resource_action_codes
 from server.db.models.chat_menu_model import ChatMenuModel
 from server.db.session import with_session
 from server.memory.token_info_memory import get_token_info
@@ -7,9 +8,9 @@ from server.memory.token_info_memory import get_token_info
 
 @with_session
 def add_menu_to_db(session, menu_name: str, menu_name_en: str, menu_icon: str, url: str, auth_level: int, enabled: str,
-                   sort_id: int):
+                   sort_id: int, auth_users:str):
     c = ChatMenuModel(menu_name=menu_name, menu_name_en=menu_name_en, menu_icon=menu_icon, url=url,
-                      auth_level=auth_level, enabled=enabled,
+                      auth_level=auth_level, enabled=enabled, auth_users=auth_users,
                       create_by=get_token_info().get("userId"), sort_id=sort_id)
     session.add(c)
     session.flush()
@@ -18,8 +19,7 @@ def add_menu_to_db(session, menu_name: str, menu_name_en: str, menu_icon: str, u
 
 @with_session
 def update_menu_to_db(session, menu_id: int, menu_name: str, menu_name_en: str, menu_icon: str, url: str,
-                      auth_level: int, enabled: str,
-                      sort_id: int):
+                      auth_level: int, enabled: str, auth_users:str ,sort_id: int):
     menu: ChatMenuModel = session.query(ChatMenuModel).filter(ChatMenuModel.id == menu_id).first()
     if menu is not None:
         menu.menu_name = menu_name
@@ -29,6 +29,7 @@ def update_menu_to_db(session, menu_id: int, menu_name: str, menu_name_en: str, 
         menu.auth_level = auth_level
         menu.enabled = enabled
         menu.sort_id = sort_id
+        menu.auth_users = auth_users
     else:
         raise ValueError("ChatMenu with id {} does not exist".format(menu))
     return menu.id
@@ -52,7 +53,15 @@ def get_menu_from_db(session, page: int = 1, size: int = 10, keyword: str = None
     auth_level = 0
     if userId and str(userId) == '1':
         auth_level = 1
-    filters.append(ChatMenuModel.auth_level <= auth_level)
+        filters.append(ChatMenuModel.auth_level <= auth_level)
+    else:
+        filters.append(or_(
+            ChatMenuModel.auth_level <= auth_level,
+            func.concat(',', ChatMenuModel.auth_users, ',').contains(f',{userId},')
+        ))
+    action_codes = get_resource_action_codes(resource_code="flm-chat-menu-data")
+    if action_codes:
+        filters.append(ChatMenuModel.id.in_(action_codes))
     if keyword is not None and keyword.strip() != '':
         filters.append(or_(ChatMenuModel.menu_name.ilike('%{}%'.format(keyword)),
                            ChatMenuModel.menu_name_en.ilike('%{}%'.format(keyword))))

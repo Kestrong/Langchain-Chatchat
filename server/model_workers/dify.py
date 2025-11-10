@@ -12,6 +12,7 @@ from server.db.repository import get_assistant_simple_from_db, get_model_metadat
 from server.knowledge_base.oss import default_oss
 from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelWorker, ApiChatParams
+from server.utils import truncate_text
 
 # 自定义 MIME 类型和文件类别映射
 MIME_TYPE_MAP = {
@@ -158,6 +159,19 @@ class DifyWorker(ApiModelWorker):
                     {"conversation_id": conversation_id, "message_id": message_id,
                      "user": user, "api_key": api_key, "answer": msg})
                 return mark + inner_json + mark
+            elif event == "message_end":
+                metadata = json_data.get('metadata') or {}
+                retriever_resources = metadata.get('retriever_resources') or []
+                if retriever_resources:
+                    conversation_id = json_data.get('conversation_id')
+                    message_id = json_data.get('message_id')
+                    docs = [{'knowledge_base_name': r.get('dataset_name'), 'filename': r.get('document_name'),
+                             "page_content": truncate_text(r.get('content'))} for r in retriever_resources]
+                    inner_json = json.dumps(
+                        {"conversation_id": conversation_id, "message_id": message_id,
+                         "user": user, "api_key": api_key, "docs": docs})
+                    return mark + inner_json + mark
+                return None
             elif event == "tts_message":
                 return json_data.get('audio', '')
             elif event == "error":
@@ -309,9 +323,17 @@ class DifyWorker(ApiModelWorker):
                     else:
                         conversation_id = json_data.get('conversation_id')
                         message_id = json_data.get('message_id')
-                        inner_json = json.dumps({"conversation_id": conversation_id, "message_id": message_id,
-                                                 "user": data.get('user'), "api_key": api_key,
-                                                 "answer": json_data.get('answer', '')})
+                        inner_json_obj = {"conversation_id": conversation_id, "message_id": message_id,
+                                          "user": data.get('user'), "api_key": api_key,
+                                          "answer": json_data.get('answer', '')}
+                        metadata = json_data.get('metadata') or {}
+                        retriever_resources = metadata.get('retriever_resources') or []
+                        if retriever_resources:
+                            docs = [{'knowledge_base_name': r.get('dataset_name'), 'filename': r.get('document_name'),
+                                     "page_content": truncate_text(r.get('content'))}
+                                    for r in retriever_resources]
+                            inner_json_obj['docs'] = docs
+                        inner_json = json.dumps(inner_json_obj)
                         yield {"error_code": 0, "text": mark + inner_json + mark}
         except Exception as e:
             logger.error(f"{e}")

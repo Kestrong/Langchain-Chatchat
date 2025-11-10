@@ -1,6 +1,6 @@
 from typing import List, Optional, Union, Dict, Any
 
-from fastapi import Body
+from fastapi import Body, BackgroundTasks
 from starlette.requests import Request
 
 from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD, HISTORY_LEN, TOP_P
@@ -56,7 +56,8 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                                 description="是否对搜索结果进行拆分（主要用于metaphor搜索引擎）"),
                       tool_names: List[str] = Body([], description="工具的名称"),
                       api_names: List[str] = Body([], description="api的名称"),
-                      request: Request = None
+                      request: Request = None,
+                      background_tasks: BackgroundTasks = None,
                       ):
     assistant = None
     workflow_config = None
@@ -74,7 +75,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                 stream=stream, model_name=model_name, tag=tag, top_p=top_p,
                                 temperature=temperature, max_tokens=max_tokens, prompt_name=prompt_name,
                                 store_message=store_message, split_result=split_result, tool_names=tool_names,
-                                api_names=api_names, request=request)
+                                api_names=api_names, request=request, background_tasks=background_tasks)
 
 
 async def do_chat_router(query: str,
@@ -102,7 +103,8 @@ async def do_chat_router(query: str,
                          split_result: bool = False,
                          tool_names: List[str] = None,
                          api_names: List[str] = None,
-                         request: Request = None
+                         request: Request = None,
+                         background_tasks: BackgroundTasks = None,
                          ):
     if un_format_online_llm_model(model_name):
         extra["knowledge_id"] = knowledge_id
@@ -181,7 +183,7 @@ async def do_chat_router(query: str,
                                          score_threshold=score_threshold, history_len=history_len, history=history,
                                          stream=stream, model_name=model_name, temperature=temperature, tag=tag,
                                          max_tokens=max_tokens, prompt_name=prompt_name, store_message=store_message,
-                                         top_p=top_p, )
+                                         top_p=top_p, background_tasks=background_tasks)
 
     elif chat_type == ChatType.COMPLETION.value:
 

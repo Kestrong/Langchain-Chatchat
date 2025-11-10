@@ -87,7 +87,7 @@ def create_model_worker_app(log_level: str = "INFO", **kwargs) -> FastAPI:
 
     parser = argparse.ArgumentParser()
     args = parser.parse_args([])
-
+    args.max_model_len = None
     for k, v in kwargs.items():
         setattr(args, k, v)
     if worker_class := kwargs.get("langchain_model"):  # Langchian支持的模型不用做操作
@@ -100,7 +100,8 @@ def create_model_worker_app(log_level: str = "INFO", **kwargs) -> FastAPI:
         worker = worker_class(model_names=args.model_names,
                               controller_addr=args.controller_address,
                               limit_worker_concurrency=args.limit_worker_concurrency,
-                              worker_addr=args.worker_address)
+                              worker_addr=args.worker_address,
+                              context_len=args.max_model_len or MAX_TOKENS_INPUT)
         # sys.modules["fastchat.serve.base_model_worker"].worker = worker
         sys.modules["fastchat.serve.base_model_worker"].logger.setLevel(log_level)
     # 本地模型
@@ -177,7 +178,7 @@ def create_model_worker_app(log_level: str = "INFO", **kwargs) -> FastAPI:
                 llm_engine=engine,
                 conv_template=args.conv_template,
             )
-            worker.context_len = MAX_TOKENS_INPUT
+            worker.context_len = args.max_model_len or MAX_TOKENS_INPUT
             sys.modules["fastchat.serve.vllm_worker"].engine = engine
             sys.modules["fastchat.serve.vllm_worker"].worker = worker
             sys.modules["fastchat.serve.vllm_worker"].logger.setLevel(log_level)
@@ -204,6 +205,7 @@ def create_model_worker_app(log_level: str = "INFO", **kwargs) -> FastAPI:
             args.stream_interval = 2
             args.no_register = False
             args.embed_in_truncate = False
+            args.max_model_len = None
             for k, v in kwargs.items():
                 setattr(args, k, v)
             if args.gpus:
@@ -244,7 +246,7 @@ def create_model_worker_app(log_level: str = "INFO", **kwargs) -> FastAPI:
                 stream_interval=args.stream_interval,
                 conv_template=args.conv_template,
                 embed_in_truncate=args.embed_in_truncate,
-                context_len=MAX_TOKENS_INPUT,
+                context_len=args.max_model_len or MAX_TOKENS_INPUT,
             )
             sys.modules["fastchat.serve.model_worker"].args = args
             sys.modules["fastchat.serve.model_worker"].gptq_config = gptq_config

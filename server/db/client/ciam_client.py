@@ -1,6 +1,7 @@
 import os
 
 from common.exceptions import ChatBusinessException
+
 try:
     from configs import CIAM_ADMIN_HOST, CIAM_ADMIN_ENABLED
 except ImportError:
@@ -11,7 +12,7 @@ from server.memory.token_info_memory import get_token
 from server.utils import get_httpx_client
 
 
-def list_resources() -> list:
+def list_resources(resource_code: str) -> list:
     if not CIAM_ADMIN_ENABLED:
         return []
 
@@ -29,13 +30,13 @@ def list_resources() -> list:
             raise ChatBusinessException(data.get("message"))
         resources = [
             item for item in data.get("data", {}).get("list", [])
-            if "flm-chat-assistant-data" in item.get("resourceCode", "")
+            if resource_code in item.get("resourceCode", "")
         ]
         return resources
 
 
-def get_resource_action_codes() -> list:
-    resources = list_resources()
+def get_resource_action_codes(resource_code: str) -> list:
+    resources = list_resources(resource_code=resource_code)
     action_codes = []
     for resource in resources:
         resource_actions = resource.get("resourceActions", [])

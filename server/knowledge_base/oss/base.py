@@ -95,15 +95,15 @@ class Base:
                 target_path = os.path.realpath(entry.path)
                 with os.scandir(target_path) as target_it:
                     for target_entry in target_it:
-                        process_entry(target_entry)
+                        yield from process_entry(target_entry)
             elif entry.is_file():
                 file_path = (Path(os.path.relpath(entry.path, bucket_name)).as_posix())  # 路径统一为 posix 格式
-                return file_path
+                yield file_path
             elif entry.is_dir():
                 with os.scandir(entry.path) as it:
                     for sub_entry in it:
-                        process_entry(sub_entry)
+                        yield from process_entry(sub_entry)
 
         with os.scandir(bucket_name) as it:
             for entry in it:
-                yield process_entry(entry)
+                yield from process_entry(entry)

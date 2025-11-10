@@ -8,6 +8,7 @@ from configs.basic_config import logger, log_verbose
 from server.db.repository import get_model_metadata_from_db
 from server.db.repository.assistant_repository import add_assistant_to_db, update_assistant_to_db, \
     delete_assistant_from_db, get_assistants_from_db, get_assistant_detail_from_db
+from server.db.repository.chat_dict_repository import get_dicts_by_type_from_db
 from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import is_english
 from server.utils import BaseResponse
@@ -126,3 +127,21 @@ def get_assistants(page: int = Query(default=1, description="页码"),
 def get_assistant_detail(id: int = Query(description="助手id")) -> BaseResponse:
     assistant = get_assistant_detail_from_db(assistant_id=id)
     return BaseResponse(code=200, data={'assistant': assistant})
+
+
+def get_dicts_by_type(dict_type: str = Query(description="字典类型")) -> BaseResponse:
+    """
+    根据字典类型获取所有字典项
+    """
+    try:
+        dicts = get_dicts_by_type_from_db(dict_type=dict_type)
+        if is_english():
+            for d in dicts:
+                if d.get("dict_name"):
+                    d["dict_name_cn"] = d["dict_name"]
+        return BaseResponse(code=200, data=dicts)
+    except Exception as e:
+        msg = f"查询字典项出错： {e}"
+        logger.error(f'{e.__class__.__name__}: {msg}',
+                     exc_info=e if log_verbose else None)
+        return BaseResponse(code=500, msg=Message_I18N.COMMON_CALL_FAILED.value)

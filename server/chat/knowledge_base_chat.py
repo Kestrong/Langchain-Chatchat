@@ -4,7 +4,7 @@ import uuid
 from collections import OrderedDict
 from typing import AsyncIterable, List, Optional
 
-from fastapi import Body
+from fastapi import Body, BackgroundTasks
 from fastapi.concurrency import run_in_threadpool
 from langchain.callbacks import AsyncIteratorCallbackHandler
 from langchain.chains import LLMChain
@@ -28,7 +28,7 @@ from server.knowledge_base.kb_doc_api import search_docs
 from server.knowledge_base.kb_service.base import KBServiceFactory
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
-from server.utils import BaseResponse, get_prompt_template
+from server.utils import BaseResponse, get_prompt_template, truncate_text
 from server.utils import embedding_device
 from server.utils import wrap_done, get_ChatOpenAI, get_model_path
 
@@ -71,6 +71,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                   description="使用的prompt模板名称(在configs/prompt_config.py中配置)"
                               ),
                               store_message: bool = Body(True, description="是否保存消息到数据库"),
+                              background_tasks: BackgroundTasks = None
                               ):
     if not knowledge_base_names:
         return BaseResponse(code=500, msg=Message_I18N.API_PARAM_NOT_PRESENT.value.format(name='knowledge_base_names'))
@@ -137,7 +138,8 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                                 top_k=top_k,
                                                 score_threshold=score_threshold,
                                                 file_name="",
-                                                metadata={})
+                                                metadata={},
+                                                background_tasks=background_tasks)
             for d in docs_part:
                 d.metadata['kb_name'] = knowledge_base_name
                 docs.append(d)
@@ -175,7 +177,8 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             context += doc.page_content + "\n"
             filename = doc.metadata["source"]
             if filename not in exist_file:
-                source_documents.append({"filename": filename, "knowledge_base_name": doc.metadata.get("kb_name")})
+                source_documents.append({"filename": filename, "knowledge_base_name": doc.metadata.get("kb_name"),
+                                         "page_content": truncate_text(doc.page_content)})
                 exist_file.append(filename)
         conversation_callback.docs = source_documents
 

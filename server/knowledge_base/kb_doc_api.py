@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Dict
 from urllib.parse import quote
 
-from fastapi import File, Form, Body, Query, UploadFile
+from fastapi import File, Form, Body, Query, UploadFile, BackgroundTasks
 from langchain.docstore.document import Document
 from pydantic import Json
 from sse_starlette import EventSourceResponse
@@ -15,14 +15,46 @@ from configs import (DEFAULT_VS_TYPE, EMBEDDING_MODEL,
                      VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD,
                      CHUNK_SIZE, OVERLAP_SIZE, ZH_TITLE_ENHANCE,
                      logger, log_verbose, MAX_KNOWLEDGE_FILE_SIZE)
-from server.db.repository.knowledge_file_repository import get_file_detail
+from server.db.repository import get_kb_detail_by_id, get_kb_detail
+from server.db.repository.knowledge_file_repository import get_file_detail, batch_increment_files_hit_count, \
+    get_enabled_filenames, update_file_enabled
 from server.knowledge_base.kb_service.base import KBServiceFactory
 from server.knowledge_base.model.kb_document_model import DocumentWithVSId
 from server.knowledge_base.oss import default_oss
 from server.knowledge_base.utils import (validate_kb_name, list_files_from_folder, files2docs_in_thread, KnowledgeFile)
 from server.memory.message_i18n import Message_I18N
 from server.utils import BaseResponse, run_in_thread_pool, PageResponse, Page
-from common.exceptions import ChatBusinessException
+
+
+def retrieval(
+        query: str = Body("", description="用户输入", examples=["你好"]),
+        knowledge_id: str = Body(..., description="知识库名称", examples=["samples"]),
+        retrieval_setting: Dict = Body({}, description="向量检索设置"),
+        metadata_condition: Dict = Body({}, description="根据 metadata 进行过滤"),
+        background_tasks: BackgroundTasks = None):
+    try:
+        kb_id = int(knowledge_id)
+        kb = get_kb_detail_by_id(kb_id=kb_id)
+        if kb:
+            knowledge_id = kb["kb_name"]
+    except Exception:
+        pass
+    top_k = retrieval_setting.get("top_k", VECTOR_SEARCH_TOP_K)
+    score_threshold = retrieval_setting.get("score_threshold", SCORE_THRESHOLD)
+    docs = search_docs(
+        query=query,
+        knowledge_base_name=knowledge_id,
+        top_k=top_k,
+        score_threshold=score_threshold,
+        file_name="",
+        metadata={},
+        background_tasks=background_tasks
+    )
+    records = []
+    for doc in docs:
+        record = {"metadata": {}, "score": doc.score, "title": doc.metadata.get('source'), "content": doc.page_content}
+        records.append(record)
+    return {"records": records}
 
 
 def search_docs(
@@ -36,13 +68,25 @@ def search_docs(
                                       ge=0, le=1),
         file_name: str = Body("", description="文件名称，支持 sql 通配符"),
         metadata: dict = Body({}, description="根据 metadata 进行过滤，仅支持一级键"),
+        background_tasks: BackgroundTasks = None
 ) -> List[DocumentWithVSId]:
-    kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
+    logger.debug(f"query: {query}, kb_name: {knowledge_base_name}, top_k: {top_k}, score_threshold: {score_threshold}")
+    kb_db = get_kb_detail(kb_name=knowledge_base_name)
     data = []
-    if kb is not None:
+    if kb_db is not None:
+        kb = KBServiceFactory.get_service(kb_name=knowledge_base_name, vector_store_type=kb_db.get('vs_type'),
+                                          embed_model=kb_db.get('embed_model'))
         if query:
             docs = kb.search_docs(query, top_k, score_threshold)
             data = [DocumentWithVSId(**x[0].dict(), score=x[1], id=x[0].metadata.get("id")) for x in docs]
+            filenames = list(set([x.metadata.get('source') for x in data]))
+            filenames = get_enabled_filenames(kb_id=kb_db.get("id"), filenames=filenames)
+            if filenames:
+                data = [x for x in data if x.metadata.get('source') in filenames]
+            else:
+                data = []
+            if background_tasks:
+                background_tasks.add_task(batch_increment_files_hit_count, kb_id=kb_db.get("id"), filenames=filenames)
         elif file_name or metadata:
             data = kb.list_docs(file_name=file_name, metadata=metadata)
             for d in data:
@@ -71,6 +115,10 @@ def list_files(
         knowledge_base_name: str = Query(description="知识库名称"),
         page_size: int = Query(default=10, description="分页大小"),
         page_num: int = Query(default=1, description="页数"),
+        states: List[str] = Query(default=[], description="文件状态",
+                                  openapi_examples={"全部": {"value": ["0BT", "0BF"]},
+                                                    "启用": {"value": ["0BT"]},
+                                                    "禁用": {"value": ["0BF"]}}),
         keyword: str = Query(None, allow_inf_nan=True, description="模糊搜索文件名称"),
         create_time_begin: datetime = Query(None, allow_inf_nan=True, description="创建时间开始"),
         create_time_end: datetime = Query(None, allow_inf_nan=True, description="创建时间结束"),
@@ -86,7 +134,7 @@ def list_files(
     else:
         data, total = kb.list_files(page_size=min(abs(page_size), 1000), page_num=page_num, keyword=keyword,
                                     create_time_begin=create_time_begin, create_time_end=create_time_end,
-                                    only_name=False)
+                                    only_name=False, states=states)
         return PageResponse(data=Page(records=data, total=total))
 
 
@@ -232,31 +280,6 @@ def delete_docs(
     return BaseResponse(code=200, msg=Message_I18N.COMMON_CALL_SUCCESS.value, data={"failed_files": failed_files})
 
 
-def update_info(
-        knowledge_base_name: str = Body(max_length=50, examples=["samples"], description="不允许修改"),
-        knowledge_base_name_cn: str = Body(max_length=50, examples=["samples知识库"]),
-        kb_info: str = Body(..., description="知识库介绍", examples=["这是一个知识库"]),
-):
-    if not validate_kb_name(knowledge_base_name):
-        return BaseResponse(code=500, msg="Invalid Knowledge Base Name")
-
-    kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
-    if kb is None:
-        return BaseResponse(code=500, msg=Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=knowledge_base_name))
-    try:
-        kb.update_info(knowledge_base_name_cn, kb_info)
-    except ChatBusinessException as e:
-        logger.error(f"{e}")
-        return BaseResponse(code=500, msg=f"{e}")
-    except Exception as e:
-        msg = f"修改知识库出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
-        return BaseResponse(code=500, msg=Message_I18N.API_UPDATE_ERROR.value)
-    return BaseResponse(code=200, msg=Message_I18N.COMMON_CALL_SUCCESS.value,
-                        data={"knowledge_base_name_cn": knowledge_base_name_cn, "kb_info": kb_info})
-
-
 def update_docs(
         knowledge_base_name: str = Body(..., description="知识库名称", examples=["samples"]),
         file_names: List[str] = Body(..., description="文件名称，支持多文件", examples=[["file_name1", "text.txt"]]),
@@ -333,6 +356,21 @@ def update_docs(
     return BaseResponse(code=200, msg=Message_I18N.COMMON_CALL_SUCCESS.value, data={"failed_files": failed_files})
 
 
+def update_enabled(status: str = Body(default='0BT', description="状态", examples=["0BT", "0BF"]),
+                   file_id: int = Body(default=-1, description="文件id")) -> BaseResponse:
+    if status not in ['0BT', '0BF']:
+        return BaseResponse(code=500, msg="status must be '0BT' or '0BF'")
+    try:
+        update_file_enabled(file_id=file_id, enabled=status)
+        return BaseResponse(code=200, msg=Message_I18N.COMMON_CALL_SUCCESS.value,
+                            data={"file_id": file_id, "status": status})
+    except Exception as e:
+        msg = f"修改文件[{file_id}]失败，错误信息是：{e}"
+        logger.error(f'{e.__class__.__name__}: {msg}',
+                     exc_info=e if log_verbose else None)
+        return BaseResponse(code=500, msg=Message_I18N.API_UPDATE_ERROR.value)
+
+
 def download_doc(
         knowledge_base_name: str = Query(..., description="知识库名称", examples=["samples"]),
         filename: str = Query(..., description="文件名称", examples=["test.txt"]),
@@ -345,7 +383,7 @@ def download_doc(
     if not validate_kb_name(knowledge_base_name):
         return BaseResponse(code=500, msg="Invalid knowledge base name")
 
-    if knowledge_base_name != 'temp':
+    if knowledge_base_name not in ["samples", "temp"]:
         kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
         if kb is None:
             return BaseResponse(code=500, msg=Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=knowledge_base_name))
@@ -366,6 +404,23 @@ def download_doc(
                                      content_disposition_type, quote(filename)
                                  )})
     except Exception as e:
+        try:
+            if knowledge_base_name == 'samples' and path == 'template':
+                media_types = mimetypes.guess_type(filename)
+                # 使用 os.path.join 和 __file__ 来构建相对于当前文件的路径
+                import os
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                template_path = os.path.join(current_dir, '..', '..', 'knowledge_base', knowledge_base_name, 'content',
+                                             path, filename)
+                template_path = os.path.abspath(template_path)
+                data = open(template_path, 'rb')
+                return StreamingResponse(content=data,
+                                         media_type=media_types[0] if media_types else "application/octet-stream",
+                                         headers={'Content-Disposition': "{}; filename*=utf-8''{}".format(
+                                             content_disposition_type, quote(filename)
+                                         )})
+        except BaseException:
+            pass
         msg = f"{filename} 读取文件失败，错误信息是：{e}"
         logger.error(f'{e.__class__.__name__}: {msg}',
                      exc_info=e if log_verbose else None)

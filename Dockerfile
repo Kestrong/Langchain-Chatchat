@@ -5,7 +5,8 @@ MAINTAINER "KeStrong"<kestrong@foxmail.com>
 LABEL authors="kesc"
 ENV TZ="Asia/Shanghai"
 ENV MODEL_ROOT_PATH='/llm/models' KB_ROOT_PATH='/llm/knowledges' EMBEDDING_DEVICE='auto' LLM_DEVICE='auto'
+ENV FASTCHAT_WORKER_API_TIMEOUT=1200
 ENV ARGS="-a"
 ENV PROJECT_DIR="/llm/projects/gops-chat"
-COPY /Lanchain-Chatchat ${PROJECT_DIR}/
+COPY . ${PROJECT_DIR}/
 CMD sh "${PROJECT_DIR}/boot-server-on-docker.sh"

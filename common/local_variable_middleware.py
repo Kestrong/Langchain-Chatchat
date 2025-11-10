@@ -7,9 +7,9 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from configs import CIAM_TOKEN_COOKIE_NAME, MOCK_TOKEN_INFO_ENABLED
+from configs import CIAM_TOKEN_COOKIE_NAME, MOCK_TOKEN_INFO_ENABLED, logger
 from server.db.repository import get_app_by_api_key_from_db
-from server.memory.token_info_memory import set_token_context, i18n_context
+from server.memory.token_info_memory import set_token_context, i18n_context, get_token_info
 
 
 def signature(params, secret, algorithm='HmacSHA256'):
@@ -39,36 +39,51 @@ def signature(params, secret, algorithm='HmacSHA256'):
         return mac.hexdigest()
 
 
+def check_app_code(app_code):
+    app = get_app_by_api_key_from_db(api_key=app_code)
+    if app is None:
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "msg": "Invalid App Code"}
+        )
+    if app.get('expired_time') and app.get('expired_time') <= datetime.datetime.now():
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "msg": "App expired"}
+        )
+    return app
+
+
 class LocaleVariableMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         token = request.headers.get("Authorization")
         if token is None or token.strip() == '':
             token = request.cookies.get(CIAM_TOKEN_COOKIE_NAME)
         if token:
-            set_token_context({'token_type': 'jwt', 'token': token})
+            if "/openapi/" in request.url.path and token.startswith("Bearer "):
+                app_code = token.split("Bearer ")[1]
+                app = check_app_code(app_code)
+                set_token_context(
+                    {'token_type': 'sign',
+                     'token': json.dumps({'appCode': app_code, 'userId': f"app-{app.get('id')}", 'tenantId': None})})
+                logger.info(f"Operator by app code: {app_code}")
+            else:
+                set_token_context({'token_type': 'jwt', 'token': token})
+                logger.info(f"Operator by user: {get_token_info().get('userId')}")
         else:
             app_code = request.headers.get('X-App-Code')
             if app_code:
-                app = get_app_by_api_key_from_db(api_key=app_code)
-                if app is None:
-                    return JSONResponse(
-                        status_code=401,
-                        content={"code": 401, "msg": "Invalid App Code"}
-                    )
-                if app.get('expired_time') and app.get('expired_time') <= datetime.datetime.now():
-                    return JSONResponse(
-                        status_code=401,
-                        content={"code": 401, "msg": "App expired"}
-                    )
+                app = check_app_code(app_code)
                 user_id = request.headers.get('X-UserId')
                 timestamp = request.headers.get('X-Timestamp')
                 nonce = request.headers.get('X-Nonce')
                 algorithm = request.headers.get('X-Algorithm')
                 sign = request.headers.get('X-Sign')
-                if algorithm != 'Basic':
+                secret_key = app.get('secret_key')
+                if secret_key:
                     gen_sign = signature(
                         params={'app_code': app_code, 'user_id': user_id, 'timestamp': timestamp, 'nonce': nonce},
-                        secret=app.get('secret_key'),
+                        secret=secret_key,
                         algorithm=algorithm)
                     if sign != gen_sign:
                         return JSONResponse(
@@ -78,12 +93,14 @@ class LocaleVariableMiddleware(BaseHTTPMiddleware):
                 set_token_context(
                     {'token_type': 'sign',
                      'token': json.dumps({'appCode': app_code, 'userId': user_id, 'tenantId': None})})
+                logger.info(f"Operator by sign user: {user_id}, app code: {app_code}")
             else:
                 if not MOCK_TOKEN_INFO_ENABLED:
                     return JSONResponse(
                         status_code=401,
                         content={"code": 401, "msg": "Missing Jwt token or signature"}
                     )
+                logger.info(f"Operator by mock user: {get_token_info().get('userId')}")
         locale = request.cookies.get('LOCALE')
         if locale:
             i18n_context.set(locale)
