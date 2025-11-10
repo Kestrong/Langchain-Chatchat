@@ -64,7 +64,8 @@ def list_kbs_from_db(session, page_size: int = 10, page_num: int = 1, kb_type: s
     if tag is not None and tag.strip() != "":
         filters.append(KnowledgeBaseModel.tag == tag)
     if not all_kbs:
-        kbs = session.query(KnowledgeBaseModel).filter(*filters).offset(offset).limit(page_size).all()
+        kbs = session.query(KnowledgeBaseModel).filter(*filters).order_by(KnowledgeBaseModel.create_time.desc()).offset(
+            offset).limit(page_size).all()
         total = session.query(func.count(KnowledgeBaseModel.id)).filter(*filters).scalar()
     else:
         kbs = session.query(KnowledgeBaseModel).filter(*filters).all()
