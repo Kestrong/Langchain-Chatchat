@@ -205,7 +205,7 @@ def export_feedback_to_excel(query: str = Query(None, description="查询关键�
                         message.get("response", ""),
                         type_val,
                         message.get("feedback_reason", ""),
-                        feedback_time.strftime('%Y-%m-%d-%H-%M-%S') if feedback_time else None,
+                        feedback_time.strftime('%Y-%m-%d %H:%M:%S') if feedback_time else None,
                     ])
                     index += 1
 
