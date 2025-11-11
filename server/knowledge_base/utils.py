@@ -314,6 +314,8 @@ class KnowledgeFile:
             return []
         if self.ext not in [".csv"]:
             if text_splitter is None:
+                if self.ext in [".md", ".mdx", ".markdown"] and zh_title_enhance:
+                    self.text_splitter_name = "MarkdownHeaderTextSplitter"
                 text_splitter = make_text_splitter(splitter_name=self.text_splitter_name, chunk_size=chunk_size,
                                                    chunk_overlap=chunk_overlap, separators=self.separators)
             if self.text_splitter_name == "MarkdownHeaderTextSplitter":
@@ -325,7 +327,7 @@ class KnowledgeFile:
             return []
 
         print(f"文档切分示例：{docs[0]}")
-        if zh_title_enhance:
+        if zh_title_enhance and self.ext in [".md", ".mdx", ".markdown"]:
             docs = func_zh_title_enhance(docs)
         i = 0
         for doc in docs:
