@@ -35,7 +35,7 @@ class ChineseRecursiveTextSplitter(RecursiveCharacterTextSplitter):
     ) -> None:
         """Create a new TextSplitter."""
         super().__init__(keep_separator=keep_separator, **kwargs)
-        self._separators = separators or [
+        self.default_separator = [
             "\n\n",
             "\n",
             "。|！|？",
@@ -43,6 +43,7 @@ class ChineseRecursiveTextSplitter(RecursiveCharacterTextSplitter):
             "；|;\s",
             "，|,\s"
         ]
+        self._separators = separators or self.default_separator
         self._is_separator_regex = is_separator_regex
 
     def _split_text(self, text: str, separators: List[str]) -> List[str]:

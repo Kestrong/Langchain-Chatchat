@@ -252,7 +252,14 @@ def make_text_splitter(
         TextSplitter = getattr(text_splitter_module, "RecursiveCharacterTextSplitter")
         text_splitter = TextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     if separators and len(separators) > 0 and hasattr(text_splitter, '_separators'):
-        setattr(text_splitter, '_separators', separators)
+        separators_copy = [s for s in separators if s != ""]
+        if hasattr(text_splitter, 'default_separator'):
+            default_separator = getattr(text_splitter, 'default_separator') or []
+            for s in default_separator:
+                if s not in separators_copy:
+                    separators_copy.append(s)
+        setattr(text_splitter, '_separators', separators_copy)
+
     # If you use SpacyTextSplitter you can use GPU to do split likes Issue #1287
     # text_splitter._tokenizer.max_length = 37016792
     # text_splitter._tokenizer.prefer_gpu()
@@ -320,6 +327,10 @@ class KnowledgeFile:
                                                    chunk_overlap=chunk_overlap, separators=self.separators)
             if self.text_splitter_name == "MarkdownHeaderTextSplitter":
                 docs = text_splitter.split_text(docs[0].page_content)
+                sub_text_splitter = make_text_splitter(splitter_name='ChineseRecursiveTextSplitter',
+                                                       chunk_size=chunk_size,
+                                                       chunk_overlap=chunk_overlap, separators=self.separators)
+                docs = sub_text_splitter.split_documents(docs)
             else:
                 docs = text_splitter.split_documents(docs)
 
