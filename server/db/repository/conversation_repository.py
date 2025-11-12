@@ -1,5 +1,6 @@
 import random
 import uuid
+from typing import List, Any
 
 from dateutil import parser
 from sqlalchemy import func
@@ -105,7 +106,7 @@ def get_conversation_by_id(session, conversation_id: str):
     return conversation.dict() if conversation is not None else None
 
 
-def get_time_filter(field, start_time: str = None, end_time: str = None):
+def get_time_filter(field, start_time: str = None, end_time: str = None) -> List[Any]:
     filters = []
     if start_time is not None and start_time != '':
         filters.append(field >= parser.parse(start_time))
@@ -115,16 +116,28 @@ def get_time_filter(field, start_time: str = None, end_time: str = None):
 
 
 @with_session
-def metrics_db(session, start_time: str = None, end_time: str = None):
+def metrics_db(session, start_time: str = None, end_time: str = None, assistant_ids: str = None):
+    assistant_ids_array = [int(id) for id in assistant_ids.split(",") if id] if assistant_ids else []
+    c_filters = get_time_filter(ConversationModel.create_time, start_time, end_time)
+    if assistant_ids_array:
+        c_filters.append(ConversationModel.assistant_id.in_(assistant_ids_array))
     conversation_result = session.query(
         func.count(ConversationModel.id).label('conversation_count'),
         func.count(func.distinct(ConversationModel.create_by)).label('user_count')
-    ).filter(*get_time_filter(ConversationModel.create_time, start_time, end_time)).first()
+    ).filter(*c_filters).first()
 
-    message_result = session.query(
-        func.count(MessageModel.id).label('message_count'),
-        func.sum(MessageModel.tokens).label('total_tokens')
-    ).filter(*get_time_filter(MessageModel.create_time, start_time, end_time)).first()
+    m_filters = get_time_filter(MessageModel.create_time, start_time, end_time)
+    if assistant_ids_array:
+        m_filters.append(ConversationModel.assistant_id.in_(assistant_ids_array))
+        message_result = session.query(
+            func.count(MessageModel.id).label('message_count'),
+            func.sum(MessageModel.tokens).label('total_tokens')
+        ).join(ConversationModel, MessageModel.conversation_id == ConversationModel.id).filter(*m_filters).first()
+    else:
+        message_result = session.query(
+            func.count(MessageModel.id).label('message_count'),
+            func.sum(MessageModel.tokens).label('total_tokens')
+        ).filter(*m_filters).first()
 
     return {
         "conversation_count": conversation_result.conversation_count if conversation_result else 0,
@@ -132,5 +145,5 @@ def metrics_db(session, start_time: str = None, end_time: str = None):
         "open_count": round(((conversation_result.conversation_count if conversation_result else 0) +
                              (message_result.message_count if message_result else 0)) / random.uniform(1, 2)),
         "user_count": conversation_result.user_count if conversation_result else 0,
-        "total_tokens": message_result.total_tokens if message_result else 0
+        "total_tokens": message_result.total_tokens or 0 if message_result else 0
     }
