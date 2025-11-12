@@ -116,16 +116,21 @@ def get_time_filter(field, start_time: str = None, end_time: str = None):
 
 @with_session
 def metrics_db(session, start_time: str = None, end_time: str = None):
-    conversation_count = session.query(func.count(ConversationModel.id)).filter(
-        *get_time_filter(ConversationModel.create_time, start_time, end_time)).scalar()
-    message_count = session.query(func.count(MessageModel.id)).filter(
-        *get_time_filter(MessageModel.create_time, start_time, end_time)).scalar()
-    user_count = session.query(func.count(func.distinct(ConversationModel.create_by))).filter(
-        *get_time_filter(ConversationModel.create_time, start_time, end_time)).scalar()
+    conversation_result = session.query(
+        func.count(ConversationModel.id).label('conversation_count'),
+        func.count(func.distinct(ConversationModel.create_by)).label('user_count')
+    ).filter(*get_time_filter(ConversationModel.create_time, start_time, end_time)).first()
+
+    message_result = session.query(
+        func.count(MessageModel.id).label('message_count'),
+        func.sum(MessageModel.tokens).label('total_tokens')
+    ).filter(*get_time_filter(MessageModel.create_time, start_time, end_time)).first()
 
     return {
-        "conversation_count": conversation_count,
-        "message_count": message_count,
-        "open_count": round((conversation_count + message_count) / random.uniform(1, 2)),
-        "user_count": user_count
+        "conversation_count": conversation_result.conversation_count if conversation_result else 0,
+        "message_count": message_result.message_count if message_result else 0,
+        "open_count": round(((conversation_result.conversation_count if conversation_result else 0) +
+                             (message_result.message_count if message_result else 0)) / random.uniform(1, 2)),
+        "user_count": conversation_result.user_count if conversation_result else 0,
+        "total_tokens": message_result.total_tokens if message_result else 0
     }

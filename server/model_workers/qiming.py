@@ -313,10 +313,19 @@ class QimingWorker(ApiModelWorker):
                                         if retriever_resources:
                                             conversation_id = json_data.get('conversation_id')
                                             message_id = json_data.get('message_id')
-                                            docs = [{'knowledge_base_name': r.get('dataset_name'),
-                                                     'filename': r.get('document_name'),
-                                                     "page_content": truncate_text(r.get('content'))} for r in
-                                                    retriever_resources]
+                                            grouped_docs = {}
+                                            docs = []
+                                            for r in retriever_resources:
+                                                key = f"{r.get('dataset_name')}:{r.get('document_name')}"
+                                                if key not in grouped_docs:
+                                                    grouped_docs[key] = {
+                                                        "filename": r.get('document_name'),
+                                                        "knowledge_base_name": r.get('dataset_name'),
+                                                        "page_content": []
+                                                    }
+                                                    docs.append(grouped_docs[key])
+                                                grouped_docs[key]["page_content"].append(
+                                                    truncate_text(r.get('content')))
                                             inner_json = json.dumps(
                                                 {"conversation_id": conversation_id, "message_id": message_id,
                                                  "docs": docs})

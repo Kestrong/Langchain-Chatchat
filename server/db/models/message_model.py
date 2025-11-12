@@ -14,6 +14,7 @@ class MessageModel(Base):
     chat_type = Column(String(50), comment='聊天类型')
     query = Column(String(4096), comment='用户问题')
     response = Column(Text, comment='模型回答')
+    tokens = Column(Integer, default=0, server_default='0', comment='token数')
     # 记录知识库id等，以便后续扩展
     meta_data = Column(JSON, default={})
     # 满分100 越高表示评价越好
@@ -25,7 +26,7 @@ class MessageModel(Base):
     response_time = Column(DateTime, default=None, comment='回复时间')
 
     def __repr__(self):
-        return f"<message(id='{self.id}', conversation_id='{self.conversation_id}', chat_type='{self.chat_type}', query='{self.query}', response='{self.response}',meta_data='{self.meta_data}',feedback_score='{self.feedback_score}',feedback_reason='{self.feedback_reason}', feedback_time='{self.feedback_time}', create_time='{self.create_time}', create_by='{self.create_by}', response_time='{self.response_time}')>"
+        return f"<message(id='{self.id}', conversation_id='{self.conversation_id}', chat_type='{self.chat_type}', query='{self.query}', response='{self.response}', tokens='{self.tokens}', meta_data='{self.meta_data}', feedback_score='{self.feedback_score}', feedback_reason='{self.feedback_reason}', feedback_time='{self.feedback_time}', create_time='{self.create_time}', create_by='{self.create_by}', response_time='{self.response_time}')>"
 
     def dict(self):
         return {
@@ -34,6 +35,7 @@ class MessageModel(Base):
             "chat_type": self.chat_type,
             "query": self.query,
             "response": self.response,
+            "tokens": self.tokens,
             "meta_data": self.meta_data,
             "feedback_score": self.feedback_score,
             "feedback_reason": self.feedback_reason,
