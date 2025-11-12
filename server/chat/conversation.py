@@ -239,7 +239,9 @@ def export_feedback_to_excel(query: str = Query(None, description="查询关键�
 
 
 def metrics(start_time: str = Query(None, description="开始时间:yyyy-MM-dd HH:mm:ss"),
-            end_time: str = Query(None, description="结束时间:yyyy-MM-dd HH:mm:ss")) -> BaseResponse:
+            end_time: str = Query(None, description="结束时间:yyyy-MM-dd HH:mm:ss"),
+            assistant_ids: str = Query(default=None, description="助手id列表"),
+            ) -> BaseResponse:
     logger.debug(f"start_time: {start_time}, end_time:{end_time}")
-    data = metrics_db(start_time=start_time, end_time=end_time)
+    data = metrics_db(start_time=start_time, end_time=end_time, assistant_ids=assistant_ids)
     return BaseResponse(code=200, data=data)
