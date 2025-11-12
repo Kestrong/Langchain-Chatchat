@@ -192,6 +192,8 @@ def add_file_to_db(session,
             existing_file.custom_docs = custom_docs
             existing_file.file_version += 1
             existing_file.word_count = word_count
+            existing_file.document_loader_name = kb_file.document_loader_name or existing_file.document_loader_name
+            existing_file.text_splitter_name = kb_file.text_splitter_name or existing_file.text_splitter_name
         # 否则，添加新文件
         else:
             user_id = get_token_info().get("userId")

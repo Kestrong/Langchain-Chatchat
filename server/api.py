@@ -140,7 +140,7 @@ def mount_knowledge_routes(app: FastAPI):
     from server.chat.file_chat import delete_temp_docs
     from server.chat.file_chat import upload_temp_docs
     from server.knowledge_base.kb_api import list_kbs, create_kb, delete_kb, update_info, get_kb_detail
-    from server.knowledge_base.kb_doc_api import (list_files, upload_docs, delete_docs,
+    from server.knowledge_base.kb_doc_api import (list_files, upload_docs, delete_docs, list_docs,
                                                   update_docs, download_doc, recreate_vector_store,
                                                   search_docs, update_docs_by_id, update_enabled)
     from server.knowledge_base.kb_summary_api import (summary_file_to_vector_store, recreate_summary_vector_store,
@@ -156,6 +156,7 @@ def mount_knowledge_routes(app: FastAPI):
     knowledge_router.delete("/delete_knowledge_base", summary="删除知识库")(delete_kb)
     knowledge_router.post("/search_docs", summary="搜索知识库")(search_docs)
     knowledge_router.get("/list_files", summary="获取知识库内的文件列表")(list_files)
+    knowledge_router.post("/list_docs", summary="获取知识库文档的分段内容")(list_docs)
     knowledge_router.post("/update_docs_by_id", summary="直接更新知识库文档")(update_docs_by_id)
     knowledge_router.post("/upload_docs", summary="上传文件到知识库，并/或进行向量化")(upload_docs)
     knowledge_router.post("/delete_docs", summary="删除知识库内指定文件")(delete_docs)

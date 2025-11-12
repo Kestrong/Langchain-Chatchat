@@ -95,6 +95,29 @@ def search_docs(
     return data
 
 
+def list_docs(query: str = Body("", description="用户输入", examples=["你好"]),
+              knowledge_base_name: str = Body(..., description="知识库名称", examples=["samples"]),
+              top_k: int = Body(VECTOR_SEARCH_TOP_K, description="匹配向量数"),
+              score_threshold: float = Body(SCORE_THRESHOLD,
+                                            description="知识库匹配相关度阈值，取值范围在0-1之间，"
+                                                        "SCORE越小，相关度越高，"
+                                                        "取到1相当于不筛选，建议设置在0.5左右",
+                                            ge=0, le=1),
+              file_name: str = Body("", description="文件名称，支持 sql 通配符"),
+              metadata: dict = Body({}, description="根据 metadata 进行过滤，仅支持一级键"),
+              background_tasks: BackgroundTasks = None) -> BaseResponse:
+    data = search_docs(
+        query=query,
+        knowledge_base_name=knowledge_base_name,
+        top_k=top_k,
+        score_threshold=score_threshold,
+        file_name=file_name,
+        metadata=metadata,
+        background_tasks=background_tasks
+    )
+    return BaseResponse(code=200, data=data)
+
+
 def update_docs_by_id(
         knowledge_base_name: str = Body(..., description="知识库名称", examples=["samples"]),
         docs: Dict[str, Document] = Body(..., description="要更新的文档内容，形如：{id: Document, ...}")
