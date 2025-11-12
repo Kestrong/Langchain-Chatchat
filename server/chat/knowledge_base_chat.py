@@ -171,15 +171,19 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                 value.sort(key=lambda x: x.metadata['index'])
             docs.extend(value)
         context = ""
+        grouped_docs = {}
         source_documents = []
-        exist_file = []
-        for inum, doc in enumerate(docs):
+        for doc in docs:
             context += doc.page_content + "\n"
-            filename = doc.metadata["source"]
-            if filename not in exist_file:
-                source_documents.append({"filename": filename, "knowledge_base_name": doc.metadata.get("kb_name"),
-                                         "page_content": truncate_text(doc.page_content)})
-                exist_file.append(filename)
+            key = f"{doc.metadata.get('kb_name')}:{doc.metadata.get('source')}"
+            if key not in grouped_docs:
+                grouped_docs[key] = {
+                    "filename": doc.metadata.get('source'),
+                    "knowledge_base_name": doc.metadata.get('kb_name'),
+                    "page_content": []
+                }
+                source_documents.append(grouped_docs[key])
+            grouped_docs[key]["page_content"].append(truncate_text(doc.page_content))
         conversation_callback.docs = source_documents
 
         prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)

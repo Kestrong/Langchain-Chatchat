@@ -165,8 +165,18 @@ class DifyWorker(ApiModelWorker):
                 if retriever_resources:
                     conversation_id = json_data.get('conversation_id')
                     message_id = json_data.get('message_id')
-                    docs = [{'knowledge_base_name': r.get('dataset_name'), 'filename': r.get('document_name'),
-                             "page_content": truncate_text(r.get('content'))} for r in retriever_resources]
+                    grouped_docs = {}
+                    docs = []
+                    for r in retriever_resources:
+                        key = f"{r.get('dataset_name')}:{r.get('document_name')}"
+                        if key not in grouped_docs:
+                            grouped_docs[key] = {
+                                "filename": r.get('document_name'),
+                                "knowledge_base_name": r.get('dataset_name'),
+                                "page_content": []
+                            }
+                            docs.append(grouped_docs[key])
+                        grouped_docs[key]["page_content"].append(truncate_text(r.get('content')))
                     inner_json = json.dumps(
                         {"conversation_id": conversation_id, "message_id": message_id,
                          "user": user, "api_key": api_key, "docs": docs})
@@ -329,9 +339,18 @@ class DifyWorker(ApiModelWorker):
                         metadata = json_data.get('metadata') or {}
                         retriever_resources = metadata.get('retriever_resources') or []
                         if retriever_resources:
-                            docs = [{'knowledge_base_name': r.get('dataset_name'), 'filename': r.get('document_name'),
-                                     "page_content": truncate_text(r.get('content'))}
-                                    for r in retriever_resources]
+                            grouped_docs = {}
+                            docs = []
+                            for r in retriever_resources:
+                                key = f"{r.get('dataset_name')}:{r.get('document_name')}"
+                                if key not in grouped_docs:
+                                    grouped_docs[key] = {
+                                        "filename": r.get('document_name'),
+                                        "knowledge_base_name": r.get('dataset_name'),
+                                        "page_content": []
+                                    }
+                                    docs.append(grouped_docs[key])
+                                grouped_docs[key]["page_content"].append(truncate_text(r.get('content')))
                             inner_json_obj['docs'] = docs
                         inner_json = json.dumps(inner_json_obj)
                         yield {"error_code": 0, "text": mark + inner_json + mark}

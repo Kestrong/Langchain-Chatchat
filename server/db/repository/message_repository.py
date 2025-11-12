@@ -27,7 +27,7 @@ def add_message_to_db(session, conversation_id: str, chat_type, query, response=
                                              tag=tag, assistant_id=assistant_id)
     m = MessageModel(id=message_id, chat_type=chat_type, query=query, response=response,
                      conversation_id=conversation_id, create_by=get_token_info().get("userId"),
-                     meta_data=metadata)
+                     tokens=len(response) if response else 0, meta_data=metadata)
     session.add(m)
     session.commit()
     return m.id
@@ -48,6 +48,7 @@ def update_message(session, message_id, response: str = None, metadata: Dict = N
                 m.response += response
             else:
                 m.response = response
+            m.tokens = len(m.response)
         if isinstance(metadata, dict):
             if m.meta_data is None:
                 m.meta_data = metadata

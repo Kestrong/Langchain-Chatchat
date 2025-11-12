@@ -340,7 +340,7 @@ class KnowledgeFile:
         print(f"文档切分示例：{docs[0]}")
         if zh_title_enhance and self.ext in [".md", ".mdx", ".markdown"]:
             docs = func_zh_title_enhance(docs)
-        i = 0
+        i = 1
         for doc in docs:
             doc.metadata['index'] = i
             i += 1
