@@ -57,7 +57,7 @@ class QimingWorker(ApiModelWorker):
                                            xappid=xappid, xappkey=xappkey)
 
     def upload_files(self, url, app_id, user, contentObj, file_type, extra_headers):
-        result = []
+        result, attachments = [], []
         knowledge_id = contentObj.get('knowledge_id')
         files = contentObj.get('files')
         if not knowledge_id and not files:
@@ -77,6 +77,7 @@ class QimingWorker(ApiModelWorker):
             if attachment_names:
                 for a in attachment_names:
                     logger.debug(f"upload file: {a}")
+                    attachments.append({"filename": a, "knowledge_base_name": "temp", "path": knowledge_id})
                     with default_oss().get_object(bucket_name="temp", object_name=f"{knowledge_id}/{a}") as o:
                         file_prop = analyze_file(a)
                         data['type'] = file_prop.get('extension')
@@ -100,6 +101,7 @@ class QimingWorker(ApiModelWorker):
                 get_file_headers = {"Authorization": contentObj.get('token')}
             for f in files:
                 logger.debug(f"upload file: {f.get('name')}")
+                attachments.append({"filename": f.get('name'), "url": f.get('url')})
                 response = requests.get(f.get('url'), headers=get_file_headers, cookies=cookies, stream=True,
                                         verify=False)
                 if not response.ok:
@@ -129,7 +131,7 @@ class QimingWorker(ApiModelWorker):
                         result.append(file)
                 finally:
                     file_stream.close()
-        return result
+        return result, attachments
 
     def do_chat_common(self, uri: str, params: ApiChatParams, model_config: dict, contentObj: dict, xappid: str,
                        xappkey: str):
@@ -238,7 +240,7 @@ class QimingWorker(ApiModelWorker):
         app_id = model_config.get("app_id") or contentObj.get('app_id', '')
         is_workflow = model_config.get('is_workflow') or params.role_meta.get('is_workflow', False)
         stream = False if is_workflow else True
-        files = self.upload_files(uri, app_id or business_type, user, contentObj, file_type, headers)
+        files, attachments = self.upload_files(uri, app_id or business_type, user, contentObj, file_type, headers)
         # 构建apiData
         api_data = {
             "files": files,
@@ -308,13 +310,13 @@ class QimingWorker(ApiModelWorker):
                                         thought = json_data.get('thought', '')
                                     elif event == "message_end":
                                         # 结束消息
+                                        conversation_id = json_data.get('conversation_id')
+                                        message_id = json_data.get('message_id')
                                         metadata = json_data.get('metadata') or {}
                                         retriever_resources = metadata.get('retriever_resources') or []
                                         if retriever_resources:
-                                            conversation_id = json_data.get('conversation_id')
-                                            message_id = json_data.get('message_id')
                                             grouped_docs = {}
-                                            docs = []
+                                            docs = [a for a in attachments]
                                             for r in retriever_resources:
                                                 key = f"{r.get('dataset_name')}:{r.get('document_name')}"
                                                 if key not in grouped_docs:
@@ -329,6 +331,12 @@ class QimingWorker(ApiModelWorker):
                                             inner_json = json.dumps(
                                                 {"conversation_id": conversation_id, "message_id": message_id,
                                                  "docs": docs})
+                                            text += mark + inner_json + mark
+                                            yield {"error_code": 0, "text": text}
+                                        elif attachments:
+                                            inner_json = json.dumps(
+                                                {"conversation_id": conversation_id, "message_id": message_id,
+                                                 "docs": attachments})
                                             text += mark + inner_json + mark
                                             yield {"error_code": 0, "text": text}
                                         break
