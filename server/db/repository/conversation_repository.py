@@ -118,32 +118,55 @@ def get_time_filter(field, start_time: str = None, end_time: str = None) -> List
 @with_session
 def metrics_db(session, start_time: str = None, end_time: str = None, assistant_ids: str = None):
     assistant_ids_array = [int(id) for id in assistant_ids.split(",") if id] if assistant_ids else []
+
     c_filters = get_time_filter(ConversationModel.create_time, start_time, end_time)
     if assistant_ids_array:
         c_filters.append(ConversationModel.assistant_id.in_(assistant_ids_array))
-    conversation_result = session.query(
+
+    group_conversation_result = session.query(
+        ConversationModel.assistant_id,
         func.count(ConversationModel.id).label('conversation_count'),
         func.count(func.distinct(ConversationModel.create_by)).label('user_count')
-    ).filter(*c_filters).first()
+    ).filter(*c_filters).group_by(ConversationModel.assistant_id).all()
 
     m_filters = get_time_filter(MessageModel.create_time, start_time, end_time)
     if assistant_ids_array:
         m_filters.append(ConversationModel.assistant_id.in_(assistant_ids_array))
-        message_result = session.query(
-            func.count(MessageModel.id).label('message_count'),
-            func.sum(MessageModel.tokens).label('total_tokens')
-        ).join(ConversationModel, MessageModel.conversation_id == ConversationModel.id).filter(*m_filters).first()
-    else:
-        message_result = session.query(
-            func.count(MessageModel.id).label('message_count'),
-            func.sum(MessageModel.tokens).label('total_tokens')
-        ).filter(*m_filters).first()
 
-    return {
-        "conversation_count": conversation_result.conversation_count if conversation_result else 0,
-        "message_count": message_result.message_count if message_result else 0,
-        "open_count": round(((conversation_result.conversation_count if conversation_result else 0) +
-                             (message_result.message_count if message_result else 0)) / random.uniform(1, 2)),
-        "user_count": conversation_result.user_count if conversation_result else 0,
-        "total_tokens": message_result.total_tokens or 0 if message_result else 0
-    }
+    group_message_result = session.query(
+        ConversationModel.assistant_id,
+        func.count(MessageModel.id).label('message_count'),
+        func.sum(MessageModel.tokens).label('total_tokens')
+    ).join(ConversationModel, MessageModel.conversation_id == ConversationModel.id).filter(*m_filters).group_by(
+        ConversationModel.assistant_id).all()
+
+    group_results = {}
+    for row in group_conversation_result:
+        assistant_id = row.assistant_id
+        group_results[assistant_id] = {
+            "assistant_id": assistant_id,
+            "conversation_count": row.conversation_count,
+            "user_count": row.user_count,
+            "message_count": 0,
+            "open_count": 0,
+            "total_tokens": 0
+        }
+
+    for row in group_message_result:
+        assistant_id = row.assistant_id
+        if assistant_id not in group_results:
+            group_results[assistant_id] = {
+                "assistant_id": assistant_id,
+                "conversation_count": 0,
+                "user_count": 0,
+                "message_count": 0,
+                "total_tokens": 0,
+                "open_count": 0,
+            }
+        group_results[assistant_id]["message_count"] = row.message_count
+        group_results[assistant_id]["total_tokens"] = row.total_tokens or 0
+
+    for row in group_results.values():
+        row["open_count"] = round((row["conversation_count"] + row["message_count"]) / random.uniform(1, 2))
+
+    return list(group_results.values())
