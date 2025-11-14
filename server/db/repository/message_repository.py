@@ -1,8 +1,8 @@
 import datetime
-from dateutil import parser
 import uuid
 from typing import Dict
 
+from dateutil import parser
 from sqlalchemy import func, String, cast
 
 from server.db.models.assistant_model import AssistantModel
@@ -48,7 +48,7 @@ def update_message(session, message_id, response: str = None, metadata: Dict = N
                 m.response += response
             else:
                 m.response = response
-            m.tokens = len(m.response)
+            m.tokens = len(m.response) + (len(m.query) if m.query else 0)
         if isinstance(metadata, dict):
             if m.meta_data is None:
                 m.meta_data = metadata
