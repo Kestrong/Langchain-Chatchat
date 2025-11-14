@@ -203,7 +203,7 @@ class DifyWorker(ApiModelWorker):
         files = contentObj.get('files')
         if not knowledge_id and not files:
             logger.debug("knowledge_id和files都为空，不需要上传")
-            return result
+            return result, attachments
         headers = {'Authorization': f'Bearer {api_key}'}
         if 'X-APP-ID' in extra_headers:
             headers['X-APP-ID'] = extra_headers['X-APP-ID']
