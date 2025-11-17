@@ -17,7 +17,7 @@ from server.memory.message_i18n import Message_I18N
 
 class ConversationCallbackHandler(BaseCallbackHandler):
     raise_error: bool = True
-    token_save_interval: int = os.environ.get("TOKEN_SAVE_INTERVAL", 100)
+    token_save_interval: int = int(os.environ.get("TOKEN_SAVE_INTERVAL", 100))
 
     def __init__(self, model_name: str, conversation_id: str, message_id: str, chat_type: str, query: str,
                  agent: bool = False, stream: bool = False, realtime_token_save: bool = False):
@@ -80,7 +80,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         if not self.agent:
             self.generated_tokens.append(token)
             realtime_token_save = self.extra.get("realtime_token_save", False)
-            if realtime_token_save and os.environ.get("REALTIME_TOKEN_SAVE", True):
+            if realtime_token_save and os.environ.get("REALTIME_TOKEN_SAVE", "True") == "True":
                 answer, metadata = self.parse_token(token)
                 self.extra['answer'] = self.extra.get('answer', '') + answer
                 self.extra['metadata'].update(metadata)
