@@ -5,9 +5,9 @@ from configs.model_config import LLM_DEVICE
 ENV = os.environ.get("ENV", "prod")
 
 # httpx 请求默认超时时间（秒）。如果加载模型或对话较慢，出现超时错误，可以适当加大该值。
-HTTPX_DEFAULT_TIMEOUT = os.environ.get("HTTPX_DEFAULT_TIMEOUT", 300.0)
+HTTPX_DEFAULT_TIMEOUT = float(os.environ.get("HTTPX_DEFAULT_TIMEOUT", 300.0))
 
-PYTHON_REPL_TIMEOUT = os.environ.get("PYTHON_REPL_TIMEOUT", 60)
+PYTHON_REPL_TIMEOUT = int(os.environ.get("PYTHON_REPL_TIMEOUT", 60))
 
 # API 是否开启跨域，默认为False，如果需要开启，请设置为True
 # is open cross domain
@@ -17,7 +17,7 @@ OPEN_CROSS_DOMAIN = False
 DEFAULT_BIND_HOST = "0.0.0.0" if sys.platform != "win32" else "127.0.0.1"
 
 # token配置
-CIAM_ADMIN_ENABLED = os.environ.get("CIAM_ADMIN_ENABLED", False)
+CIAM_ADMIN_ENABLED = os.environ.get("CIAM_ADMIN_ENABLED", 'False')
 CIAM_ADMIN_HOST = os.environ.get("CIAM_ADMIN_HOST", "http://ciam-admin-server:8090")
 CIAM_TOKEN_COOKIE_NAME = "iam-access-token"
 MOCK_TOKEN_INFO_ENABLED = False

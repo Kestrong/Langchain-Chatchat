@@ -1,7 +1,9 @@
 import datetime
+import re
 import urllib.parse
 from io import BytesIO
 
+from cachetools import TTLCache
 from fastapi import Body, Query
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
@@ -11,10 +13,10 @@ from server.db.repository.conversation_repository import add_conversation_to_db,
     delete_conversation_from_db, get_conversation_from_db, delete_user_conversation_from_db, get_conversation_by_id, \
     metrics_db
 from server.db.repository.message_repository import delete_message_from_db, \
-    filter_message_page, list_user_feedback_messages
+    filter_message_page, list_user_feedback_messages, get_query_by_assistant_id
 from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import is_english
-from server.utils import BaseResponse
+from server.utils import BaseResponse, text_similarity
 
 
 def create_conversation(chat_type: str = Body(
@@ -245,3 +247,110 @@ def metrics(start_time: str = Query(None, description="开始时间:yyyy-MM-dd H
     logger.debug(f"start_time: {start_time}, end_time:{end_time}")
     data = metrics_db(start_time=start_time, end_time=end_time, assistant_ids=assistant_ids)
     return BaseResponse(code=200, data=data)
+
+
+hot_query_cache = TTLCache(maxsize=100, ttl=10800)
+
+
+def get_hot_query(assistant_id: int = Query(None, description="助手id"), ) -> BaseResponse:
+    try:
+        from server.knowledge_base.kb_service.base import EmbeddingsFunAdapter
+        from langchain.vectorstores import FAISS
+        from langchain.schema import Document
+        cache_key = f"hot_query_{assistant_id}"
+        if cache_key in hot_query_cache:
+            return BaseResponse(code=200, data=hot_query_cache[cache_key])
+        queries = get_query_by_assistant_id(assistant_id=assistant_id, limit=100)
+        filtered_queries = []
+        for msg_id, q in queries:
+            if not q:
+                continue
+            q = q.split("\n")[0]
+            # 过滤长度小于5的query
+            if len(q) < 5:
+                continue
+            # 过滤HTML标签
+            if re.search(r'<[^>]+>', q):
+                continue
+            # 过滤http/https链接
+            if re.search(r'https?://[^\s]*', q):
+                continue
+            # 过滤IP地址和端口信息
+            if re.search(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?::[0-9]+)?\b', q):
+                continue
+            # 过滤不含空格标点符号的纯英文数字内容
+            if re.search(r'^[a-zA-Z0-9_]+$', q):
+                continue
+            filtered_queries.append((msg_id, q))
+
+        if not filtered_queries:
+            logger.warning(f"assistant_id: {assistant_id} 没有查询数据")
+            hot_query_cache[cache_key] = []
+            return BaseResponse(code=200, data=hot_query_cache[cache_key])
+
+        try:
+            embeddings = EmbeddingsFunAdapter()
+
+            documents = [Document(page_content=query, metadata={"id": msg_id})
+                         for msg_id, query in filtered_queries]
+
+            vector_store = FAISS.from_documents(documents, embeddings)
+            faiss_index = vector_store.index
+            docstore = vector_store.docstore._dict
+            id_map = vector_store.index_to_docstore_id
+            n = faiss_index.ntotal
+
+            clustered_queries = {}
+            processed_ids = set()
+
+            for i in range(n):
+                msg_id = id_map[i]
+                if msg_id in processed_ids:
+                    continue
+                doc: Document = docstore[msg_id]
+                vector = faiss_index.reconstruct(i)
+                similar_docs = vector_store.similarity_search_with_score_by_vector(vector, k=10, score_threshold=0.7)
+
+                cluster_key = doc.page_content
+                cluster_count = 0
+
+                for doc, score in similar_docs:
+                    if doc.metadata["id"] not in processed_ids:
+                        cluster_count += 1
+                        processed_ids.add(doc.metadata["id"])
+
+                if cluster_count == 0:
+                    clustered_queries[doc.page_content] = 1
+                    processed_ids.add(msg_id)
+                else:
+                    clustered_queries[cluster_key] = cluster_count
+
+        except Exception as e:
+            logger.error(f"Embedding clustering failed, fallback to simple method: {e}")
+            queries_text = [query for _, query in filtered_queries]
+            clustered_queries = {}
+
+            for query in queries_text:
+                normalized_query = ' '.join(query.lower().split())
+
+                matched_cluster = None
+                best_similarity = 0
+
+                for cluster_key in list(clustered_queries.keys()):
+                    similarity = text_similarity(normalized_query, cluster_key)
+                    if similarity > best_similarity and similarity > 0.5:  # 设置相似度阈值
+                        best_similarity = similarity
+                        matched_cluster = cluster_key
+
+                if matched_cluster:
+                    clustered_queries[matched_cluster] += 1
+                else:
+                    clustered_queries[normalized_query] = 1
+
+        sorted_clusters = sorted(clustered_queries.items(), key=lambda x: x[1], reverse=True)
+        logger.debug(f"clustered_queries: {sorted_clusters}")
+        hot_query_cache[cache_key] = [s for s, _ in sorted_clusters[:10]]
+        return BaseResponse(code=200, data=hot_query_cache[cache_key])
+    except Exception as e:
+        logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
+        return BaseResponse(code=500, msg=Message_I18N.COMMON_CALL_FAILED.value)

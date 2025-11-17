@@ -90,7 +90,7 @@ def mount_chat_routes(app: FastAPI):
     from server.chat.feedback import chat_feedback
     from server.chat.conversation import create_conversation, delete_conversation, update_conversation, filter_message, \
         filter_conversation, delete_message, delete_user_conversation, get_conversation_detail, list_feedback, \
-        export_feedback_to_excel, metrics
+        export_feedback_to_excel, metrics, get_hot_query
     from server.chat.task_manager import stop
     from server.chat.assistant import create_assistant, update_assistant, delete_assistant, get_assistants, \
         get_assistant_detail, get_dicts_by_type
@@ -119,6 +119,8 @@ def mount_chat_routes(app: FastAPI):
     chat_router.delete("/message", summary="删除消息", )(delete_message)
     chat_router.get("/list_feedbacks", summary="获取会话详情", )(list_feedback)
     chat_router.get("/export_feedbacks", summary="获取会话详情", )(export_feedback_to_excel)
+    chat_router.get("/metrics", summary="获取会话指标", )(metrics)
+    chat_router.get("/hot_query", summary="获取热门问题", )(get_hot_query)
     chat_router.get("/assistants", summary="获取助手列表", )(get_assistants)
     chat_router.get("/assistant", summary="获取助手详情", )(get_assistant_detail)
     chat_router.post("/assistant", summary="创建助手", )(create_assistant)
@@ -130,7 +132,6 @@ def mount_chat_routes(app: FastAPI):
     chat_router.put("/menu", summary="修改菜单", )(update_menu)
     chat_router.delete("/menu", summary="删除菜单", )(delete_menu)
     chat_router.get("/dict_by_type", summary="根据字典类型获取字典", )(get_dicts_by_type)
-    chat_router.get("/metrics", summary="获取指标", )(metrics)
 
     app.include_router(chat_router)
     return chat_router

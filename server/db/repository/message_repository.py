@@ -192,3 +192,19 @@ def list_user_feedback_messages(session, query_keyword: str = None, response_key
         })
 
     return data, total
+
+
+@with_session
+def get_query_by_assistant_id(session, assistant_id: int = None, limit: int = 100):
+    message_query = session.query(MessageModel.id, MessageModel.query)
+
+    filters = [MessageModel.query.isnot(None)]
+    if assistant_id and assistant_id > 0:
+        filters.append(ConversationModel.assistant_id == assistant_id)
+        message_query.join(
+            ConversationModel, ConversationModel.id == MessageModel.conversation_id
+        )
+
+    recent_messages = message_query.filter(*filters).order_by(MessageModel.create_time.desc()).limit(limit).all()
+
+    return [(m.id, m.query) for m in recent_messages]

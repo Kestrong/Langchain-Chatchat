@@ -791,3 +791,23 @@ def truncate_text(text, max_length=250):
     if len(text) <= max_length:
         return text
     return text[:max_length] + "..."
+
+
+def text_similarity(text1, text2):
+    if text1 in text2 or text2 in text1:
+        return min(len(text1), len(text2)) / max(len(text1), len(text2))
+
+    words1 = set(text1.split())
+    words2 = set(text2.split())
+
+    if not words1 or not words2:
+        return 0
+
+    intersection = len(words1.intersection(words2))
+    union = len(words1.union(words2))
+
+    jaccard_similarity = intersection / union if union > 0 else 0
+
+    length_similarity = 1 - abs(len(text1) - len(text2)) / max(len(text1), len(text2))
+
+    return 0.5 * (text1 == text2) + 0.3 * jaccard_similarity + 0.2 * length_similarity
