@@ -195,10 +195,12 @@ def list_user_feedback_messages(session, query_keyword: str = None, response_key
 
 
 @with_session
-def get_query_by_assistant_id(session, assistant_id: int = None, limit: int = 100):
+def get_query_by_assistant_id(session, assistant_id: int = None, limit: int = 100, is_self: bool = False):
     message_query = session.query(MessageModel.id, MessageModel.query)
 
     filters = [MessageModel.query.isnot(None)]
+    if is_self is True:
+        filters.append(MessageModel.create_by == get_token_info().get("userId"))
     if assistant_id and assistant_id > 0:
         filters.append(ConversationModel.assistant_id == assistant_id)
         message_query.join(
