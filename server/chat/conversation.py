@@ -256,13 +256,8 @@ hot_query_lock = threading.Lock()
 
 
 def get_hot_query(assistant_id: int = Query(None, description="助手id"),
-                  limit: int = Query(100, description="要计算的消息数量"),
                   is_self: bool = Query(False, description="是否只计算自己发送的query"),
                   ) -> BaseResponse:
-    if not limit:
-        limit = 100
-    else:
-        limit = min(max(100, abs(limit)), 1000)
     try:
         from server.knowledge_base.kb_service.base import EmbeddingsFunAdapter
         from langchain.vectorstores import FAISS
@@ -273,6 +268,7 @@ def get_hot_query(assistant_id: int = Query(None, description="助手id"),
         with hot_query_lock:
             if cache_key in hot_query_cache:
                 return BaseResponse(code=200, data=hot_query_cache[cache_key])
+            limit = int(os.environ.get("HOT_QUERY_LIMIT", 100))
             queries = get_query_by_assistant_id(assistant_id=assistant_id, limit=limit, is_self=is_self)
             filtered_queries = []
             for msg_id, q in queries:
@@ -365,9 +361,9 @@ def get_hot_query(assistant_id: int = Query(None, description="助手id"),
                         clustered_queries[normalized_query] = 1
 
             sorted_clusters = sorted(filter(lambda item: item[1] > 1, clustered_queries.items()), key=lambda x: x[1],
-                                     reverse=True)
+                                     reverse=True)[:10]
             logger.debug(f"clustered_queries: {sorted_clusters}")
-            hot_query_cache[cache_key] = [s for s, _ in sorted_clusters[:10]]
+            hot_query_cache[cache_key] = [s for s, _ in sorted_clusters]
             return BaseResponse(code=200, data=hot_query_cache[cache_key])
     except Exception as e:
         logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
