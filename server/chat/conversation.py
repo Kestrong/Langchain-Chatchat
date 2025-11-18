@@ -1,4 +1,5 @@
 import datetime
+import os
 import re
 import threading
 import urllib.parse
@@ -250,7 +251,7 @@ def metrics(start_time: str = Query(None, description="开始时间:yyyy-MM-dd H
     return BaseResponse(code=200, data=data)
 
 
-hot_query_cache = TTLCache(maxsize=500, ttl=10800)
+hot_query_cache = TTLCache(maxsize=500, ttl=int(os.environ.get("HOT_QUERY_CACHE_TTL", 86400)))
 hot_query_lock = threading.Lock()
 
 
@@ -267,7 +268,8 @@ def get_hot_query(assistant_id: int = Query(None, description="助手id"),
         with hot_query_lock:
             if cache_key in hot_query_cache:
                 return BaseResponse(code=200, data=hot_query_cache[cache_key])
-            queries = get_query_by_assistant_id(assistant_id=assistant_id, limit=100, is_self=is_self)
+            limit = int(os.environ.get("HOT_QUERY_LIMIT", 100))
+            queries = get_query_by_assistant_id(assistant_id=assistant_id, limit=limit, is_self=is_self)
             filtered_queries = []
             for msg_id, q in queries:
                 if not q:
@@ -359,9 +361,9 @@ def get_hot_query(assistant_id: int = Query(None, description="助手id"),
                         clustered_queries[normalized_query] = 1
 
             sorted_clusters = sorted(filter(lambda item: item[1] > 1, clustered_queries.items()), key=lambda x: x[1],
-                                     reverse=True)
+                                     reverse=True)[:10]
             logger.debug(f"clustered_queries: {sorted_clusters}")
-            hot_query_cache[cache_key] = [s for s, _ in sorted_clusters[:10]]
+            hot_query_cache[cache_key] = [s for s, _ in sorted_clusters]
             return BaseResponse(code=200, data=hot_query_cache[cache_key])
     except Exception as e:
         logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)

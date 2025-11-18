@@ -1,4 +1,5 @@
 import datetime
+import os
 import uuid
 from typing import Dict
 
@@ -198,7 +199,9 @@ def list_user_feedback_messages(session, query_keyword: str = None, response_key
 def get_query_by_assistant_id(session, assistant_id: int = None, limit: int = 100, is_self: bool = False):
     message_query = session.query(MessageModel.id, MessageModel.query)
 
-    filters = [MessageModel.query.isnot(None)]
+    filters = [MessageModel.query.isnot(None),
+               MessageModel.create_time >= datetime.datetime.now() - datetime.timedelta(
+                   days=int(os.environ.get("HOT_QUERY_DAYS", 365)))]
     if is_self is True:
         filters.append(MessageModel.create_by == get_token_info().get("userId"))
     if assistant_id and assistant_id > 0:
