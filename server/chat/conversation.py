@@ -1,4 +1,5 @@
 import datetime
+import os
 import re
 import threading
 import urllib.parse
@@ -250,13 +251,18 @@ def metrics(start_time: str = Query(None, description="开始时间:yyyy-MM-dd H
     return BaseResponse(code=200, data=data)
 
 
-hot_query_cache = TTLCache(maxsize=500, ttl=10800)
+hot_query_cache = TTLCache(maxsize=500, ttl=int(os.environ.get("HOT_QUERY_CACHE_TTL", 86400)))
 hot_query_lock = threading.Lock()
 
 
 def get_hot_query(assistant_id: int = Query(None, description="助手id"),
+                  limit: int = Query(100, description="要计算的消息数量"),
                   is_self: bool = Query(False, description="是否只计算自己发送的query"),
                   ) -> BaseResponse:
+    if not limit:
+        limit = 100
+    else:
+        limit = min(max(100, abs(limit)), 1000)
     try:
         from server.knowledge_base.kb_service.base import EmbeddingsFunAdapter
         from langchain.vectorstores import FAISS
@@ -267,7 +273,7 @@ def get_hot_query(assistant_id: int = Query(None, description="助手id"),
         with hot_query_lock:
             if cache_key in hot_query_cache:
                 return BaseResponse(code=200, data=hot_query_cache[cache_key])
-            queries = get_query_by_assistant_id(assistant_id=assistant_id, limit=100, is_self=is_self)
+            queries = get_query_by_assistant_id(assistant_id=assistant_id, limit=limit, is_self=is_self)
             filtered_queries = []
             for msg_id, q in queries:
                 if not q:
