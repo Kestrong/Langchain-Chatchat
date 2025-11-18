@@ -5,7 +5,7 @@ import threading
 import urllib.parse
 from io import BytesIO
 
-from cachetools import TTLCache
+from cachetools import TTLCache, LRUCache
 from fastapi import Body, Query
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
@@ -252,7 +252,7 @@ def metrics(start_time: str = Query(None, description="开始时间:yyyy-MM-dd H
 
 
 hot_query_cache = TTLCache(maxsize=500, ttl=int(os.environ.get("HOT_QUERY_CACHE_TTL", 86400)))
-hot_query_lock = threading.Lock()
+hot_query_locks = LRUCache(maxsize=500)
 
 
 def get_hot_query(assistant_id: int = Query(None, description="助手id"),
@@ -265,7 +265,8 @@ def get_hot_query(assistant_id: int = Query(None, description="助手id"),
         cache_key = f"hot_query_{'self' if is_self is True else 'all'}_{assistant_id}"
         if cache_key in hot_query_cache:
             return BaseResponse(code=200, data=hot_query_cache[cache_key])
-        with hot_query_lock:
+
+        with hot_query_locks.setdefault(cache_key, threading.Lock()):
             if cache_key in hot_query_cache:
                 return BaseResponse(code=200, data=hot_query_cache[cache_key])
             limit = int(os.environ.get("HOT_QUERY_LIMIT", 100))
@@ -311,28 +312,27 @@ def get_hot_query(assistant_id: int = Query(None, description="助手id"),
 
                 clustered_queries = {}
                 processed_ids = set()
-
+                k = min(n, 10)
                 for i in range(n):
                     doc_id = id_map[i]
                     doc: Document = docstore[doc_id]
                     if doc.metadata["id"] in processed_ids:
                         continue
                     vector = faiss_index.reconstruct(i)
-                    similar_docs = vector_store.similarity_search_with_score_by_vector(vector, k=10,
-                                                                                       score_threshold=0.7)
+                    similar_docs = vector_store.similarity_search_with_score_by_vector(vector, k=k, score_threshold=0.7)
 
                     cluster_key = doc.page_content
                     cluster_count = 0
 
-                    for doc, score in similar_docs:
-                        if doc.metadata["id"] not in processed_ids:
+                    for similar_doc, _ in similar_docs:
+                        if similar_doc.metadata["id"] not in processed_ids:
                             cluster_count += 1
-                            processed_ids.add(doc.metadata["id"])
+                            processed_ids.add(similar_doc.metadata["id"])
 
                     if cluster_key not in clustered_queries:
                         if cluster_count == 0:
                             clustered_queries[cluster_key] = 1
-                            processed_ids.add(msg_id)
+                            processed_ids.add(doc.metadata["id"])
                         else:
                             clustered_queries[cluster_key] = cluster_count
                     else:
