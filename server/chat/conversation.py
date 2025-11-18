@@ -255,17 +255,81 @@ hot_query_cache = TTLCache(maxsize=500, ttl=int(os.environ.get("HOT_QUERY_CACHE_
 hot_query_locks = LRUCache(maxsize=500)
 
 
+def get_hot_query_embedding(filtered_queries: list):
+    from server.knowledge_base.kb_service.base import EmbeddingsFunAdapter
+    from langchain.vectorstores import FAISS
+    from langchain.schema import Document
+    embeddings = EmbeddingsFunAdapter()
+
+    documents = [Document(page_content=query, metadata={"id": msg_id})
+                 for msg_id, query in filtered_queries]
+
+    vector_store = FAISS.from_documents(documents, embeddings)
+    faiss_index = vector_store.index
+    docstore = vector_store.docstore._dict
+    id_map = vector_store.index_to_docstore_id
+    n = faiss_index.ntotal
+
+    clustered_queries = {}
+    processed_ids = set()
+    k = min(n, 10)
+    for i in range(n):
+        doc_id = id_map[i]
+        doc: Document = docstore[doc_id]
+        if doc.metadata["id"] in processed_ids:
+            continue
+        vector = faiss_index.reconstruct(i)
+        similar_docs = vector_store.similarity_search_with_score_by_vector(vector, k=k, score_threshold=0.7)
+
+        cluster_key = doc.page_content
+        cluster_count = 0
+
+        for similar_doc, _ in similar_docs:
+            if similar_doc.metadata["id"] not in processed_ids:
+                cluster_count += 1
+                processed_ids.add(similar_doc.metadata["id"])
+
+        if cluster_key not in clustered_queries:
+            if cluster_count == 0:
+                clustered_queries[cluster_key] = 1
+                processed_ids.add(doc.metadata["id"])
+            else:
+                clustered_queries[cluster_key] = cluster_count
+        else:
+            clustered_queries[cluster_key] += cluster_count
+    return clustered_queries
+
+
+def get_hot_query_text_similarity(filtered_queries: list):
+    queries_text = [query for _, query in filtered_queries]
+    clustered_queries = {}
+
+    for query in queries_text:
+        normalized_query = ' '.join(query.lower().split())
+
+        matched_cluster = None
+        best_similarity = 0
+
+        for cluster_key in list(clustered_queries.keys()):
+            similarity = text_similarity(normalized_query, cluster_key)
+            if similarity > best_similarity and similarity > 0.5:  # 设置相似度阈值
+                best_similarity = similarity
+                matched_cluster = cluster_key
+
+        if matched_cluster:
+            clustered_queries[matched_cluster] += 1
+        else:
+            clustered_queries[normalized_query] = 1
+    return clustered_queries
+
+
 def get_hot_query(assistant_id: int = Query(None, description="助手id"),
                   is_self: bool = Query(False, description="是否只计算自己发送的query"),
                   ) -> BaseResponse:
     try:
-        from server.knowledge_base.kb_service.base import EmbeddingsFunAdapter
-        from langchain.vectorstores import FAISS
-        from langchain.schema import Document
         cache_key = f"hot_query_{'self' if is_self is True else 'all'}_{assistant_id}"
         if cache_key in hot_query_cache:
             return BaseResponse(code=200, data=hot_query_cache[cache_key])
-
         with hot_query_locks.setdefault(cache_key, threading.Lock()):
             if cache_key in hot_query_cache:
                 return BaseResponse(code=200, data=hot_query_cache[cache_key])
@@ -299,67 +363,14 @@ def get_hot_query(assistant_id: int = Query(None, description="助手id"),
                 return BaseResponse(code=200, data=hot_query_cache[cache_key])
             filtered_queries.sort(key=len)
             try:
-                embeddings = EmbeddingsFunAdapter()
-
-                documents = [Document(page_content=query, metadata={"id": msg_id})
-                             for msg_id, query in filtered_queries]
-
-                vector_store = FAISS.from_documents(documents, embeddings)
-                faiss_index = vector_store.index
-                docstore = vector_store.docstore._dict
-                id_map = vector_store.index_to_docstore_id
-                n = faiss_index.ntotal
-
-                clustered_queries = {}
-                processed_ids = set()
-                k = min(n, 10)
-                for i in range(n):
-                    doc_id = id_map[i]
-                    doc: Document = docstore[doc_id]
-                    if doc.metadata["id"] in processed_ids:
-                        continue
-                    vector = faiss_index.reconstruct(i)
-                    similar_docs = vector_store.similarity_search_with_score_by_vector(vector, k=k, score_threshold=0.7)
-
-                    cluster_key = doc.page_content
-                    cluster_count = 0
-
-                    for similar_doc, _ in similar_docs:
-                        if similar_doc.metadata["id"] not in processed_ids:
-                            cluster_count += 1
-                            processed_ids.add(similar_doc.metadata["id"])
-
-                    if cluster_key not in clustered_queries:
-                        if cluster_count == 0:
-                            clustered_queries[cluster_key] = 1
-                            processed_ids.add(doc.metadata["id"])
-                        else:
-                            clustered_queries[cluster_key] = cluster_count
-                    else:
-                        clustered_queries[cluster_key] += cluster_count
-
+                method = os.environ.get("HOT_QUERY_METHOD", "embedding")
+                if method == "embedding":
+                    clustered_queries = get_hot_query_embedding(filtered_queries)
+                else:
+                    clustered_queries = get_hot_query_text_similarity(filtered_queries)
             except Exception as e:
                 logger.error(f"Embedding clustering failed, fallback to simple method: {e}")
-                queries_text = [query for _, query in filtered_queries]
-                clustered_queries = {}
-
-                for query in queries_text:
-                    normalized_query = ' '.join(query.lower().split())
-
-                    matched_cluster = None
-                    best_similarity = 0
-
-                    for cluster_key in list(clustered_queries.keys()):
-                        similarity = text_similarity(normalized_query, cluster_key)
-                        if similarity > best_similarity and similarity > 0.5:  # 设置相似度阈值
-                            best_similarity = similarity
-                            matched_cluster = cluster_key
-
-                    if matched_cluster:
-                        clustered_queries[matched_cluster] += 1
-                    else:
-                        clustered_queries[normalized_query] = 1
-
+                clustered_queries = get_hot_query_text_similarity(filtered_queries)
             sorted_clusters = sorted(filter(lambda item: item[1] > 1, clustered_queries.items()), key=lambda x: x[1],
                                      reverse=True)[:10]
             logger.debug(f"clustered_queries: {sorted_clusters}")
