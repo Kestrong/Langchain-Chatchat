@@ -21,6 +21,7 @@ from starlette.responses import RedirectResponse
 from server.utils import (BaseResponse, FastAPI, MakeFastAPIOffline)
 
 nltk.data.path = [NLTK_DATA_PATH] + nltk.data.path
+os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(NLTK_DATA_PATH, "tokenizers", "cl100k_base")
 
 
 def create_app(run_mode: str = None):

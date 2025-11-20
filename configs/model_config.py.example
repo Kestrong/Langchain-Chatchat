@@ -20,7 +20,6 @@ RERANKER_MAX_LENGTH = 1024
 # 如果需要在 EMBEDDING_MODEL 中增加自定义的关键字时配置
 EMBEDDING_KEYWORD_FILE = "keywords.txt"
 EMBEDDING_MODEL_OUTPUT_PATH = "output"
-os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nltk_data", "cl100k_base")
 # 要运行的 LLM 名称，可以包括本地模型和在线模型。列表中本地模型将在启动项目时全部加载。
 # 列表中第一个模型将作为 API 和 WEBUI 的默认模型。
 # 在这里，我们使用目前主流的两个离线模型，其中，chatglm3-6b 为默认加载模型。
