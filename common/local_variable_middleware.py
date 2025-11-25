@@ -56,46 +56,48 @@ def check_app_code(app_code):
 
 class LocaleVariableMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        token = request.headers.get("Authorization")
-        if token is None or token.strip() == '':
-            token = request.cookies.get(CIAM_TOKEN_COOKIE_NAME)
-        if token:
-            if "/openapi/" in request.url.path and token.startswith("Bearer "):
-                app_code = token.split("Bearer ")[1]
-                app = check_app_code(app_code)
-                set_token_context(
-                    {'token_type': 'sign',
-                     'token': json.dumps({'appCode': app_code, 'userId': f"app-{app.get('id')}", 'tenantId': None})})
-                logger.info(f"Operator by app code: {app_code}")
-            else:
-                set_token_context({'token_type': 'jwt', 'token': token})
-                logger.info(f"Operator by user: {get_token_info().get('userId')}")
+        app_code = request.headers.get('X-App-Code')
+        if app_code:
+            app = check_app_code(app_code)
+            user_id = request.headers.get('X-UserId')
+            timestamp = request.headers.get('X-Timestamp')
+            nonce = request.headers.get('X-Nonce')
+            algorithm = request.headers.get('X-Algorithm')
+            sign = request.headers.get('X-Sign')
+            secret_key = app.get('secret_key')
+            if secret_key:
+                gen_sign = signature(
+                    params={'app_code': app_code, 'user_id': user_id, 'timestamp': timestamp, 'nonce': nonce},
+                    secret=secret_key,
+                    algorithm=algorithm)
+                if sign != gen_sign:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"code": 401, "msg": "Signature verification failed"}
+                    )
+            set_token_context(
+                {'token_type': 'sign',
+                 'token': json.dumps({'appCode': app_code, 'userId': user_id, 'tenantId': None})})
+            logger.info(f"Operator by sign user: {user_id}, app code: {app_code}")
         else:
-            app_code = request.headers.get('X-App-Code')
-            if app_code:
-                app = check_app_code(app_code)
-                user_id = request.headers.get('X-UserId')
-                timestamp = request.headers.get('X-Timestamp')
-                nonce = request.headers.get('X-Nonce')
-                algorithm = request.headers.get('X-Algorithm')
-                sign = request.headers.get('X-Sign')
-                secret_key = app.get('secret_key')
-                if secret_key:
-                    gen_sign = signature(
-                        params={'app_code': app_code, 'user_id': user_id, 'timestamp': timestamp, 'nonce': nonce},
-                        secret=secret_key,
-                        algorithm=algorithm)
-                    if sign != gen_sign:
-                        return JSONResponse(
-                            status_code=401,
-                            content={"code": 401, "msg": "Signature verification failed"}
-                        )
-                set_token_context(
-                    {'token_type': 'sign',
-                     'token': json.dumps({'appCode': app_code, 'userId': user_id, 'tenantId': None})})
-                logger.info(f"Operator by sign user: {user_id}, app code: {app_code}")
+            token = request.headers.get("Authorization")
+            if token is None or token.strip() == '':
+                token = request.cookies.get(CIAM_TOKEN_COOKIE_NAME)
+            if token:
+                if "/openapi/" in request.url.path:
+                    token_parts = token.split("Bearer ")
+                    app_code = token_parts[1] if len(token_parts) > 1 else token
+                    app = check_app_code(app_code)
+                    set_token_context(
+                        {'token_type': 'sign',
+                         'token': json.dumps(
+                             {'appCode': app_code, 'userId': f"app-{app.get('id')}", 'tenantId': None})})
+                    logger.info(f"Operator by app code: {app_code}")
+                else:
+                    set_token_context({'token_type': 'jwt', 'token': token})
+                    logger.info(f"Operator by user: {get_token_info().get('userId')}")
             else:
-                if not MOCK_TOKEN_INFO_ENABLED:
+                if not MOCK_TOKEN_INFO_ENABLED or "/openapi/" in request.url.path:
                     return JSONResponse(
                         status_code=401,
                         content={"code": 401, "msg": "Missing Jwt token or signature"}
