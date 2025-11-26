@@ -59,7 +59,9 @@ class LocaleVariableMiddleware(BaseHTTPMiddleware):
         app_code = request.headers.get('X-App-Code')
         if app_code:
             app = check_app_code(app_code)
-            user_id = request.headers.get('X-UserId')
+            if isinstance(app, JSONResponse):
+                return app
+            user_id = request.headers.get('X-User-Id')
             timestamp = request.headers.get('X-Timestamp')
             nonce = request.headers.get('X-Nonce')
             algorithm = request.headers.get('X-Algorithm')
@@ -88,6 +90,8 @@ class LocaleVariableMiddleware(BaseHTTPMiddleware):
                     token_parts = token.split("Bearer ")
                     app_code = token_parts[1] if len(token_parts) > 1 else token
                     app = check_app_code(app_code)
+                    if isinstance(app, JSONResponse):
+                        return app
                     set_token_context(
                         {'token_type': 'sign',
                          'token': json.dumps(
