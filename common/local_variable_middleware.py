@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import hmac
 import json
+import os
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -68,6 +69,13 @@ class LocaleVariableMiddleware(BaseHTTPMiddleware):
             sign = request.headers.get('X-Sign')
             secret_key = app.get('secret_key')
             if secret_key:
+                signature_timeout_minutes = int(os.environ.get('SIGNATURE_TIMEOUT_MINUTES', 30))
+                time_diff = abs(datetime.datetime.now() - datetime.datetime.fromtimestamp(int(timestamp) / 1000))
+                if time_diff > datetime.timedelta(minutes=signature_timeout_minutes):
+                    return JSONResponse(
+                        status_code=401,
+                        content={"code": 401, "msg": "Timestamp expired"}
+                    )
                 gen_sign = signature(
                     params={'app_code': app_code, 'user_id': user_id, 'timestamp': timestamp, 'nonce': nonce},
                     secret=secret_key,
