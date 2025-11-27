@@ -206,6 +206,7 @@ def get_query_by_assistant_id(session, assistant_id: int = None, limit: int = 10
         filters.append(MessageModel.create_by == get_token_info().get("userId"))
     if assistant_id and assistant_id > 0:
         filters.append(ConversationModel.assistant_id == assistant_id)
+        filters.append(ConversationModel.id == MessageModel.conversation_id)
         message_query.join(
             ConversationModel, ConversationModel.id == MessageModel.conversation_id
         )
