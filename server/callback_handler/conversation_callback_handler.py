@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import time
 from asyncio import CancelledError
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
@@ -11,6 +12,7 @@ from langchain_core.agents import AgentFinish
 from langchain_core.outputs import GenerationChunk, ChatGenerationChunk
 
 from common.exceptions import ChatBusinessException
+from configs import logger
 from server.db.repository import update_message
 from server.memory.message_i18n import Message_I18N
 
@@ -29,6 +31,9 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         self.agent = agent
         self.updated = False
         self.generated_tokens = []
+        self.start_time = None
+        self.first_token_time = None
+        self.token_count = 0
         self.docs = None
         self.extra = {'stream': stream, 'realtime_token_save': realtime_token_save, 'answer': '', 'metadata': {},
                       'response_time_updated': False}
@@ -61,12 +66,14 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             self.update_message(final_answer, metadata=metadata)
             self.generated_tokens = []
             self.updated = True
+            self._log_performance_metrics()
 
     def on_llm_start(
             self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any
     ) -> None:
         # 如果想存更多信息，则prompts 也需要持久化
-        pass
+        self.start_time = time.time()
+        self.first_token_time = None
 
     def on_llm_new_token(
             self,
@@ -77,6 +84,8 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             parent_run_id: Optional[UUID] = None,
             **kwargs: Any,
     ) -> Any:
+        self.first_token_time = time.time()
+        self.token_count += len(token) if token else 0
         if not self.agent:
             self.generated_tokens.append(token)
             realtime_token_save = self.extra.get("realtime_token_save", False)
@@ -132,12 +141,38 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         update_message(self.message_id, answer, metadata if len(metadata) > 0 else None,
                        response_time=datetime.datetime.now())
 
+    def _log_performance_metrics(self):
+        """记录性能指标到日志"""
+        if self.start_time is None:
+            return
+
+        end_time = time.time()
+        total_time = end_time - self.start_time
+
+        # 计算各项指标
+        first_token_latency = (self.first_token_time - self.start_time) if self.first_token_time else 0
+        tokens_per_second = self.token_count / total_time if total_time > 0 else 0
+
+        # 使用logger记录性能指标
+        logger.info(
+            f"Model Performance Metrics - "
+            f"Model: {self.model_name}, "
+            f"Conversation ID: {self.conversation_id}, "
+            f"Message ID: {self.message_id}, "
+            f"First Token Latency: {first_token_latency:.4f}s, "
+            f"Tokens/Second: {tokens_per_second:.2f}, "
+            f"Total Tokens: {self.token_count}, "
+            f"Total Time: {total_time:.4f}s"
+        )
+
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         if not self.agent and not self.updated:
             answer = response.generations[0][0].text
             self.update_message(answer)
             self.generated_tokens = []
             self.updated = True
+
+            self._log_performance_metrics()
 
     def on_chain_error(
             self,
