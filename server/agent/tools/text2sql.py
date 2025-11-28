@@ -660,16 +660,26 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
         """
     }
     result_types = set()
-    if "折线图" in query:
+
+    # 更智能的图表类型识别，支持多种表达方式
+    line_keywords = ["折线图", "线图", "趋势图", "曲线图", "line graph", "line chart", "trend chart", "curve chart"]
+    pie_keywords = ["饼图", "饼状图", "圆饼图", "扇形图", "pie chart", "circle chart", "sector chart"]
+    bar_keywords = ["柱状图", "柱图", "条形图", "直方图", "bar graph", "bar chart", "column chart", "histogram"]
+    table_keywords = ["表格", "列表", "table", "grid"]
+
+    query_lower = query.lower()
+
+    if any(keyword in query_lower for keyword in line_keywords):
         chart_type = "line"
-    elif "饼图" in query:
+    elif any(keyword in query_lower for keyword in pie_keywords):
         chart_type = "pie"
-    elif "柱状图" in query:
+    elif any(keyword in query_lower for keyword in bar_keywords):
         chart_type = "bar"
     else:
         chart_type = "table"
     result_types.add(chart_type)
-    if "表格" in query:
+
+    if any(keyword in query_lower for keyword in table_keywords):
         result_types.add("table")
     chart_json = {}
     if records and chart_type in chart_json_example:
