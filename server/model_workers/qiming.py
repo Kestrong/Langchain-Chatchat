@@ -296,7 +296,7 @@ class QimingWorker(ApiModelWorker):
                                     json_data = json.loads(json_str)
                                     event = json_data.get('event')
                                     # 根据事件类型处理响应
-                                    if event == "agent_message":
+                                    if event == "agent_message" or event == "message":
                                         answer = json_data.get('answer', '')
                                         conversation_id = json_data.get('conversation_id')
                                         message_id = json_data.get('message_id')
