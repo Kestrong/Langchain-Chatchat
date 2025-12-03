@@ -84,7 +84,8 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             parent_run_id: Optional[UUID] = None,
             **kwargs: Any,
     ) -> Any:
-        self.first_token_time = time.time()
+        if self.first_token_time is None:
+            self.first_token_time = time.time()
         self.token_count += len(token) if token else 0
         if not self.agent:
             self.generated_tokens.append(token)
