@@ -102,9 +102,15 @@ def rerank_docs(query: str = Body("", description="用户输入"),
                 top_n: int = Body(VECTOR_SEARCH_TOP_K, description="返回排序前几条"),
                 return_documents: bool = Body(False, description="是否需要返回原始文档"),
                 ) -> BaseResponse:
-    data = LangchainReranker(model=model or RERANKER_MODEL).rerank(documents=documents, query=query, top_n=top_n,
-                                                                   return_documents=return_documents)
-    return BaseResponse(code=200, data=data)
+    try:
+        data = LangchainReranker(model=model or RERANKER_MODEL).rerank(documents=documents, query=query, top_n=top_n,
+                                                                       return_documents=return_documents)
+        return BaseResponse(code=200, data=data)
+    except BaseException as e:
+        msg = f"重排文档出错： {e}"
+        logger.error(f'{e.__class__.__name__}: {msg}',
+                     exc_info=e if log_verbose else None)
+        return BaseResponse(code=500, msg=Message_I18N.COMMON_CALL_FAILED.value)
 
 
 def list_docs(query: str = Body("", description="用户输入", examples=["你好"]),

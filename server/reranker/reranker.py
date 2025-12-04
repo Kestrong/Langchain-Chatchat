@@ -32,7 +32,8 @@ class LangchainReranker:
         if not documents:
             return []
         if USE_RERANKER != "True":
-            raise ChatBusinessException("Reranker is not enabled")
+            if USE_RERANKER is not True:
+                raise ChatBusinessException("Reranker is not enabled")
         if not self.model:
             raise ChatBusinessException("Reranker model is not given")
         if not top_n or top_n <= 0 or top_n > len(documents):
