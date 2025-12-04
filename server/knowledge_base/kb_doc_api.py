@@ -14,7 +14,7 @@ from starlette.responses import StreamingResponse
 from configs import (DEFAULT_VS_TYPE, EMBEDDING_MODEL,
                      VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD,
                      CHUNK_SIZE, OVERLAP_SIZE, ZH_TITLE_ENHANCE,
-                     logger, log_verbose, MAX_KNOWLEDGE_FILE_SIZE)
+                     logger, log_verbose, MAX_KNOWLEDGE_FILE_SIZE, RERANKER_MODEL)
 from server.db.repository import get_kb_detail_by_id, get_kb_detail
 from server.db.repository.knowledge_file_repository import get_file_detail, batch_increment_files_hit_count, \
     get_enabled_filenames, update_file_enabled
@@ -23,6 +23,7 @@ from server.knowledge_base.model.kb_document_model import DocumentWithVSId
 from server.knowledge_base.oss import default_oss
 from server.knowledge_base.utils import (validate_kb_name, list_files_from_folder, files2docs_in_thread, KnowledgeFile)
 from server.memory.message_i18n import Message_I18N
+from server.reranker.reranker import LangchainReranker
 from server.utils import BaseResponse, run_in_thread_pool, PageResponse, Page
 
 
@@ -93,6 +94,17 @@ def search_docs(
                 if "vector" in d.metadata:
                     del d.metadata["vector"]
     return data
+
+
+def rerank_docs(query: str = Body("", description="用户输入"),
+                model: str = Body(RERANKER_MODEL, description="重排模型"),
+                documents: list = Body([], description="需要重排的文档"),
+                top_n: int = Body(VECTOR_SEARCH_TOP_K, description="返回排序前几条"),
+                return_documents: bool = Body(False, description="是否需要返回原始文档"),
+                ) -> BaseResponse:
+    data = LangchainReranker(model=model or RERANKER_MODEL).rerank(documents=documents, query=query, top_n=top_n,
+                                                                   return_documents=return_documents)
+    return BaseResponse(code=200, data=data)
 
 
 def list_docs(query: str = Body("", description="用户输入", examples=["你好"]),

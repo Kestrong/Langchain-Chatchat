@@ -1,122 +1,107 @@
 import os
 import sys
 
+import requests
+
+from common.exceptions import ChatBusinessException
+from server.utils import get_model_worker_config
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from typing import Any, List, Optional
-from sentence_transformers import CrossEncoder
+from typing import Any, List
 from typing import Optional, Sequence
 from langchain_core.documents import Document
 from langchain.callbacks.manager import Callbacks
-from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
-from llama_index.bridge.pydantic import Field, PrivateAttr
+from llama_index.bridge.pydantic import PrivateAttr
+from configs import RERANKER_MODEL, logger, USE_RERANKER, VECTOR_SEARCH_TOP_K
 
 
-class LangchainReranker(BaseDocumentCompressor):
+class LangchainReranker:
     """Document compressor that uses `Cohere Rerank API`."""
-    model_name_or_path: str = Field()
-    _model: Any = PrivateAttr()
-    top_n: int = Field()
-    device: str = Field()
-    max_length: int = Field()
-    batch_size: int = Field()
-    # show_progress_bar: bool = None
-    num_workers: int = Field()
-
-    # activation_fct = None
-    # apply_softmax = False
+    model: Any = PrivateAttr()
 
     def __init__(self,
-                 model_name_or_path: str,
-                 top_n: int = 3,
-                 device: str = "cuda",
-                 max_length: int = 1024,
-                 batch_size: int = 32,
-                 # show_progress_bar: bool = None,
-                 num_workers: int = 0,
-                 # activation_fct = None,
-                 # apply_softmax = False,
+                 model: str = RERANKER_MODEL
                  ):
-        # self.top_n=top_n
-        # self.model_name_or_path=model_name_or_path
-        # self.device=device
-        # self.max_length=max_length
-        # self.batch_size=batch_size
-        # self.show_progress_bar=show_progress_bar
-        # self.num_workers=num_workers
-        # self.activation_fct=activation_fct
-        # self.apply_softmax=apply_softmax
+        self.model = model
 
-        self._model = CrossEncoder(model_name=model_name_or_path, max_length=max_length, device=device)
-        super().__init__(
-            top_n=top_n,
-            model_name_or_path=model_name_or_path,
-            device=device,
-            max_length=max_length,
-            batch_size=batch_size,
-            # show_progress_bar=show_progress_bar,
-            num_workers=num_workers,
-            # activation_fct=activation_fct,
-            # apply_softmax=apply_softmax
-        )
+    def _do_rerank(self,
+                   documents: List[str],
+                   query: str,
+                   top_n: int = VECTOR_SEARCH_TOP_K,
+                   return_documents: bool = False, ) -> List[dict]:
+        if not documents:
+            return []
+        if USE_RERANKER != "True":
+            raise ChatBusinessException("Reranker is not enabled")
+        if not self.model:
+            raise ChatBusinessException("Reranker model is not given")
+        if not top_n or top_n <= 0 or top_n > len(documents):
+            top_n = len(documents)
+        config = get_model_worker_config(self.model)
+        api_proxy = config.get("api_proxy") + "/rerank"
+        api_key = config.get("api_key")
+        reranker_model = config.get("reranker_model")
+        extra_headers = config.get("role_meta", {}).get("extra_headers", {})
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", **extra_headers}
+        data = {
+            "query": query,
+            "documents": documents,
+            "return_documents": return_documents if return_documents is not None else False,
+            "top_n": top_n,
+            "model": reranker_model
+        }
+        with requests.post(api_proxy, headers=headers, json=data) as response:
+            if not response.ok:
+                logger.error(response.text)
+                response.raise_for_status()
+            results = response.json().get("results", [])
+            return results
+
+    def rerank(self,
+               documents: List[str],
+               query: str,
+               top_n: int = VECTOR_SEARCH_TOP_K,
+               return_documents: bool = False,
+               ) -> List[Document]:
+        results = self._do_rerank(documents, query, top_n, return_documents)
+        final_result = []
+        for r in results:
+            doc = Document(page_content=documents[r["index"]] if return_documents else "",
+                           metadata={"index": r["index"], "relevance_score": r["relevance_score"]})
+            final_result.append(doc)
+        return final_result
 
     def compress_documents(
             self,
             documents: Sequence[Document],
             query: str,
+            top_n: int = VECTOR_SEARCH_TOP_K,
             callbacks: Optional[Callbacks] = None,
     ) -> Sequence[Document]:
-        """
-        Compress documents using Cohere's rerank API.
-
-        Args:
-            documents: A sequence of documents to compress.
-            query: The query to use for compressing the documents.
-            callbacks: Callbacks to run during the compression process.
-
-        Returns:
-            A sequence of compressed documents.
-        """
-        if len(documents) == 0:  # to avoid empty api call
-            return []
-        doc_list = list(documents)
-        _docs = [d.page_content for d in doc_list]
-        sentence_pairs = [[query, _doc] for _doc in _docs]
-        results = self._model.predict(sentences=sentence_pairs,
-                                      batch_size=self.batch_size,
-                                      #  show_progress_bar=self.show_progress_bar,
-                                      num_workers=self.num_workers,
-                                      #  activation_fct=self.activation_fct,
-                                      #  apply_softmax=self.apply_softmax,
-                                      convert_to_tensor=True
-                                      )
-        top_k = self.top_n if self.top_n < len(results) else len(results)
-
-        values, indices = results.topk(top_k)
-        final_results = []
-        for value, index in zip(values, indices):
-            doc = doc_list[index]
-            doc.metadata["relevance_score"] = value
-            final_results.append(doc)
-        return final_results
+        try:
+            doc_list = list(documents)
+            _docs = [d.page_content for d in doc_list]
+            results = self._do_rerank(_docs, query, top_n, return_documents=False)
+            final_result = []
+            for r in results:
+                doc = doc_list[r["index"]]
+                doc.metadata["relevance_score"] = r["relevance_score"]
+                final_result.append(doc)
+            return final_result[:top_n]
+        except Exception as e:
+            logger.error(e)
+            return documents[:top_n]
 
 
 if __name__ == "__main__":
-    from configs import (LLM_MODELS,
-                         VECTOR_SEARCH_TOP_K,
-                         SCORE_THRESHOLD,
-                         TEMPERATURE,
-                         USE_RERANKER,
-                         RERANKER_MODEL,
-                         RERANKER_MAX_LENGTH,
-                         MODEL_PATH)
-    from server.utils import embedding_device
+    reranker = LangchainReranker(model=RERANKER_MODEL)
+    result = reranker.compress_documents(
+        documents=[Document(page_content="hello world"), Document(page_content="I'm fine."),
+                   Document(page_content="Nice to meet you."), Document(page_content="Hi")],
+        query="hello",
+        top_n=VECTOR_SEARCH_TOP_K, )
+    print(result)
 
-    if USE_RERANKER:
-        reranker_model_path = MODEL_PATH["reranker"].get(RERANKER_MODEL, "BAAI/bge-reranker-large")
-        print("-----------------model path------------------")
-        print(reranker_model_path)
-        reranker_model = LangchainReranker(top_n=3,
-                                           device=embedding_device(),
-                                           max_length=RERANKER_MAX_LENGTH,
-                                           model_name_or_path=reranker_model_path
-                                           )
+    result = reranker.rerank(documents=["hello world", "I'm fine.", "Nice to meet you.", "Hi"], query="hello",
+                             top_n=VECTOR_SEARCH_TOP_K, return_documents=False)
+    print(result)

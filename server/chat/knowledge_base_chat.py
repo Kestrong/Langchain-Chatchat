@@ -15,9 +15,7 @@ from configs import (LLM_MODELS,
                      VECTOR_SEARCH_TOP_K,
                      SCORE_THRESHOLD,
                      TEMPERATURE,
-                     USE_RERANKER,
-                     RERANKER_MODEL,
-                     RERANKER_MAX_LENGTH, TOP_P)
+                     TOP_P)
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
@@ -144,19 +142,6 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                 d.metadata['kb_name'] = knowledge_base_name
                 docs.append(d)
         docs.sort(key=lambda x: x.score)
-
-        # 加入reranker
-        if USE_RERANKER:
-            from server.reranker.reranker import LangchainReranker
-            reranker_model_path = get_model_path(RERANKER_MODEL)
-            reranker_model = LangchainReranker(top_n=max(top_k // 2, 3),
-                                               device=embedding_device(),
-                                               max_length=RERANKER_MAX_LENGTH,
-                                               model_name_or_path=reranker_model_path
-                                               )
-            docs = reranker_model.compress_documents(documents=docs,
-                                                     query=query)
-
         if len(docs) > top_k:
             docs = docs[:top_k]
         docs_map = OrderedDict()
