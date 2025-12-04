@@ -66,6 +66,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             self.update_message(final_answer, metadata=metadata)
             self.generated_tokens = []
             self.updated = True
+            self.token_count += len(final_answer)
             self._log_performance_metrics()
 
     def on_llm_start(
@@ -84,9 +85,8 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             parent_run_id: Optional[UUID] = None,
             **kwargs: Any,
     ) -> Any:
-        if self.first_token_time is None:
+        if self.first_token_time is None and token:
             self.first_token_time = time.time()
-        self.token_count += len(token) if token else 0
         if not self.agent:
             self.generated_tokens.append(token)
             realtime_token_save = self.extra.get("realtime_token_save", False)
@@ -106,6 +106,8 @@ class ConversationCallbackHandler(BaseCallbackHandler):
                 if stream and not response_time_updated and token:
                     update_message(message_id=self.message_id, response_time=datetime.datetime.now(), )
                     self.extra['response_time_updated'] = True
+        else:
+            self.token_count += len(token)
 
     def parse_token(self, token: str, metadata: dict = None, error: str = None):
         mark = f'###[{self.model_name}]###'
@@ -141,6 +143,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         answer, metadata = self.parse_token(answer, metadata, error)
         update_message(self.message_id, answer, metadata if len(metadata) > 0 else None,
                        response_time=datetime.datetime.now())
+        return answer
 
     def _log_performance_metrics(self):
         """记录性能指标到日志"""
@@ -169,9 +172,10 @@ class ConversationCallbackHandler(BaseCallbackHandler):
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         if not self.agent and not self.updated:
             answer = response.generations[0][0].text
-            self.update_message(answer)
+            answer = self.update_message(answer)
             self.generated_tokens = []
             self.updated = True
+            self.token_count = len(answer)
 
             self._log_performance_metrics()
 
