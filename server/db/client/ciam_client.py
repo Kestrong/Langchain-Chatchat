@@ -14,7 +14,8 @@ from server.utils import get_httpx_client
 
 def list_resources(resource_code: str) -> list:
     if CIAM_ADMIN_ENABLED != "True":
-        return []
+        if CIAM_ADMIN_ENABLED is not True:
+            return []
 
     url = f"{CIAM_ADMIN_HOST}/iam/token/listResources"
     headers = {"Authorization": get_token()}
