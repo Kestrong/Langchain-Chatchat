@@ -186,8 +186,8 @@ class QwenWorker(ApiModelWorker):
                     i += 25
             except Exception as e:
                 data = {
-                    "error_code": 500,
-                    "text": f'{e}'
+                    "code": 500,
+                    "msg": f'{e}'
                 }
                 self.logger.error(f"请求 {self.model_names[0]} 时发生错误：{data}")
                 return data
