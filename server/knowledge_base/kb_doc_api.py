@@ -108,8 +108,7 @@ def rerank_docs(query: str = Body("", description="用户输入"),
         return BaseResponse(code=200, data=data)
     except BaseException as e:
         msg = f"重排文档出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.COMMON_CALL_FAILED.value)
 
 
@@ -124,16 +123,21 @@ def list_docs(query: str = Body("", description="用户输入", examples=["你�
               file_name: str = Body("", description="文件名称，支持 sql 通配符"),
               metadata: dict = Body({}, description="根据 metadata 进行过滤，仅支持一级键"),
               background_tasks: BackgroundTasks = None) -> BaseResponse:
-    data = search_docs(
-        query=query,
-        knowledge_base_name=knowledge_base_name,
-        top_k=top_k,
-        score_threshold=score_threshold,
-        file_name=file_name,
-        metadata=metadata,
-        background_tasks=background_tasks
-    )
-    return BaseResponse(code=200, data=data)
+    try:
+        data = search_docs(
+            query=query,
+            knowledge_base_name=knowledge_base_name,
+            top_k=top_k,
+            score_threshold=score_threshold,
+            file_name=file_name,
+            metadata=metadata,
+            background_tasks=background_tasks
+        )
+        return BaseResponse(code=200, data=data)
+    except BaseException as e:
+        msg = f"查询文档出错： {e}"
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
+        return BaseResponse(code=500, msg=Message_I18N.COMMON_CALL_FAILED.value)
 
 
 def update_docs_by_id(
@@ -394,8 +398,7 @@ def update_enabled(status: str = Body(default='0BT', description="状态", examp
                             data={"file_id": file_id, "status": status})
     except Exception as e:
         msg = f"修改文件[{file_id}]失败，错误信息是：{e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_UPDATE_ERROR.value)
 
 
@@ -450,8 +453,7 @@ def download_doc(
         except BaseException:
             pass
         msg = f"{filename} 读取文件失败，错误信息是：{e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=msg)
 
 

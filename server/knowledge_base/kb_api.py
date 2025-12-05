@@ -62,8 +62,7 @@ def create_kb(knowledge_base_name: str = Body(None, max_length=50, examples=["sa
         return BaseResponse(code=500, msg=f"{e}")
     except Exception as e:
         msg = f"创建知识库出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_CREATE_ERROR.value)
 
     return BaseResponse(code=200, data=get_kb_detail_by_name(kb_name=knowledge_base_name))
@@ -84,8 +83,7 @@ def update_info(
         return BaseResponse(code=500, msg=f"{e}")
     except Exception as e:
         msg = f"修改知识库出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_UPDATE_ERROR.value)
     return BaseResponse(code=200, msg=Message_I18N.COMMON_CALL_SUCCESS.value,
                         data=get_kb_detail_by_name(kb_name=knowledge_base_name))
@@ -111,8 +109,7 @@ def delete_kb(
             return BaseResponse(code=200, data={})
     except Exception as e:
         msg = f"删除知识库时出现意外： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_DELETE_ERROR.value)
 
     return BaseResponse(code=500, msg=Message_I18N.API_DELETE_ERROR.value)
