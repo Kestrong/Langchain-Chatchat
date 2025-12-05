@@ -30,8 +30,7 @@ def create_conversation(chat_type: str = Body(
         conversation_id = add_conversation_to_db(chat_type=chat_type, name=name, tag=tag, assistant_id=assistant_id)
     except Exception as e:
         msg = f"创建会话出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_CREATE_ERROR.value)
     return BaseResponse(code=200, data={'conversation_id': conversation_id})
 
@@ -43,8 +42,7 @@ def update_conversation(id: str = Body(description="会话id"),
         conversation_id = update_conversation_to_db(conversation_id=id, name=name, tag=tag)
     except Exception as e:
         msg = f"修改会话出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_UPDATE_ERROR.value)
     return BaseResponse(code=200, data={'conversation_id': conversation_id})
 
@@ -54,8 +52,7 @@ def delete_conversation(id: str = Query(description="会话id")) -> BaseResponse
         conversation_id = delete_conversation_from_db(conversation_id=id)
     except Exception as e:
         msg = f"删除会话出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_DELETE_ERROR.value)
     return BaseResponse(code=200, data={'conversation_id': conversation_id})
 
@@ -65,8 +62,7 @@ def delete_user_conversation(assistant_id: int = Query(-1, description="助手ID
         delete_user_conversation_from_db(assistant_id=assistant_id)
     except Exception as e:
         msg = f"删除用户会话出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_DELETE_ERROR.value)
     return BaseResponse(code=200, data={})
 
@@ -108,8 +104,7 @@ def delete_message(message_id: str = Query(description="消息id")) -> BaseRespo
         message_id = delete_message_from_db(message_id=message_id)
     except Exception as e:
         msg = f"删除消息出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_DELETE_ERROR.value)
     return BaseResponse(code=200, data={'message_id': message_id})
 
@@ -141,8 +136,7 @@ def list_feedback(query: str = Query(None, description="查询关键词"),
         return BaseResponse(code=200, data={'messages': messages, 'total': total})
     except Exception as e:
         msg = f"查询用户反馈消息出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_CREATE_ERROR.value)
 
 

@@ -143,8 +143,7 @@ def get_loader(loader_name: str, file_path: str, loader_kwargs: Dict = None):
         DocumentLoader = getattr(document_loaders_module, loader_name)
     except Exception as e:
         msg = f"为文件{file_path}查找加载器{loader_name}时出错：{e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         document_loaders_module = importlib.import_module('langchain.document_loaders')
         DocumentLoader = getattr(document_loaders_module, "UnstructuredFileLoader")
 

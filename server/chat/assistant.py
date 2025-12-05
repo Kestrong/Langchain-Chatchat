@@ -41,8 +41,7 @@ def create_assistant(avatar: str = Body(None, description="头像图标"),
                                            tool_config=tool_config, workflow_config=workflow_config, sort_id=sort_id)
     except Exception as e:
         msg = f"创建助手出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_CREATE_ERROR.value)
     return BaseResponse(code=200, data={'assistant_id': assistant_id})
 
@@ -75,8 +74,7 @@ def update_assistant(id: int = Body(description="助手id"),
                                               tool_config=tool_config, workflow_config=workflow_config, sort_id=sort_id)
     except Exception as e:
         msg = f"修改助手出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_UPDATE_ERROR.value)
     return BaseResponse(code=200, data={'assistant_id': assistant_id})
 
@@ -86,8 +84,7 @@ def delete_assistant(id: int = Query(description="助手id")) -> BaseResponse:
         assistant_id = delete_assistant_from_db(assistant_id=id)
     except Exception as e:
         msg = f"删除助手出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_DELETE_ERROR.value)
     return BaseResponse(code=200, data={'assistant_id': assistant_id})
 
@@ -142,6 +139,5 @@ def get_dicts_by_type(dict_type: str = Query(description="字典类型")) -> Bas
         return BaseResponse(code=200, data=dicts)
     except Exception as e:
         msg = f"查询字典项出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.COMMON_CALL_FAILED.value)

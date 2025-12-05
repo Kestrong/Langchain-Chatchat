@@ -127,8 +127,7 @@ def chat_feedback(message_id: str = Body(..., max_length=32, description="聊天
         feedback_message_to_db(message_id, score, reason)
     except Exception as e:
         msg = f"反馈聊天记录出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_FEEDBACK_ERROR.value)
 
     return BaseResponse(code=200, msg=Message_I18N.API_FEEDBACK_SUCCESS.value)

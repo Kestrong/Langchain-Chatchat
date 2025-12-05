@@ -23,8 +23,7 @@ def create_menu(menu_icon: str = Body(None, description="菜单图标"),
                                  auth_level=auth_level, enabled=enabled, sort_id=sort_id, auth_users=auth_users)
     except Exception as e:
         msg = f"创建菜单出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_CREATE_ERROR.value)
     return BaseResponse(code=200, data={'menu_id': menu_id})
 
@@ -44,8 +43,7 @@ def update_menu(id: int = Body(description="菜单id"),
                                     auth_users=auth_users)
     except Exception as e:
         msg = f"修改菜单出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_UPDATE_ERROR.value)
     return BaseResponse(code=200, data={'menu_id': menu_id})
 
@@ -55,8 +53,7 @@ def delete_menu(id: int = Query(description="菜单id")) -> BaseResponse:
         menu_id = delete_menu_from_db(menu_id=id)
     except Exception as e:
         msg = f"删除菜单出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_DELETE_ERROR.value)
     return BaseResponse(code=200, data={'menu_id': menu_id})
 
