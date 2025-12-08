@@ -2,10 +2,10 @@ import json
 import re
 from concurrent.futures import ThreadPoolExecutor, Future
 from copy import copy
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import date, datetime, time
 from typing import Dict, Any, Optional, Union, Literal, Sequence, List
 
+from fastapi.encoders import jsonable_encoder
 from langchain.chains import LLMChain
 from langchain.chains.sql_database.prompt import PROMPT
 from langchain_community.chat_models import ChatOpenAI
@@ -549,15 +549,11 @@ def intercept_sql(conn, cursor, statement, parameters, context, executemany):
         )
 
 
-def complex_handler(obj):
-    if isinstance(obj, Decimal):
-        return float(obj)
-    elif isinstance(obj, date):
-        return obj.strftime("%Y-%m-%d %H:%M:%S")
-    elif isinstance(obj, datetime):
-        return obj.strftime("%Y-%m-%d %H:%M:%S")
-    else:
-        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+def json_dumps(obj, indent=None):
+    _custom_encoder = {datetime: lambda o: o.strftime("%Y-%m-%d %H:%M:%S"),
+                       time: lambda o: o.strftime("%Y-%m-%d %H:%M:%S"),
+                       date: lambda o: o.strftime("%Y-%m-%d %H:%M:%S"), }
+    return json.dumps(jsonable_encoder(obj, custom_encoder=_custom_encoder), ensure_ascii=False, indent=indent)
 
 
 def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
@@ -700,7 +696,7 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
                                       template=prompt, template_format="jinja2")
             chain = LLMChain(llm=llm, prompt=template)
             chart_json = chain.run(query=query,
-                                   records=json.dumps(records, default=complex_handler),
+                                   records=json_dumps(records),
                                    chart_type=chart_types[chart_type],
                                    chart_json_example=chart_json_example[chart_type])
             chart_json = json.loads(parse_json_md(chart_json))
@@ -955,20 +951,19 @@ def text2sql(natural_language_question: str):
         if isinstance(summarize, Future):
             summarize = summarize.result()
         if return_format == "json":
-            return json.dumps(
+            return json_dumps(
                 {"column_map": column_map, "records": records,
                  "chart_type": chart_type,
                  "chart_json": chart_json,
                  "summarize": summarize,
                  "metadata": {"sql": parse_sql_md(sql), "table_info": table_info, "db_name": db_name,
-                              "fix_sql": True if sql_cmd else False}},
-                default=complex_handler, ensure_ascii=False)
+                              "fix_sql": True if sql_cmd else False}})
         return Message_I18N.TOOL_SQL_DETAIL_PRODUCE.value.format(sql=parse_sql_md(sql),
-                                                                 records=json.dumps(
+                                                                 records=json_dumps(
                                                                      {"chart_type": chart_type,
                                                                       "chart_json": chart_json,
-                                                                      "column_map": column_map, "records": records, },
-                                                                     default=complex_handler, indent=4),
+                                                                      "column_map": column_map,
+                                                                      "records": records, }, indent=4),
                                                                  summarize=summarize)
     except Exception as e:
         error_info = str(e)
@@ -991,7 +986,7 @@ def shorter_records(records: list, used_count: int = 0):
     result = []
     length = 0
     for rr in records:
-        r_str = json.dumps(rr, default=complex_handler)
+        r_str = json_dumps(rr)
         length += len(r_str)
         if length > MAX_TOKENS_INPUT - used_count:
             break
