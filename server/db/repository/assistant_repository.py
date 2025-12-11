@@ -57,6 +57,38 @@ def add_assistant_to_db(session, name: str, name_en: str, code: str, avatar: str
     return c.id
 
 
+def is_encrypted_value(value):
+    """
+    判断值是否是加密过的占位符（如 ***）
+    """
+    if isinstance(value, str):
+        # 检查是否由星号组成或者大部分是星号
+        stripped = value.strip()
+        if len(stripped) > 0 and all(c == '*' for c in stripped):
+            return True
+    return False
+
+
+def merge_config(old_config, new_config):
+    """
+    递归合并配置，如果新配置中的值是加密的，则使用旧配置中的值
+    """
+    if isinstance(old_config, dict) and isinstance(new_config, dict):
+        result = {}
+        for key in set(new_config.keys()):
+            if key in old_config:
+                result[key] = merge_config(old_config[key], new_config[key])
+            else:
+                result[key] = new_config[key]
+        return result
+    else:
+        # 对于基本类型值，检查是否是加密值
+        if is_encrypted_value(new_config):
+            return old_config
+        else:
+            return new_config
+
+
 @with_session
 def update_assistant_to_db(session, name: str, name_en: str, code: str, assistant_id: int, avatar: str, prompt: str,
                            model_name: str, history_len: int, top_k: int, score_threshold: float, prologue: str,
@@ -83,7 +115,8 @@ def update_assistant_to_db(session, name: str, name_en: str, code: str, assistan
         assistant.top_k = top_k
         assistant.score_threshold = score_threshold
         assistant.extra = extra if extra else assistant.extra
-        assistant.model_config = model_config if model_config else assistant.model_config
+        if model_config:
+            assistant.model_config = merge_config(assistant.model_config, model_config)
         assistant.tool_config = tool_config if tool_config else assistant.tool_config
         assistant.workflow_config = workflow_config if workflow_config else assistant.workflow_config
         assistant.sort_id = sort_id

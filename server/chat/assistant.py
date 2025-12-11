@@ -116,6 +116,7 @@ def get_assistants(page: int = Query(default=1, description="页码"),
             group['assistants'].append(assistant)
         else:
             assistant["model_label"] = label
+        fuzzy_sensitive_info(assistant.get("model_config"))
     if group:
         return BaseResponse(code=200, data={'groups': [v for v in result.values()], 'total': total})
     return BaseResponse(code=200, data={'assistants': assistants, 'total': total})
@@ -123,7 +124,22 @@ def get_assistants(page: int = Query(default=1, description="页码"),
 
 def get_assistant_detail(id: int = Query(description="助手id")) -> BaseResponse:
     assistant = get_assistant_detail_from_db(assistant_id=id)
+    fuzzy_sensitive_info(assistant.get("model_config"))
     return BaseResponse(code=200, data={'assistant': assistant})
+
+
+def fuzzy_sensitive_info(model_config: dict):
+    if model_config:
+        if 'api_proxy' in model_config:
+            model_config['api_proxy'] = '*' * len(model_config['api_proxy'])
+        if 'api_key' in model_config:
+            model_config['api_key'] = '*' * len(model_config['api_key'])
+        if 'secret_key' in model_config:
+            model_config['secret_key'] = '*' * len(model_config['secret_key'])
+        extra_headers = model_config.get('extra_headers')
+        if extra_headers:
+            for k, v in extra_headers.items():
+                extra_headers[k] = '*' * len(v)
 
 
 def get_dicts_by_type(dict_type: str = Query(description="字典类型")) -> BaseResponse:
