@@ -57,6 +57,7 @@ class SichuanMassWorker(ApiModelWorker):
         enable_thinking = model_config.get('enable_thinking', contentObj.get('enable_thinking', False))
         truncate_mark = model_config.get('truncate_mark') or role_meta.get('truncate_mark', '</think>')
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
+        extra_headers = model_config.get("extra_headers") or role_meta.get("extra_headers", {})
         refs = model_config.get('refs') or role_meta.get("refs", [])
         agentlink = model_config.get('agentlink') or role_meta.get("agentlink", {})
         agentlink['cookie'] = contentObj.get('cookie')
@@ -67,6 +68,7 @@ class SichuanMassWorker(ApiModelWorker):
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}",
+                **extra_headers
             }
             conversation_id = contentObj.get('conversation_id')
             chat_request = {

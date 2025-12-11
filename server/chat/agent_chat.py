@@ -74,10 +74,6 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                      ):
     if not conversation_id:
         conversation_id = uuid.uuid4().hex
-    if un_format_online_llm_model(model_name):
-        return BaseResponse(code=500,
-                            msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(chat_type=ChatType.AGENT_CHAT.value,
-                                                                                    model_name=model_name))
     customize_agent_type = extra.get("customize_agent_type") if extra else None
     if customize_agent_type and customize_agent_type in customize_agent_types:
         return await customize_agent_types.get(customize_agent_type)(query=query, history_len=history_len, tag=tag,
@@ -87,6 +83,10 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                                      conversation_id=conversation_id, top_p=top_p,
                                                                      store_message=store_message, max_tokens=max_tokens,
                                                                      prompt_name=prompt_name, api_names=api_names, )
+    if un_format_online_llm_model(model_name):
+        return BaseResponse(code=500,
+                            msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(chat_type=ChatType.AGENT_CHAT.value,
+                                                                                    model_name=model_name))
     history = [History.from_data(h) for h in history]
     model_container = create_model_container()
     if extra:

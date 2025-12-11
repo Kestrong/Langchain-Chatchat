@@ -241,18 +241,31 @@ class QimingWorker(ApiModelWorker):
         is_workflow = model_config.get('is_workflow') or params.role_meta.get('is_workflow', False)
         stream = False if is_workflow else True
         files, attachments = self.upload_files(uri, app_id or business_type, user, contentObj, file_type, headers)
+        task_id = model_config.get('task_id') or params.role_meta.get('task_id')
         # 构建apiData
-        api_data = {
-            "files": files,
-            "response_mode": "streaming" if stream else "blocking",  # Agent只能使用流式输出
-            "user": get_token_info(contentObj.get('token')).get('userId', user or '1'),
-            "conversation_id": contentObj.get('conversation_id', ''),
-            "opening_statement": model_config.get('opening_statement') or params.role_meta.get("opening_statement", {}),
-            "suggested_questions": model_config.get('suggested_questions') or params.role_meta.get(
-                "suggested_questions", {}),
-            "query": contentObj.get('question', ''),
-            "inputs": model_config.get('inputs') or params.role_meta.get("inputs", {})
-        }
+        if task_id:
+            api_data = {
+                "content": contentObj.get('question', ''),
+                "frequency_penalty": 0,
+                "max_tokens": params.max_tokens,
+                "presence_penalty": 0,
+                "taskId": task_id,
+                "temperature": params.temperature,
+                "top_p": params.top_p
+            }
+        else:
+            api_data = {
+                "files": files,
+                "response_mode": "streaming" if stream else "blocking",  # Agent只能使用流式输出
+                "user": get_token_info(contentObj.get('token')).get('userId', user or '1'),
+                "conversation_id": contentObj.get('conversation_id', ''),
+                "opening_statement": model_config.get('opening_statement') or params.role_meta.get("opening_statement",
+                                                                                                   {}),
+                "suggested_questions": model_config.get('suggested_questions') or params.role_meta.get(
+                    "suggested_questions", {}),
+                "query": contentObj.get('question', ''),
+                "inputs": model_config.get('inputs') or params.role_meta.get("inputs", {})
+            }
         # 构建完整请求数据
         data = {
             "businessType": business_type,
@@ -271,7 +284,12 @@ class QimingWorker(ApiModelWorker):
                 if response.status_code != 200:
                     logger.error(f"请求失败，状态码: {response.status_code}, 响应: {response.text}")
                     response.raise_for_status()
-                if is_workflow:
+                if task_id:
+                    choices = response.json().get('choices', [])
+                    if choices:
+                        text = choices[0].get('message', {}).get('content')
+                        yield {"error_code": 0, "text": text}
+                elif is_workflow:
                     if stream:
                         pass
                     else:
