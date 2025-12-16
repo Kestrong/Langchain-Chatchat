@@ -124,7 +124,8 @@ def get_assistants(page: int = Query(default=1, description="页码"),
 
 def get_assistant_detail(id: int = Query(description="助手id")) -> BaseResponse:
     assistant = get_assistant_detail_from_db(assistant_id=id)
-    fuzzy_sensitive_info(assistant.get("model_config"))
+    if assistant:
+        fuzzy_sensitive_info(assistant.get("model_config"))
     return BaseResponse(code=200, data={'assistant': assistant})
 
 
