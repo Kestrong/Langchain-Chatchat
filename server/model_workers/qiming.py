@@ -48,7 +48,7 @@ class QimingWorker(ApiModelWorker):
         uri = model_config.get('api_proxy', params.api_proxy)
         xappid = model_config.get('api_key') or params.api_key
         xappkey = model_config.get('secret_key') or params.secret_key
-        version = model_config.get('version', self.version)
+        version = model_config.get('version', params.version)
         if version == "workflow":
             yield from self.do_chat_workflow(uri=uri, params=params, model_config=model_config, contentObj=contentObj,
                                              xappid=xappid, xappkey=xappkey)
