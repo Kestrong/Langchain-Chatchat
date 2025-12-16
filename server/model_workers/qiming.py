@@ -254,6 +254,11 @@ class QimingWorker(ApiModelWorker):
                 "top_p": params.top_p
             }
         else:
+            query = contentObj.get('question', '')
+            inputs = model_config.get('inputs') or params.role_meta.get("inputs", {})
+            for k, v in inputs.items():
+                if isinstance(v, str) and v.__contains__("{{query}}"):
+                    inputs[k] = v.replace("{{query}}", query)
             api_data = {
                 "files": files,
                 "response_mode": "streaming" if stream else "blocking",  # Agent只能使用流式输出
@@ -263,8 +268,8 @@ class QimingWorker(ApiModelWorker):
                                                                                                    {}),
                 "suggested_questions": model_config.get('suggested_questions') or params.role_meta.get(
                     "suggested_questions", {}),
-                "query": contentObj.get('question', ''),
-                "inputs": model_config.get('inputs') or params.role_meta.get("inputs", {})
+                "query": query,
+                "inputs": inputs
             }
         # 构建完整请求数据
         data = {
@@ -293,8 +298,17 @@ class QimingWorker(ApiModelWorker):
                     if stream:
                         pass
                     else:
+                        answer_key = model_config.get('output_key') or params.role_meta.get("output_key")
                         data = response.json().get('data', {})
-                        answer = data.get('outputs', {}).get('text', '')
+                        outputs = data.get('outputs', {})
+                        answer = None
+                        if answer_key and answer_key in outputs:
+                            answer = outputs.get(answer_key, '')
+                        else:
+                            if len(outputs) == 1:
+                                answer = list(outputs.values())[0]
+                            elif len(outputs) > 1:
+                                answer = json.dumps(outputs, ensure_ascii=False)
                         if not answer and data.get('error'):
                             text = data.get('error')
                             yield {"error_code": 0, "text": text}
