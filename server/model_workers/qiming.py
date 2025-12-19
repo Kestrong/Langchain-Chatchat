@@ -301,14 +301,13 @@ class QimingWorker(ApiModelWorker):
                         answer_key = model_config.get('output_key') or params.role_meta.get("output_key")
                         data = response.json().get('data', {})
                         outputs = data.get('outputs') or {}
+                        answer = ''
                         if answer_key and answer_key in outputs:
                             answer = outputs.get(answer_key, '')
                         else:
-                            if len(outputs) == 0:
-                                answer = '启明平台没有任何回复内容'
-                            elif len(outputs) == 1:
+                            if len(outputs) == 1:
                                 answer = list(outputs.values())[0]
-                            else:
+                            elif len(outputs) > 1:
                                 answer = json.dumps(outputs, ensure_ascii=False)
                         if not answer and data.get('error'):
                             text = data.get('error')
