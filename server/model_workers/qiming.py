@@ -259,10 +259,11 @@ class QimingWorker(ApiModelWorker):
             for k, v in inputs.items():
                 if isinstance(v, str) and v.__contains__("{{query}}"):
                     inputs[k] = v.replace("{{query}}", query)
+            final_user = user or get_token_info(contentObj.get('token')).get('userId') or '1'
             api_data = {
                 "files": files,
                 "response_mode": "streaming" if stream else "blocking",  # Agent只能使用流式输出
-                "user": get_token_info(contentObj.get('token')).get('userId', user or '1'),
+                "user": str(final_user),
                 "conversation_id": contentObj.get('conversation_id', ''),
                 "opening_statement": model_config.get('opening_statement') or params.role_meta.get("opening_statement",
                                                                                                    {}),
