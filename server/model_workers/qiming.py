@@ -315,7 +315,9 @@ class QimingWorker(ApiModelWorker):
                             yield {"error_code": 0, "text": text}
                         else:
                             text = answer if answer is not None else ''
-                            yield {"error_code": 0, "text": answer}
+                            if not isinstance(text, str):
+                                text = json.dumps(answer, ensure_ascii=False)
+                            yield {"error_code": 0, "text": text}
                 else:
                     if stream:
                         # 处理流式响应
