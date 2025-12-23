@@ -298,9 +298,13 @@ class DifyWorker(ApiModelWorker):
         inputs = self.get_inputs(role_meta, model_config)
         inputs['cookie'] = contentObj.get('cookie')
         inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
+        query = contentObj.get('question', '')
+        for k, v in inputs.items():
+            if isinstance(v, str) and v.__contains__("{{query}}"):
+                inputs[k] = v.replace("{{query}}", query)
         data = {
             "inputs": inputs,
-            "query": contentObj.get('question', ''),
+            "query": query,
             "response_mode": "streaming" if response_mode else "blocking",
             "user": user,
             "conversation_id": contentObj.get('conversation_id'),
