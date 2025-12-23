@@ -236,8 +236,8 @@ class QimingWorker(ApiModelWorker):
         # 构建请求数据
         file_type = model_config.get('file_type') or params.role_meta.get("file_type")
         user = model_config.get('user') or params.role_meta.get("user")
-        business_type = model_config.get("business_type") or contentObj.get('business_type', '')
-        app_id = model_config.get("app_id") or contentObj.get('app_id', '')
+        business_type = model_config.get("business_type") or params.role_meta.get('business_type', '')
+        app_id = model_config.get("app_id") or params.role_meta.get('app_id', '')
         is_workflow = model_config.get('is_workflow') or params.role_meta.get('is_workflow', False)
         stream = False if is_workflow else True
         files, attachments = self.upload_files(uri, app_id or business_type, user, contentObj, file_type, headers)
