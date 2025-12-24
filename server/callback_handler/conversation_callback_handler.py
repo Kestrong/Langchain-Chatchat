@@ -163,10 +163,12 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             f"Model: {self.model_name}, "
             f"Conversation ID: {self.conversation_id}, "
             f"Message ID: {self.message_id}, "
+            f"Start Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.start_time))}, "
             f"First Token Latency: {first_token_latency:.4f}s, "
             f"Tokens/Second: {tokens_per_second:.2f}, "
             f"Total Tokens: {self.token_count}, "
-            f"Total Time: {total_time:.4f}s"
+            f"Total Time: {total_time:.4f}s, "
+            f"End Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(end_time))}"
         )
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
