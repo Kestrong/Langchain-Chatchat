@@ -126,71 +126,92 @@ class QwenWorker(ApiModelWorker):
         ssl_ctx.verify_mode = 0  # 原生request接口内容
         ssl_ctx.set_ciphers('DEFAULT@SECLEVEL=1')  # 降低安全级别以允许较小的DH密钥
         # 创建自定义的httpx.Client实例并传入SSL上下文
-        http_client = httpx.Client(verify=ssl_ctx, timeout=params.role_meta.get("timeout", 60))
-        with OpenAI(
-                api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
-                base_url=params.api_proxy,  # 填写DashScope服务的base_url
-                timeout=params.role_meta.get("timeout", 10),
-                http_client=http_client
-        ) as client:
-            try:
-                result = []
-                i = 0
-                chunk_lens = {}
-                chunk_index = {}
-                while i < len(params.texts):
-                    texts = params.texts[i:i + 25]
-                    if overlap_method == "truncate":
-                        texts = [x[:max_length] if len(x) > max_length else x for x in texts]
-                    elif overlap_method == "chunk":
-                        new_texts = []
-                        for index, t in enumerate(texts, start=0):
-                            if len(t) > max_length:
-                                part_len = []
-                                chunk_num = 0
-                                for chunk in self.split_string_by_length(t, length=max_length):
-                                    chunk_num += 1
-                                    new_texts.append(chunk)
-                                    part_len.append(len(chunk))
-                                chunk_lens[len(new_texts) - chunk_num] = part_len
-                                chunk_index[len(new_texts) - chunk_num] = chunk_num
-                            else:
-                                new_texts.append(t)
-                        texts = new_texts
-
+        http_client = httpx.Client(verify=ssl_ctx, timeout=params.role_meta.get("timeout", 10))
+        compatible = params.role_meta.get("compatible")
+        client = OpenAI(
+            api_key=params.api_key,  # 如果您没有配置环境变量，请在此处用您的API Key进行替换
+            base_url=params.api_proxy,  # 填写DashScope服务的base_url
+            timeout=params.role_meta.get("timeout", 10),
+            http_client=http_client
+        ) if not compatible else None
+        try:
+            result = []
+            i = 0
+            chunk_lens = {}
+            chunk_index = {}
+            while i < len(params.texts):
+                texts = params.texts[i:i + 25]
+                if overlap_method == "truncate":
+                    texts = [x[:max_length] if len(x) > max_length else x for x in texts]
+                elif overlap_method == "chunk":
+                    new_texts = []
+                    for index, t in enumerate(texts, start=0):
+                        if len(t) > max_length:
+                            part_len = []
+                            chunk_num = 0
+                            for chunk in self.split_string_by_length(t, length=max_length):
+                                chunk_num += 1
+                                new_texts.append(chunk)
+                                part_len.append(len(chunk))
+                            chunk_lens[len(new_texts) - chunk_num] = part_len
+                            chunk_index[len(new_texts) - chunk_num] = chunk_num
+                        else:
+                            new_texts.append(t)
+                    texts = new_texts
+                model = params.embed_model or self.DEFAULT_EMBED_MODEL
+                extra_headers = params.role_meta.get("extra_headers", {})
+                compatible = params.role_meta.get("compatible", "")
+                if compatible:
+                    if 'ollama' == compatible.lower():
+                        headers = {
+                            "Authorization": f"Bearer {params.api_key}",
+                            "Content-Type": "application/json", **extra_headers
+                        }
+                        embeddings = []
+                        for text in texts:
+                            with http_client.post(f"{params.api_proxy}/embeddings",
+                                                  headers=headers, json={"model": model, "prompt": text}, ) as resp:
+                                if resp.status_code != 200:
+                                    logger.error(f"请求失败，状态码: {resp.status_code}, 响应: {resp.text}")
+                                    resp.raise_for_status()
+                                t = resp.json()
+                                embeddings.append(t["embedding"])
+                    else:
+                        raise NotImplementedError(f"不支持的兼容模式: {compatible}")
+                else:
                     resp = client.embeddings.create(
-                        model=params.embed_model or self.DEFAULT_EMBED_MODEL,
+                        model=model,
                         input=texts,  # 最大25行
-                        extra_headers=params.role_meta.get("extra_headers", {}),
+                        extra_headers=extra_headers,
                     )
                     embeddings = [x.embedding for x in resp.data]
-                    if overlap_method == "chunk" and len(chunk_index) > 0:
-                        new_embeddings = []
-                        start_index = 0
-                        while start_index < len(embeddings):
-                            if start_index not in chunk_index:
-                                new_embeddings.append(embeddings[start_index])
-                                start_index += 1
-                            else:
-                                chunk_embeddings = np.average(
-                                    np.array(embeddings[start_index:start_index + chunk_index[start_index]]), axis=0,
-                                    weights=chunk_lens[start_index])
-                                chunk_embeddings = chunk_embeddings / np.linalg.norm(chunk_embeddings)
-                                chunk_embeddings = chunk_embeddings.tolist()
-                                new_embeddings.append(chunk_embeddings)
-                                start_index += chunk_index[start_index]
-                        embeddings = new_embeddings
-                    chunk_index.clear()
-                    chunk_lens.clear()
-                    result += embeddings
-                    i += 25
-            except Exception as e:
-                data = {
-                    "code": 500,
-                    "msg": f'{e}'
-                }
-                self.logger.error(f"请求 {self.model_names[0]} 时发生错误：{data}")
-                return data
+                if overlap_method == "chunk" and len(chunk_index) > 0:
+                    new_embeddings = []
+                    start_index = 0
+                    while start_index < len(embeddings):
+                        if start_index not in chunk_index:
+                            new_embeddings.append(embeddings[start_index])
+                            start_index += 1
+                        else:
+                            chunk_embeddings = np.average(
+                                np.array(embeddings[start_index:start_index + chunk_index[start_index]]), axis=0,
+                                weights=chunk_lens[start_index])
+                            chunk_embeddings = chunk_embeddings / np.linalg.norm(chunk_embeddings)
+                            chunk_embeddings = chunk_embeddings.tolist()
+                            new_embeddings.append(chunk_embeddings)
+                            start_index += chunk_index[start_index]
+                    embeddings = new_embeddings
+                chunk_index.clear()
+                chunk_lens.clear()
+                result += embeddings
+                i += 25
+        except Exception as e:
+            data = {
+                "code": 500,
+                "msg": f'{e}'
+            }
+            self.logger.error(f"请求 {self.model_names[0]} 时发生错误：{data}")
+            return data
         return {"code": 200, "data": result}
 
     def get_embeddings(self, params):
