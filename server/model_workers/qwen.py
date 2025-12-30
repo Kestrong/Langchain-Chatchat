@@ -160,7 +160,6 @@ class QwenWorker(ApiModelWorker):
                     texts = new_texts
                 model = params.embed_model or self.DEFAULT_EMBED_MODEL
                 extra_headers = params.role_meta.get("extra_headers", {})
-                compatible = params.role_meta.get("compatible", "")
                 if compatible:
                     if 'ollama' == compatible.lower():
                         headers = {
