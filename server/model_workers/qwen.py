@@ -134,8 +134,10 @@ class QwenWorker(ApiModelWorker):
             timeout=params.role_meta.get("timeout", 10),
             http_client=http_client
         ) if not compatible else None
+        result = []
+        model = params.embed_model or self.DEFAULT_EMBED_MODEL
+        extra_headers = params.role_meta.get("extra_headers", {})
         try:
-            result = []
             i = 0
             chunk_lens = {}
             chunk_index = {}
@@ -158,8 +160,6 @@ class QwenWorker(ApiModelWorker):
                         else:
                             new_texts.append(t)
                     texts = new_texts
-                model = params.embed_model or self.DEFAULT_EMBED_MODEL
-                extra_headers = params.role_meta.get("extra_headers", {})
                 if compatible:
                     if 'ollama' == compatible.lower():
                         headers = {
@@ -168,13 +168,13 @@ class QwenWorker(ApiModelWorker):
                         }
                         embeddings = []
                         for text in texts:
-                            with http_client.post(f"{params.api_proxy}/embeddings",
-                                                  headers=headers, json={"model": model, "prompt": text}, ) as resp:
-                                if resp.status_code != 200:
-                                    logger.error(f"请求失败，状态码: {resp.status_code}, 响应: {resp.text}")
-                                    resp.raise_for_status()
-                                t = resp.json()
-                                embeddings.append(t["embedding"])
+                            resp = http_client.post(f"{params.api_proxy}/embeddings",
+                                                    headers=headers, json={"model": model, "prompt": text}, )
+                            if resp.status_code != 200:
+                                logger.error(f"请求失败，状态码: {resp.status_code}, 响应: {resp.text}")
+                                resp.raise_for_status()
+                            t = resp.json()
+                            embeddings.append(t["embedding"])
                     else:
                         raise NotImplementedError(f"不支持的兼容模式: {compatible}")
                 else:
@@ -211,6 +211,17 @@ class QwenWorker(ApiModelWorker):
             }
             self.logger.error(f"请求 {self.model_names[0]} 时发生错误：{data}")
             return data
+        finally:
+            if http_client is not None:
+                try:
+                    http_client.close()
+                except Exception:
+                    pass
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    pass
         return {"code": 200, "data": result}
 
     def get_embeddings(self, params):
