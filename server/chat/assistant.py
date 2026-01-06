@@ -11,7 +11,7 @@ from server.db.repository.assistant_repository import add_assistant_to_db, updat
 from server.db.repository.chat_dict_repository import get_dicts_by_type_from_db
 from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import is_english
-from server.utils import BaseResponse
+from server.utils import BaseResponse, fuzzy_sensitive_info
 
 
 def create_assistant(avatar: str = Body(None, description="头像图标"),
@@ -127,20 +127,6 @@ def get_assistant_detail(id: int = Query(description="助手id")) -> BaseRespons
     if assistant:
         fuzzy_sensitive_info(assistant.get("model_config"))
     return BaseResponse(code=200, data={'assistant': assistant})
-
-
-def fuzzy_sensitive_info(model_config: dict):
-    if model_config:
-        if 'api_proxy' in model_config:
-            model_config['api_proxy'] = '*' * len(model_config['api_proxy'])
-        if 'api_key' in model_config:
-            model_config['api_key'] = '*' * len(model_config['api_key'])
-        if 'secret_key' in model_config:
-            model_config['secret_key'] = '*' * len(model_config['secret_key'])
-        extra_headers = model_config.get('extra_headers')
-        if extra_headers:
-            for k, v in extra_headers.items():
-                extra_headers[k] = '*' * len(v)
 
 
 def get_dicts_by_type(dict_type: str = Query(description="字典类型")) -> BaseResponse:

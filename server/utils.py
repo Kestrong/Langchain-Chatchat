@@ -811,3 +811,18 @@ def text_similarity(text1, text2):
     length_similarity = 1 - abs(len(text1) - len(text2)) / max(len(text1), len(text2))
 
     return 0.5 * (text1 == text2) + 0.3 * jaccard_similarity + 0.2 * length_similarity
+
+
+def fuzzy_sensitive_info(model_config: dict):
+    if model_config:
+        if 'api_proxy' in model_config:
+            model_config['api_proxy'] = '*' * len(model_config['api_proxy'])
+        if 'api_key' in model_config:
+            model_config['api_key'] = '*' * len(model_config['api_key'])
+        if 'secret_key' in model_config:
+            model_config['secret_key'] = '*' * len(model_config['secret_key'])
+        extra_headers = model_config.get('extra_headers')
+        if extra_headers:
+            for k, v in extra_headers.items():
+                extra_headers[k] = '*' * len(v)
+        return model_config
