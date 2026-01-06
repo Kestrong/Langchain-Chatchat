@@ -6,7 +6,7 @@ from configs import logger, log_verbose, LLM_MODELS, HTTPX_DEFAULT_TIMEOUT
 from server.db.repository import get_model_metadata_from_db
 from server.memory.token_info_memory import is_english
 from server.utils import (BaseResponse, fschat_controller_address, list_config_llm_models,
-                          get_httpx_client, get_model_worker_config)
+                          get_httpx_client, get_model_worker_config, fuzzy_sensitive_info)
 
 
 def list_running_models(
@@ -72,10 +72,12 @@ def __get_model_config__(model_name: str):
     # 删除ONLINE_MODEL配置中的敏感信息
     for k, v in get_model_worker_config(model_name=model_name).items():
         if not (k == "worker_class"
+                or k == "api_proxy"
                 or "key" in k.lower()
                 or "secret" in k.lower()
-                or k.lower().endswith("id")):
-            config[k] = v
+                or k.lower().endswith("id")
+                or k.lower().endswith("url")):
+            config[k] = fuzzy_sensitive_info(v) if k == 'role_meta' and isinstance(v, dict) else v
     return config
 
 
