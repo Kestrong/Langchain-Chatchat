@@ -16,7 +16,7 @@ from server.db.repository import get_assistant_simple_from_db, get_model_metadat
 from server.knowledge_base.oss import default_oss
 from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelWorker, ApiChatParams
-from server.model_workers.dify import analyze_file
+from server.model_workers.dify import analyze_file, parse_inputs_expr
 from server.utils import truncate_text
 
 
@@ -257,21 +257,9 @@ class QimingWorker(ApiModelWorker):
         else:
             query = contentObj.get('question', '')
             inputs = model_config.get('inputs') or params.role_meta.get("inputs", {})
-            for k, v in inputs.items():
-                if isinstance(v, str):
-                    matches = re.findall(r'\{\{(\s*[.\w-]+\s*)}}', v)
-                    for var_name in set(matches):
-                        placeholder = "{{" + var_name + "}}"
-                        if var_name.strip() == "query":
-                            v = v.replace(placeholder, query)
-                        else:
-                            try:
-                                var_val = DEFAULT_FORMATTER_MAPPING["jinja2"](placeholder, **contentObj)
-                                if var_val:
-                                    v = v.replace(placeholder, var_val)
-                            except:
-                                pass
-                    inputs[k] = v
+            parse_inputs_expr(inputs, query, contentObj)
+            inputs['cookie'] = contentObj.get('cookie')
+            inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
             final_user = user or get_token_info(contentObj.get('token')).get('userId') or '1'
             api_data = {
                 "files": files,
