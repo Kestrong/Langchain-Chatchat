@@ -8,6 +8,7 @@ from typing import List, Dict, Literal
 import requests
 from fastchat import conversation as conv
 from fastchat.conversation import Conversation
+from langchain_core.prompts.string import DEFAULT_FORMATTER_MAPPING
 from websocket._core import create_connection
 
 from configs import logger
@@ -257,8 +258,20 @@ class QimingWorker(ApiModelWorker):
             query = contentObj.get('question', '')
             inputs = model_config.get('inputs') or params.role_meta.get("inputs", {})
             for k, v in inputs.items():
-                if isinstance(v, str) and v.__contains__("{{query}}"):
-                    inputs[k] = v.replace("{{query}}", query)
+                if isinstance(v, str):
+                    matches = re.findall(r'\{\{(\s*[.\w-]+\s*)}}', v)
+                    for var_name in set(matches):
+                        placeholder = "{{" + var_name + "}}"
+                        if var_name.strip() == "query":
+                            v = v.replace(placeholder, query)
+                        else:
+                            try:
+                                var_val = DEFAULT_FORMATTER_MAPPING["jinja2"](placeholder, **contentObj)
+                                if var_val:
+                                    v = v.replace(placeholder, var_val)
+                            except:
+                                pass
+                    inputs[k] = v
             final_user = user or get_token_info(contentObj.get('token')).get('userId') or '1'
             api_data = {
                 "files": files,

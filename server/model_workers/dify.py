@@ -6,6 +6,7 @@ from typing import List, Dict, Literal
 import requests
 from fastchat import conversation as conv
 from fastchat.conversation import Conversation
+from langchain_core.prompts.string import DEFAULT_FORMATTER_MAPPING
 
 from configs import logger
 from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
@@ -300,8 +301,20 @@ class DifyWorker(ApiModelWorker):
         inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
         query = contentObj.get('question', '')
         for k, v in inputs.items():
-            if isinstance(v, str) and v.__contains__("{{query}}"):
-                inputs[k] = v.replace("{{query}}", query)
+            if isinstance(v, str):
+                matches = re.findall(r'\{\{(\s*[.\w-]+\s*)}}', v)
+                for var_name in set(matches):
+                    placeholder = "{{" + var_name + "}}"
+                    if var_name.strip() == "query":
+                        v = v.replace(placeholder, query)
+                    else:
+                        try:
+                            var_val = DEFAULT_FORMATTER_MAPPING["jinja2"](placeholder, **contentObj)
+                            if var_val:
+                                v = v.replace(placeholder, var_val)
+                        except:
+                            pass
+                inputs[k] = v
         data = {
             "inputs": inputs,
             "query": query,
