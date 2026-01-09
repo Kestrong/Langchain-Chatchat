@@ -102,6 +102,26 @@ def get_mime_type(ext):
     return MIME_TYPE_MAP.get(ext_lower, MIME_TYPE_MAP['unknown'])
 
 
+def parse_inputs_expr(inputs, query, contentObj):
+    for k, v in inputs.items():
+        if k in ['cookie', 'token_info']:
+            continue
+        if isinstance(v, str):
+            matches = re.findall(r'\{\{(\s*[.\w-]+\s*)}}', v)
+            for var_name in set(matches):
+                placeholder = "{{" + var_name + "}}"
+                if var_name.strip() == "query":
+                    v = v.replace(placeholder, query)
+                else:
+                    try:
+                        var_val = DEFAULT_FORMATTER_MAPPING["jinja2"](placeholder, **contentObj)
+                        if var_val:
+                            v = v.replace(placeholder, var_val)
+                    except:
+                        pass
+            inputs[k] = v
+
+
 class DifyWorker(ApiModelWorker):
 
     def __init__(
@@ -296,25 +316,11 @@ class DifyWorker(ApiModelWorker):
         file_type = model_config.get('file_type') or role_meta.get("file_type")
         extra_headers = model_config.get("extra_headers") or role_meta.get("extra_headers", {})
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", **extra_headers}
+        query = contentObj.get('question', '')
         inputs = self.get_inputs(role_meta, model_config)
+        parse_inputs_expr(inputs, query, contentObj)
         inputs['cookie'] = contentObj.get('cookie')
         inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
-        query = contentObj.get('question', '')
-        for k, v in inputs.items():
-            if isinstance(v, str):
-                matches = re.findall(r'\{\{(\s*[.\w-]+\s*)}}', v)
-                for var_name in set(matches):
-                    placeholder = "{{" + var_name + "}}"
-                    if var_name.strip() == "query":
-                        v = v.replace(placeholder, query)
-                    else:
-                        try:
-                            var_val = DEFAULT_FORMATTER_MAPPING["jinja2"](placeholder, **contentObj)
-                            if var_val:
-                                v = v.replace(placeholder, var_val)
-                        except:
-                            pass
-                inputs[k] = v
         data = {
             "inputs": inputs,
             "query": query,
