@@ -2,6 +2,7 @@ import fastchat.constants
 from fastchat.conversation import Conversation
 
 from configs import LOG_PATH, TEMPERATURE, MAX_TOKENS_INPUT
+from server.chat.utils import un_format_online_llm_model
 
 fastchat.constants.LOGDIR = LOG_PATH
 from fastchat.serve.base_model_worker import BaseModelWorker
@@ -145,6 +146,17 @@ class ApiModelWorker(BaseModelWorker):
                 messages = self.validate_messages(messages)
             else:  # 使用chat模仿续写功能，不支持历史消息
                 messages = [{"role": self.user_role, "content": f"please continue writing from here: {prompt}"}]
+
+            if un_format_online_llm_model(self.model_names[0]):
+                content = messages[-1].get('content')
+                try:
+                    contentObj = json.loads(content)
+                    if 'mark' not in contentObj or contentObj.get('mark') != f'###[{self.model_names[0]}]###':
+                        contentObj = {"question": content}
+                except Exception:
+                    contentObj = {"question": content}
+                messages[-1]["content"] = json.dumps(contentObj, ensure_ascii=False)
+
 
             p = ApiChatParams(
                 messages=messages,

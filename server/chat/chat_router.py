@@ -116,6 +116,8 @@ async def do_chat_router(query: str,
             extra.update(assistant.get('extra'))
         extra['assistant_id'] = assistant_id
         if default_value_from_assistant:
+            if assistant.get('model_name'):
+                model_name = assistant.get('model_name')
             if not knowledge_base_names:
                 kbs = assistant.get("knowledge_bases", [])
                 if kbs:

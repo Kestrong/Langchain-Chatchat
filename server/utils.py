@@ -3,6 +3,7 @@ import os
 import re
 from base64 import b64encode, b64decode
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import deepcopy
 from datetime import datetime
 from typing import List
 from typing import (
@@ -423,7 +424,7 @@ def get_model_worker_config(model_name: str = None) -> dict:
         if path and os.path.isdir(path):
             config["model_path_exists"] = True
         config["device"] = llm_device(config.get("device"))
-    return config
+    return deepcopy(config)
 
 
 def get_all_model_worker_configs() -> dict:
