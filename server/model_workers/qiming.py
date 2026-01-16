@@ -8,7 +8,6 @@ from typing import List, Dict, Literal
 import requests
 from fastchat import conversation as conv
 from fastchat.conversation import Conversation
-from langchain_core.prompts.string import DEFAULT_FORMATTER_MAPPING
 from websocket._core import create_connection
 
 from configs import logger
@@ -301,8 +300,10 @@ class QimingWorker(ApiModelWorker):
                         pass
                     else:
                         answer_key = model_config.get('output_key') or params.role_meta.get("output_key")
-                        data = response.json().get('data', {})
-                        outputs = data.get('outputs') or {}
+                        response_json = response.json()
+                        logger.debug(f"qiming-v2接口返回数据: {response_json}")
+                        response_data = response_json.get('data', {})
+                        outputs = response_data.get('outputs') or {}
                         answer = ''
                         if answer_key and answer_key in outputs:
                             answer = outputs.get(answer_key, '')
@@ -311,8 +312,8 @@ class QimingWorker(ApiModelWorker):
                                 answer = list(outputs.values())[0]
                             elif len(outputs) > 1:
                                 answer = json.dumps(outputs, ensure_ascii=False)
-                        if not answer and data.get('error'):
-                            text = data.get('error')
+                        if not answer and response_data.get('error'):
+                            text = response_data.get('error')
                             yield {"error_code": 0, "text": text}
                         else:
                             text = answer if answer is not None else ''

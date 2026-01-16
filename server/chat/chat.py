@@ -53,9 +53,17 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
     if not conversation_id:
         conversation_id = uuid.uuid4().hex
     if un_format_online_llm_model(model_name):
-        extra['question'] = query
+        if prompt_name == "default":
+            question = query
+        else:
+            try:
+                question = PromptTemplate.from_template(prompt_name, template_format="jinja2").format(input=query)
+            except Exception:
+                question = prompt_name
+        extra['question'] = question
         extra['stream'] = stream
         extra["cookie"] = request.headers.get('cookie')
+        extra['mark'] = f'###[{model_name}]###'
         apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=model_name)
         if apiModelParams.provider in ['DifyWorker', 'FuXiWorker', 'QimingWorker']:
             if not extra.get("conversation_id"):
