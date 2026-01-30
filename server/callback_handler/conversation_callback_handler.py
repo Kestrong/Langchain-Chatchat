@@ -156,20 +156,21 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         # 计算各项指标
         first_token_latency = (self.first_token_time - self.start_time) if self.first_token_time else 0
         tokens_per_second = self.token_count / total_time if total_time > 0 else 0
-        local_start_time = time.localtime(self.start_time)
-        local_end_time = time.localtime(end_time)
+        start_datetime = datetime.datetime.fromtimestamp(self.start_time)
+        end_datetime = datetime.datetime.fromtimestamp(end_time)
+
         # 使用logger记录性能指标
         logger.info(
             f"Model Performance Metrics - "
             f"Model: {self.model_name}, "
             f"Conversation ID: {self.conversation_id}, "
             f"Message ID: {self.message_id}, "
-            f"Start Time: {time.strftime('%Y-%m-%d %H:%M:%S', local_start_time)}, "
+            f"Start Time: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')}, "
             f"First Token Latency: {first_token_latency:.4f}s, "
             f"Tokens/Second: {tokens_per_second:.2f}, "
             f"Total Tokens: {self.token_count}, "
             f"Total Time: {total_time:.4f}s, "
-            f"End Time: {time.strftime('%Y-%m-%d %H:%M:%S', local_end_time)}"
+            f"End Time: {end_datetime.strftime('%Y-%m-%d %H:%M:%S')}"
         )
         # 根据环境变量决定是否将性能指标写入数据库，默认关闭
         if os.environ.get("ENABLE_PERFORMANCE_METRICS_DB", "False") == "True":
@@ -179,12 +180,12 @@ class ConversationCallbackHandler(BaseCallbackHandler):
                     message_id=self.message_id,
                     model_name=self.model_name,
                     chat_type=self.chat_type,
-                    start_time=local_start_time,
+                    start_time=start_datetime,
                     first_token_latency=first_token_latency,
                     tokens_per_second=tokens_per_second,
                     total_tokens=self.token_count,
                     total_time=total_time,
-                    end_time=local_end_time,
+                    end_time=end_datetime,
                     extra_info={}
                 )
             except Exception as e:
