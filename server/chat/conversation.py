@@ -16,6 +16,7 @@ from server.db.repository.conversation_repository import add_conversation_to_db,
     metrics_db
 from server.db.repository.message_repository import delete_message_from_db, \
     filter_message_page, list_user_feedback_messages, get_query_by_assistant_id
+from server.db.repository.model_metadata_repository import delete_performance_metrics_by_time
 from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import is_english
 from server.utils import BaseResponse, text_similarity
@@ -373,3 +374,18 @@ def get_hot_query(assistant_id: int = Query(None, description="助手id"),
     except Exception as e:
         logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.COMMON_CALL_FAILED.value)
+
+
+def delete_performance_metrics(start_time: str = Query(None, description="开始时间:yyyy-MM-dd HH:mm:ss"),
+                               end_time: str = Query(None, description="结束时间:yyyy-MM-dd HH:mm:ss")) -> BaseResponse:
+    try:
+        if not start_time:
+            return BaseResponse(code=500, msg=Message_I18N.API_PARAM_NOT_PRESENT.value.format(name="start_time"))
+        if not end_time:
+            return BaseResponse(code=500, msg=Message_I18N.API_PARAM_NOT_PRESENT.value.format(name="end_time"))
+        delete_performance_metrics_by_time(start_time=start_time, end_time=end_time)
+        return BaseResponse(code=200, data={})
+    except Exception as e:
+        msg = f"删除模型性能日志出错： {e}"
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
+        return BaseResponse(code=500, msg=Message_I18N.API_DELETE_ERROR.value)

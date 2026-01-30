@@ -10,14 +10,14 @@ from langchain.embeddings.base import Embeddings
 from pathlib import Path
 
 from configs import (kbs_config, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD,
-                     EMBEDDING_MODEL, KB_INFO)
+                     EMBEDDING_MODEL, KB_INFO, logger)
 from server.db.repository.knowledge_base_repository import (
     add_kb_to_db, delete_kb_from_db, list_kbs_from_db, kb_exists,
-    load_kb_from_db, )
+    load_kb_from_db, get_kb_detail, )
 from server.db.repository.knowledge_file_repository import (
     add_file_to_db, delete_files_from_db, file_exists_in_db,
     count_files_from_db, list_files_from_db, delete_file_from_db,
-    list_docs_from_db,
+    list_docs_from_db, delete_docs_from_db, get_file_detail_by_kb_id, add_docs_to_db, pending_file_doc,
 )
 from server.embeddings_api import embed_texts, aembed_texts, embed_documents
 from server.knowledge_base.model.kb_document_model import DocumentWithVSId
@@ -128,7 +128,7 @@ class KBService(ABC):
                         rel_path = Path(source).relative_to(self.doc_path)
                         doc.metadata["source"] = str(rel_path.as_posix().strip("/"))
                 except Exception as e:
-                    print(f"cannot convert absolute path ({source}) to relative path. error is : {e}")
+                    logger.error(f"cannot convert absolute path ({source}) to relative path. error is : {e}")
             self.delete_doc(kb_file)
             doc_infos = self.do_add_doc(docs, **kwargs)
             try:
@@ -139,7 +139,7 @@ class KBService(ABC):
                                         doc_infos=doc_infos)
             except Exception as e:
                 status = False
-                print(f"add file to db error: {e}")
+                logger.error(f"add file to db error: {e}")
                 self.del_doc_by_ids([doc_info["id"] for doc_info in doc_infos])
         else:
             status = False
@@ -178,7 +178,7 @@ class KBService(ABC):
                    states: list = None):
         return list_files_from_db(self.kb_name, page_size=page_size, page_num=page_num, keyword=keyword,
                                   create_time_begin=create_time_begin, create_time_end=create_time_end,
-                                  only_name=only_name,states=states)
+                                  only_name=only_name, states=states)
 
     def count_files(self):
         return count_files_from_db(self.kb_name)
@@ -197,32 +197,62 @@ class KBService(ABC):
     def del_doc_by_ids(self, ids: List[str]) -> bool:
         raise NotImplementedError
 
-    def update_doc_by_ids(self, docs: Dict[str, Document]) -> bool:
+    def update_doc_by_ids(self, file_name: str, docs: List[DocumentWithVSId]) -> List[str]:
         '''
         传入参数为： {doc_id: Document, ...}
-        如果对应 doc_id 的值为 None，或其 page_content 为空，则删除该文档
         '''
-        self.del_doc_by_ids(list(docs.keys()))
-        pending_docs = []
-        ids = []
-        for _id, doc in docs.items():
-            if not doc or not doc.page_content.strip():
+        del_ids, add_docs = [], []
+        for doc in docs:
+            if not doc:
                 continue
-            ids.append(_id)
-            pending_docs.append(doc)
-        self.do_add_doc(docs=pending_docs, ids=ids)
-        return True
+            doc.metadata["source"] = file_name
+            doc.metadata.pop("pk", None)
+            if doc.id:
+                del_ids.append(doc.id)
+                if doc.page_content.strip():
+                    add_docs.append(doc)
+            else:
+                if doc.page_content.strip():
+                    add_docs.append(doc)
+        kb = get_kb_detail(self.kb_name)
+        if not kb:
+            logger.error(f"kb not found: {self.kb_name}")
+            return []
+        file = get_file_detail_by_kb_id(kb["id"], file_name)
+        if not file:
+            add_file_to_db(kb_file=KnowledgeFile(knowledge_base_name=self.kb_name, filename=file_name),
+                           custom_docs=True)
+            file = get_file_detail_by_kb_id(kb["id"], file_name)
+        del_docs = self.get_doc_by_ids(del_ids)
+        word_count = sum(len(doc.page_content) for doc in add_docs) - sum(len(doc.page_content) for doc in del_docs)
+        doc_count = len(add_docs) - len(del_docs)
+        if del_ids:
+            self.del_doc_by_ids(del_ids)
+            delete_docs_from_db(kb_id=kb["id"], file_id=file["id"], doc_ids=del_ids)
+        if add_docs:
+            doc_infos = self.do_add_doc(add_docs)
+            try:
+                add_docs_to_db(kb_id=kb["id"], file_id=file["id"], doc_infos=doc_infos)
+                pending_file_doc(file_id=file["id"], doc_count=doc_count, word_count=word_count)
+                return [doc_info["id"] for doc_info in doc_infos]
+            except Exception as e:
+                logger.error(f"add file doc to db error: {e}")
+                self.del_doc_by_ids([doc_info["id"] for doc_info in doc_infos])
+                raise e
+        else:
+            pending_file_doc(file_id=file["id"], doc_count=doc_count, word_count=word_count)
+            return []
 
-    def list_docs(self, file_name: str = None, metadata: Dict = {}) -> List[DocumentWithVSId]:
+    def list_docs(self, file_name: str = None, metadata: Dict = {}, top_k: int = 1000) -> List[DocumentWithVSId]:
         '''
         通过file_name或metadata检索Document
         '''
-        doc_infos = list_docs_from_db(kb_name=self.kb_name, file_name=file_name, metadata=metadata)
+        doc_infos = list_docs_from_db(kb_name=self.kb_name, file_name=file_name, metadata=metadata, top_k=top_k)
         docs = []
         ids = [x["id"] for x in doc_infos]
         docs_by_ids = {y: x for x, y in zip(self.get_doc_by_ids(ids), ids)}
         for x in doc_infos:
-            doc_info = docs_by_ids[x["id"]]
+            doc_info = docs_by_ids.get(x["id"])
             if doc_info is not None:
                 # 处理非空的情况
                 doc_with_id = DocumentWithVSId(**doc_info.dict(), id=x["id"])
@@ -242,7 +272,7 @@ class KBService(ABC):
             try:
                 relative_path = Path(filepath).relative_to(self.doc_path)
             except Exception as e:
-                print(f"cannot convert absolute path ({filepath}) to relative path. error is : {e}")
+                logger.error(f"cannot convert absolute path ({filepath}) to relative path. error is : {e}")
 
         relative_path = str(relative_path.as_posix().strip("/"))
         return relative_path
