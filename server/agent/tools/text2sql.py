@@ -965,7 +965,7 @@ def text2sql(natural_language_question: str):
                                                                       "column_map": column_map,
                                                                       "records": records, }, indent=4),
                                                                  summarize=summarize)
-    except Exception as e:
+    except BaseException as e:
         error_info = str(e)
         logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
         if isinstance(e, ChatBusinessException):
