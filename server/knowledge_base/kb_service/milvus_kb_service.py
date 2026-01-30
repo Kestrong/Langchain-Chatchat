@@ -23,7 +23,7 @@ class MilvusKBService(KBService):
 
     def get_doc_by_ids(self, ids: List[str]) -> List[Document]:
         result = []
-        if self.milvus.col:
+        if ids and self.milvus.col:
             # ids = [int(id) for id in ids]  # for milvus if needed #pr 2725
             data_list = self.milvus.col.query(expr=f'pk in {[int(_id) for _id in ids]}', output_fields=["*"])
             for data in data_list:
@@ -32,7 +32,7 @@ class MilvusKBService(KBService):
         return result
 
     def del_doc_by_ids(self, ids: List[str]) -> bool:
-        self.milvus.col.delete(expr=f'pk in {ids}')
+        self.milvus.col.delete(expr=f'pk in {[int(_id) for _id in ids]}')
 
     @staticmethod
     def search(milvus_name, content, limit=3):
@@ -85,6 +85,7 @@ class MilvusKBService(KBService):
 
     def do_delete_doc(self, kb_file: KnowledgeFile, **kwargs):
         id_list = list_file_num_docs_id_by_kb_name_and_file_name(kb_file.kb_name, kb_file.filename)
+        id_list = [int(_id) for _id in id_list]
         if self.milvus.col:
             self.milvus.col.delete(expr=f'pk in {id_list}')
 

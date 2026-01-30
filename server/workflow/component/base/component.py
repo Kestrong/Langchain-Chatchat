@@ -3,13 +3,13 @@ from copy import deepcopy
 from typing import Dict, Any, Union
 
 import shortuuid
-from langchain_core.prompts.string import DEFAULT_FORMATTER_MAPPING
 from pydantic import BaseModel, Field
 
-from configs import logger
 from server.memory.message_i18n import i18n_property
 from server.workflow.utils.inputs import InputTypes, InputTypesMap
 from server.workflow.utils.outputs import OutputTypes, OutputTypesMap
+
+EXPR_PATTERN = re.compile(r'\{\{\s*([\w-]+.(inputs|outputs).[\w.]+)\s*}}')
 
 
 class Component(BaseModel):
@@ -56,10 +56,43 @@ class Component(BaseModel):
         return super().json(*args, **kwargs)
 
     def parse_expr(self, value):
-        if value and isinstance(value, str):
-            if self.contains_variable_template(value):
-                value = self.parse_template(self.transform_template(value))
+        if not value or not isinstance(value, str):
+            return value
+
+        matches = EXPR_PATTERN.findall(value)
+        if not matches:
+            return value
+
+        context = self.get_context()
+        unique_matches = set(match[0] for match in matches)
+
+        for var_path in unique_matches:
+            try:
+                # 使用安全的路径访问函数
+                var_val = self._get_nested_value(context, var_path)
+                if var_val is not None:
+                    original_placeholder = f'{{{{ {var_path} }}}}'
+                    # 使用字符串替换
+                    value = value.replace(original_placeholder, str(var_val))
+            except Exception:
+                continue
+
         return value
+
+    def _get_nested_value(self, obj, path):
+        """安全获取嵌套字典值"""
+        parts = path.split('.')
+        current = obj
+
+        for part in parts:
+            if isinstance(current, dict):
+                current = current.get(part)
+                if current is None:
+                    return None
+            else:
+                return None
+
+        return current
 
     def prepare_input(self, inputs: Dict[str, Any]):
         if self.inputs:
@@ -80,31 +113,6 @@ class Component(BaseModel):
             for i in self.inputs:
                 inputs[i.name] = i.value
         self.get_context()[self.id]["inputs"] = inputs
-
-    def parse_template(self, template: str):
-        try:
-            return DEFAULT_FORMATTER_MAPPING["jinja2"](template, CONTEXT=self.get_context())
-        except Exception as e:
-            logger.error(f"{e}")
-            return template
-
-    def contains_variable_template(self, template: str):
-        # 定义正则表达式模式，匹配{{component_id.inputs.field}}
-        pattern = r'\{\{\s*([\w-]+.(inputs|outputs).[\w.]+)\s*}}'
-        match = re.search(pattern, template)
-        return match is not None
-
-    def transform_template(self, template: str):
-        def replacer(match):
-            var_path = match.group(1)
-            # 分割变量路径，按点分割
-            parts = var_path.split('.')
-            # 构造新的访问路径
-            new_path = "CONTEXT" + ''.join(f"['{part}']" for part in parts)
-            return "{{ %s }}" % new_path
-
-        transformed_content = re.sub(r'\{\{\s*([\w-]+.(inputs|outputs).[\w.]+)\s*}}', replacer, template)
-        return transformed_content
 
     def prepare_output(self, outputs: Dict[str, Any]):
         if self.outputs:

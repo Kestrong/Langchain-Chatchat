@@ -13,7 +13,7 @@ from langchain_core.outputs import GenerationChunk, ChatGenerationChunk
 
 from common.exceptions import ChatBusinessException
 from configs import logger
-from server.db.repository import update_message
+from server.db.repository import update_message, add_performance_metrics_to_db
 from server.memory.message_i18n import Message_I18N
 
 
@@ -146,7 +146,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         return answer
 
     def _log_performance_metrics(self):
-        """记录性能指标到日志"""
+        """记录性能指标到日志和数据库"""
         if self.start_time is None:
             return
 
@@ -156,20 +156,39 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         # 计算各项指标
         first_token_latency = (self.first_token_time - self.start_time) if self.first_token_time else 0
         tokens_per_second = self.token_count / total_time if total_time > 0 else 0
-
+        local_start_time = time.localtime(self.start_time)
+        local_end_time = time.localtime(end_time)
         # 使用logger记录性能指标
         logger.info(
             f"Model Performance Metrics - "
             f"Model: {self.model_name}, "
             f"Conversation ID: {self.conversation_id}, "
             f"Message ID: {self.message_id}, "
-            f"Start Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.start_time))}, "
+            f"Start Time: {time.strftime('%Y-%m-%d %H:%M:%S', local_start_time)}, "
             f"First Token Latency: {first_token_latency:.4f}s, "
             f"Tokens/Second: {tokens_per_second:.2f}, "
             f"Total Tokens: {self.token_count}, "
             f"Total Time: {total_time:.4f}s, "
-            f"End Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(end_time))}"
+            f"End Time: {time.strftime('%Y-%m-%d %H:%M:%S', local_end_time)}"
         )
+        # 根据环境变量决定是否将性能指标写入数据库，默认关闭
+        if os.environ.get("ENABLE_PERFORMANCE_METRICS_DB", "False") == "True":
+            try:
+                add_performance_metrics_to_db(
+                    conversation_id=self.conversation_id,
+                    message_id=self.message_id,
+                    model_name=self.model_name,
+                    chat_type=self.chat_type,
+                    start_time=local_start_time,
+                    first_token_latency=first_token_latency,
+                    tokens_per_second=tokens_per_second,
+                    total_tokens=self.token_count,
+                    total_time=total_time,
+                    end_time=local_end_time,
+                    extra_info={}
+                )
+            except Exception as e:
+                logger.error(f"Failed to save performance metrics to database: {e}")
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         if not self.agent and not self.updated:

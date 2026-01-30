@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 from typing import List, Dict, Any
 
@@ -18,6 +19,7 @@ def list_file_doc_model_by_kb_name_and_file_name(session,
                                                  file_name: str,
                                                  query: Any,
                                                  metadata=None,
+                                                 top_k: int = 1000
                                                  ):
     '''
     列出某知识库某文件对应的所有Document
@@ -27,6 +29,7 @@ def list_file_doc_model_by_kb_name_and_file_name(session,
         return None
     kb_id = kb["id"]
     filters = [FileDocModel.kb_id == kb_id]
+    page_size = min(abs(top_k), 1000)
     if file_name:
         file = get_file_detail_by_kb_id(kb_id, file_name)
         if len(file) == 0:
@@ -35,12 +38,12 @@ def list_file_doc_model_by_kb_name_and_file_name(session,
     if metadata is not None:
         for k, v in metadata.items():
             filters.append(FileDocModel.meta_data[k].as_string() == str(v))
-    return session.query(query).filter(*filters)
+    return session.query(query).filter(*filters).limit(page_size)
 
 
 def list_file_num_docs_id_by_kb_name_and_file_name(kb_name: str,
                                                    file_name: str,
-                                                   ) -> List[int]:
+                                                   ) -> List[str]:
     '''
     列出某知识库某文件对应的所有Document的id。
     返回形式：[str, ...]
@@ -51,7 +54,7 @@ def list_file_num_docs_id_by_kb_name_and_file_name(kb_name: str,
                                                         query=FileDocModel.doc_id)
     if docs is None:
         return list()
-    return [int(doc.doc_id) for doc in docs.all()]
+    return [doc.doc_id for doc in docs.all()]
 
 
 @with_session
@@ -59,6 +62,7 @@ def list_docs_from_db(session,
                       kb_name: str,
                       file_name: str = None,
                       metadata=None,
+                      top_k: int = 1000,
                       ) -> List[Dict]:
     '''
     列出某知识库某文件对应的所有Document。
@@ -68,7 +72,7 @@ def list_docs_from_db(session,
         metadata = {}
     docs = list_file_doc_model_by_kb_name_and_file_name(kb_name=kb_name, file_name=file_name,
                                                         query=FileDocModel,
-                                                        metadata=metadata)
+                                                        metadata=metadata, top_k=top_k)
     if docs is None:
         return list()
     return [{"id": x.doc_id, "metadata": x.meta_data} for x in docs.all()]
@@ -78,12 +82,15 @@ def list_docs_from_db(session,
 def delete_docs_from_db(session,
                         kb_id: int,
                         file_id: int,
+                        doc_ids: List[str] = None
                         ) -> List[Dict]:
     '''
     删除某知识库某文件对应的所有Document，并返回被删除的Document。
     返回形式：[{"id": str, "metadata": dict}, ...]
     '''
     query = session.query(FileDocModel).filter(FileDocModel.kb_id == kb_id, FileDocModel.file_id == file_id)
+    if doc_ids:
+        query = query.filter(FileDocModel.doc_id.in_(doc_ids))
     query.delete(synchronize_session=False)
     session.commit()
     return list()
@@ -116,6 +123,14 @@ def add_docs_to_db(session,
     end = datetime.utcnow()
     logger.debug(f"bulk insert {len(doc_infos)} file_docs to db cost {(end - begin).total_seconds()} seconds")
     return True
+
+
+@with_session
+def pending_file_doc(session, file_id, word_count: int = 0, doc_count: int = 0):
+    file: KnowledgeFileModel = session.query(KnowledgeFileModel).filter(KnowledgeFileModel.id == file_id).first()
+    if file:
+        file.docs_count += doc_count
+        file.word_count += word_count
 
 
 @with_session
@@ -181,9 +196,14 @@ def add_file_to_db(session,
                                              .filter(KnowledgeFileModel.kb_id == kb.id,
                                                      KnowledgeFileModel.file_name == kb_file.filename)
                                              .first())
-        mtime = kb_file.get_mtime()
-        size = kb_file.get_size()
-
+        try:
+            mtime = kb_file.get_mtime()
+        except Exception:
+            mtime = int(time.time())
+        try:
+            size = kb_file.get_size()
+        except Exception:
+            size = 0
         if existing_file:
             file_id = existing_file.id
             existing_file.file_mtime = mtime

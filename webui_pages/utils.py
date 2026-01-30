@@ -611,20 +611,22 @@ class ApiRequest:
     def update_docs_by_id(
             self,
             knowledge_base_name: str,
-            docs: Dict[str, Dict],
-    ) -> bool:
+            file_name: str,
+            docs: List[Dict],
+    ) -> dict:
         '''
         对应api.py/knowledge_base/update_docs_by_id接口
         '''
         data = {
             "knowledge_base_name": knowledge_base_name,
+            "file_name": file_name,
             "docs": docs,
         }
         response = self.post(
             "/knowledge_base/update_docs_by_id",
             json=data
         )
-        return self._get_response_value(response)
+        return self._get_response_value(response, as_json=True)
 
     def upload_kb_docs(
             self,

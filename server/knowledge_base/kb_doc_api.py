@@ -89,7 +89,7 @@ def search_docs(
             if background_tasks:
                 background_tasks.add_task(batch_increment_files_hit_count, kb_id=kb_db.get("id"), filenames=filenames)
         elif file_name or metadata:
-            data = kb.list_docs(file_name=file_name, metadata=metadata)
+            data = kb.list_docs(file_name=file_name, metadata=metadata, top_k=top_k)
             for d in data:
                 if "vector" in d.metadata:
                     del d.metadata["vector"]
@@ -142,7 +142,8 @@ def list_docs(query: str = Body("", description="用户输入", examples=["你�
 
 def update_docs_by_id(
         knowledge_base_name: str = Body(..., description="知识库名称", examples=["samples"]),
-        docs: Dict[str, Document] = Body(..., description="要更新的文档内容，形如：{id: Document, ...}")
+        file_name: str = Body("", description="文件名称"),
+        docs: List[DocumentWithVSId] = Body(..., description="要更新的文档内容，形如：{id: Document, ...}")
 ) -> BaseResponse:
     '''
     按照文档 ID 更新文档内容
@@ -150,10 +151,12 @@ def update_docs_by_id(
     kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
     if kb is None:
         return BaseResponse(code=500, msg=Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=knowledge_base_name))
-    if kb.update_doc_by_ids(docs=docs):
-        return BaseResponse(msg=Message_I18N.COMMON_CALL_SUCCESS.value)
-    else:
-        return BaseResponse(msg=Message_I18N.API_UPDATE_ERROR.value)
+    try:
+        return BaseResponse(data=kb.update_doc_by_ids(docs=docs, file_name=file_name))
+    except BaseException as e:
+        msg = f"更新文档片段出错： {e}"
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
+        return BaseResponse(code=500, msg=Message_I18N.API_UPDATE_ERROR.value)
 
 
 def list_files(
