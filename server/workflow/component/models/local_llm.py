@@ -153,7 +153,10 @@ class LocalLLMComponent(Component):
                     continue
                 event = json.loads(line[6:])
                 if event.get("error"):
-                    raise ChatBusinessException(event.get("answer"))
+                    err = ChatBusinessException(event.get("answer"))
+                    if event.get("error_info"):
+                        err.__cause__ = ChatBusinessException(event.get("error_info"))
+                    raise err
                 if "answer" in event:
                     answer += event["answer"]
                 elif "msg" in event:

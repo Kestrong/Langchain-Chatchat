@@ -9,7 +9,7 @@ from server.memory.message_i18n import i18n_property
 from server.workflow.utils.inputs import InputTypes, InputTypesMap
 from server.workflow.utils.outputs import OutputTypes, OutputTypesMap
 
-EXPR_PATTERN = re.compile(r'\{\{\s*([\w-]+.(inputs|outputs).[\w.]+)\s*}}')
+EXPR_PATTERN = re.compile(r'\{\{(\s*[\w-]+\.(inputs|outputs)\.[\w.]+\s*)}}')
 
 
 class Component(BaseModel):
@@ -71,7 +71,7 @@ class Component(BaseModel):
                 # 使用安全的路径访问函数
                 var_val = self._get_nested_value(context, var_path)
                 if var_val is not None:
-                    original_placeholder = f'{{{{ {var_path} }}}}'
+                    original_placeholder = f'{{{{{var_path}}}}}'
                     # 使用字符串替换
                     value = value.replace(original_placeholder, str(var_val))
             except Exception:
@@ -86,7 +86,7 @@ class Component(BaseModel):
 
         for part in parts:
             if isinstance(current, dict):
-                current = current.get(part)
+                current = current.get(part.strip())
                 if current is None:
                     return None
             else:
