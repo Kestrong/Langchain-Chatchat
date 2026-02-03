@@ -11,6 +11,7 @@ from typing import Dict, Any, AsyncIterable, AsyncIterator
 from fastapi import Body
 from sse_starlette import EventSourceResponse
 
+from common.exceptions import ChatBusinessException
 from configs import logger
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
@@ -94,32 +95,28 @@ async def do_workflow_chat(query: str,
                 node_context = context[next_node.get("id")]
                 if "outputs" not in node_context:
                     node_context["outputs"] = {}
-                node_context["outputs"]["error_info"] = msg
+                if isinstance(e, ChatBusinessException) and e.__cause__:
+                    node_context["outputs"]["answer"] = msg
+                    node_context["outputs"]["error_info"] = str(e.__cause__)
+                else:
+                    node_context["outputs"]["error_info"] = msg
                 response_node_result.update(node_context)
                 queue.put_nowait(response_node_result)
                 break
 
     async def iter_node_result(queue: asyncio.Queue, event: asyncio.Event) -> AsyncIterator[dict]:
         while not queue.empty() or not event.is_set():
-            done, other = await asyncio.wait(
-                [
-                    asyncio.ensure_future(queue.get()),
-                ],
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+            try:
+                # 直接等待队列获取，避免复杂的状态管理
+                item = await queue.get()
 
-            # Cancel the other task
-            if other:
-                other.pop().cancel()
+                # 如果获取到特殊信号，继续循环
+                if item is True:
+                    continue
 
-            # Extract the value of the first completed task
-            token_or_done = done.pop().result()
-
-            # If the extracted value is the boolean True, the done event was set
-            if token_or_done is True:
-                continue
-
-            yield token_or_done
+                yield item
+            except asyncio.CancelledError:
+                break
 
     def execute_node_callback(task: asyncio.Task, event: asyncio.Event, queue: asyncio.Queue):
         event.set()

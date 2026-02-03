@@ -17,7 +17,7 @@ from server.callback_handler.conversation_callback_handler import ConversationCa
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, wrap_event_response, create_agent_executor
+from server.chat.utils import History, wrap_event_response, create_agent_executor, parse_llm_token_inner_json
 from server.db.repository import add_message_to_db, update_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.utils import wrap_done, get_prompt_template, get_ChatOpenAI
@@ -205,7 +205,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                 if stream:
                     async for chunk in callback.aiter():
                         # Use server-sent-events to stream the response
-                        data = json.loads(chunk)
+                        data = json.loads(parse_llm_token_inner_json(model_name, chunk)["answer"])
                         if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
                             continue
                         elif data["status"] == AgentStatus.agent_finish:
@@ -215,7 +215,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                 else:
                     answer = ""
                     async for chunk in callback.aiter():
-                        data = json.loads(chunk)
+                        data = json.loads(parse_llm_token_inner_json(model_name, chunk)["answer"])
                         if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
                             continue
                         elif data["status"] == AgentStatus.agent_finish:

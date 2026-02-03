@@ -384,7 +384,10 @@ class QimingWorker(ApiModelWorker):
             if text == '':
                 model_label = (get_model_metadata_from_db(self.model_names[0]).get(self.model_names[0], {})
                                .get('label', 'qiming-api'))
-                yield {"error_code": 0, "text": f"调用{model_label}失败。"}
+                yield {"error_code": 0,
+                       "text": mark + json.dumps({"error_info": str(e), "answer": f"调用{model_label}失败。"}) + mark}
+            else:
+                yield {"error_code": 0, "text": text + mark + json.dumps({"error_info": str(e), "answer": ""}) + mark}
 
     def get_embeddings(self, params):
         print("get_embedding")

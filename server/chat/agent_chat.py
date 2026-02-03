@@ -18,7 +18,8 @@ from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.customize_agent.customize_agent_type import customize_agent_types
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, wrap_event_response, un_format_online_llm_model, create_agent_executor
+from server.chat.utils import History, wrap_event_response, un_format_online_llm_model, create_agent_executor, \
+    parse_llm_token_inner_json
 from server.db.repository import add_message_to_db, get_assistant_simple_from_db, update_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
@@ -164,7 +165,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         if stream:
             async for chunk in callback.aiter():
                 # Use server-sent-events to stream the response
-                data = json.loads(chunk)
+                data = json.loads(parse_llm_token_inner_json(model_name, chunk)["answer"])
                 if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
                     continue
                 elif data["status"] == AgentStatus.error:
@@ -196,7 +197,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             answer = ""
             thought = ""
             async for chunk in callback.aiter():
-                data = json.loads(chunk)
+                data = json.loads(parse_llm_token_inner_json(model_name, chunk)["answer"])
                 if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
                     continue
                 elif data["status"] == AgentStatus.error:
