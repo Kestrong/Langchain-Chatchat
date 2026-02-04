@@ -86,8 +86,12 @@ class Component(BaseModel):
 
         for part in parts:
             if isinstance(current, dict):
-                current = current.get(part.strip())
-                if current is None:
+                part_strip = part.strip()
+                if part_strip in current:
+                    current = current.get(part_strip)
+                    if current is None:
+                        return ''
+                else:
                     return None
             else:
                 return None
