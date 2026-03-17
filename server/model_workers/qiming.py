@@ -239,6 +239,8 @@ class QimingWorker(ApiModelWorker):
         business_type = model_config.get("business_type") or params.role_meta.get('business_type', '')
         app_id = model_config.get("app_id") or params.role_meta.get('app_id', '')
         is_workflow = model_config.get('is_workflow') or params.role_meta.get('is_workflow', False)
+        events = model_config.get('events', params.role_meta.get('events', []))
+        node_types = model_config.get('node_types', params.role_meta.get('node_types', []))
         stream = False if is_workflow else True
         files, attachments = self.upload_files(uri, app_id or business_type, user, contentObj, file_type, headers)
         task_id = model_config.get('task_id') or params.role_meta.get('task_id')
@@ -333,13 +335,34 @@ class QimingWorker(ApiModelWorker):
                                     json_data = json.loads(json_str)
                                     event = json_data.get('event')
                                     # 根据事件类型处理响应
-                                    if event == "agent_message" or event == "message":
+                                    if event == "workflow_finished":
+                                        break
+                                    if events and event not in events:
+                                        continue
+                                    event_data = json_data.get('data', {})
+                                    if event == "node_finished" and event_data.get('node_type') in node_types:
+                                        conversation_id = json_data.get('conversation_id')
+                                        message_id = json_data.get('message_id')
+                                        outputs = event_data.get('outputs', {})
+                                        if 'answer' in outputs:
+                                            msg = outputs.get('answer', '')
+                                        else:
+                                            msg = outputs.get('text', '')
+                                        inner_json = json.dumps(
+                                            {"conversation_id": conversation_id, "message_id": message_id,
+                                             "user": user, "answer": msg})
+                                        text += mark + inner_json + mark
+                                        yield {"error_code": 0, "text": text}
+                                    elif event == "text_chunk":
+                                        text += mark + json_data.get('text', '') + mark
+                                        yield {"error_code": 0, "text": text}
+                                    elif event == "agent_message" or event == "message":
                                         answer = json_data.get('answer', '')
                                         conversation_id = json_data.get('conversation_id')
                                         message_id = json_data.get('message_id')
                                         inner_json = json.dumps(
                                             {"conversation_id": conversation_id, "message_id": message_id,
-                                             "answer": answer})
+                                             "user": user, "answer": answer})
                                         text += mark + inner_json + mark
                                         yield {"error_code": 0, "text": text}
                                     elif event == "agent_thought":
@@ -376,7 +399,12 @@ class QimingWorker(ApiModelWorker):
                                                  "docs": attachments})
                                             text += mark + inner_json + mark
                                             yield {"error_code": 0, "text": text}
-                                        break
+                                    elif event == "tts_message":
+                                        text += mark + json_data.get('audio', '') + mark
+                                        yield {"error_code": 0, "text": text}
+                                    elif event == "error":
+                                        text += mark + json_data.get('message', '') + mark
+                                        yield {"error_code": 0, "text": text}
                                 except json.JSONDecodeError as e:
                                     logger.error(f"JSON解析错误: {e}")
         except Exception as e:
