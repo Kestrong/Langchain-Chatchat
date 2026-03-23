@@ -1,18 +1,18 @@
+import asyncio
 import json
+from typing import AsyncIterable, Optional
 
 from fastapi import Body
-from sse_starlette.sse import EventSourceResponse
+from langchain.callbacks import AsyncIteratorCallbackHandler
+from langchain.chains import LLMChain
+from langchain.prompts import PromptTemplate
+from starlette.requests import Request
+
 from configs import LLM_MODELS, TEMPERATURE, TOP_P
 from server.chat.utils import EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
-    wrap_event_response, un_format_online_llm_model
-from server.utils import wrap_done, get_ChatOpenAI
-from langchain.chains import LLMChain
-from langchain.callbacks import AsyncIteratorCallbackHandler
-from typing import AsyncIterable, Optional
-import asyncio
-from langchain.prompts import PromptTemplate
-
+    un_format_online_llm_model, choose_response
 from server.utils import get_prompt_template
+from server.utils import wrap_done, get_ChatOpenAI
 
 
 async def completion(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
@@ -24,6 +24,7 @@ async def completion(query: str = Body(..., description="用户输入", examples
                      top_p: float = Body(TOP_P, description="LLM 核采样。勿与temperature同时设置", gt=0.0, lt=1.0),
                      prompt_name: str = Body("default",
                                              description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
+                     request: Request = None
                      ):
     # todo 因ApiModelWorker 默认是按chat处理的，会对params["prompt"] 解析为messages，因此ApiModelWorker 使用时需要有相应处理
     if un_format_online_llm_model(model_name):
@@ -73,7 +74,6 @@ async def completion(query: str = Body(..., description="用户输入", examples
 
         await task
 
-    return EventSourceResponse(wrap_event_response(completion_iterator(query=query,
-                                                                       model_name=model_name,
-                                                                       prompt_name=prompt_name),
-                                                   ))
+    return await choose_response(stream, completion_iterator(query=query,
+                                                             model_name=model_name,
+                                                             prompt_name=prompt_name), request)

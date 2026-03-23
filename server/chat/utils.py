@@ -8,12 +8,14 @@ from langchain.chains import LLMChain
 from langchain.prompts.chat import ChatMessagePromptTemplate
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
+from sse_starlette import EventSourceResponse
+from starlette.requests import Request
 
 from common.exceptions import ChatBusinessException, WorkerBusinessException
 from configs import logger, log_verbose
 from server.db.repository import update_message
 from server.memory.message_i18n import Message_I18N
-from server.utils import get_model_worker_config
+from server.utils import get_model_worker_config, BaseResponse
 
 
 class History(BaseModel):
@@ -141,6 +143,20 @@ async def wrap_event_response(event_response: AsyncIterable[str]) -> AsyncIterab
                 update_message(message_id=d.get("message_id"), response=d["answer"], metadata={"error_info": msg},
                                append=True, response_time=datetime.datetime.now())
             yield json.dumps(d, ensure_ascii=False)
+
+
+async def choose_response(stream: bool, chat_iterator: AsyncIterable[str], request: Request = None):
+    openapi = True if request and "/openapi/" in request.url.path else False
+    if not openapi:
+        return EventSourceResponse(wrap_event_response(chat_iterator))
+    if stream:
+        return EventSourceResponse(wrap_event_response(chat_iterator))
+    else:
+        last_response = None
+        async for item in wrap_event_response(chat_iterator):
+            last_response = item
+        last_response = json.loads(last_response) if last_response else {}
+        return BaseResponse(code=200, data=last_response)
 
 
 EMPTY_LLM_CHAT_PROMPT = PromptTemplate.from_template("{{ input }}", template_format="jinja2")

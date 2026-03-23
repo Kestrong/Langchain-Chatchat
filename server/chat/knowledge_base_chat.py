@@ -9,7 +9,7 @@ from fastapi.concurrency import run_in_threadpool
 from langchain.callbacks import AsyncIteratorCallbackHandler
 from langchain.chains import LLMChain
 from langchain.prompts.chat import ChatPromptTemplate
-from sse_starlette.sse import EventSourceResponse
+from starlette.requests import Request
 
 from configs import (LLM_MODELS,
                      VECTOR_SEARCH_TOP_K,
@@ -20,15 +20,15 @@ from server.callback_handler.conversation_callback_handler import ConversationCa
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, wrap_event_response, un_format_online_llm_model, parse_llm_token_inner_json
+from server.chat.utils import History, un_format_online_llm_model, parse_llm_token_inner_json, \
+    choose_response
 from server.db.repository import add_message_to_db
 from server.knowledge_base.kb_doc_api import search_docs
 from server.knowledge_base.kb_service.base import KBServiceFactory
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
 from server.utils import BaseResponse, get_prompt_template, truncate_text
-from server.utils import embedding_device
-from server.utils import wrap_done, get_ChatOpenAI, get_model_path
+from server.utils import wrap_done, get_ChatOpenAI
 
 
 async def knowledge_base_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
@@ -69,6 +69,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                   description="使用的prompt模板名称(在configs/prompt_config.py中配置)"
                               ),
                               store_message: bool = Body(True, description="是否保存消息到数据库"),
+                              request: Request = None,
                               background_tasks: BackgroundTasks = None
                               ):
     if not knowledge_base_names:
@@ -212,5 +213,5 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             yield json.dumps(d, ensure_ascii=False)
         await task
 
-    return EventSourceResponse(
-        wrap_event_response(knowledge_base_chat_iterator(query, top_k, history, model_name, prompt_name)))
+    return await choose_response(stream, knowledge_base_chat_iterator(query, top_k, history, model_name, prompt_name),
+                                 request)

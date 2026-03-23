@@ -7,14 +7,15 @@ from fastapi import Body, File, UploadFile, Form
 from langchain.callbacks import AsyncIteratorCallbackHandler
 from langchain.chains import LLMChain
 from langchain.prompts.chat import ChatPromptTemplate
-from sse_starlette.sse import EventSourceResponse
+from starlette.requests import Request
 
 from configs import (LLM_MODELS, TEMPERATURE, MAX_TEMP_FILE_SIZE, MAX_TEMP_FILE_NUM, TOP_P)
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, wrap_event_response, un_format_online_llm_model, parse_llm_token_inner_json
+from server.chat.utils import History, un_format_online_llm_model, parse_llm_token_inner_json, \
+    choose_response
 from server.db.repository import add_message_to_db
 from server.knowledge_base.oss import default_oss, OssType, oss_factory
 from server.knowledge_base.utils import KnowledgeFile, get_file_path
@@ -139,6 +140,7 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
                     prompt_name: str = Body("default",
                                             description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                     store_message: bool = Body(True, description="是否保存消息到数据库"),
+                    request: Request = None
                     ):
     if un_format_online_llm_model(model_name):
         return BaseResponse(code=500,
@@ -250,4 +252,4 @@ async def file_chat(query: str = Body(..., description="用户输入", examples=
             yield json.dumps(d, ensure_ascii=False)
         await task
 
-    return EventSourceResponse(wrap_event_response(knowledge_base_chat_iterator()))
+    return await choose_response(stream, knowledge_base_chat_iterator(), request)
