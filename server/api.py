@@ -249,9 +249,11 @@ def mount_workflow_routes(app: FastAPI):
 
 def mount_openapi_routes(app: FastAPI):
     from server.knowledge_base.kb_doc_api import retrieval
+    from server.chat.chat_router import chat_router as chats
 
     openapi_router = APIRouter(prefix="/openapi", tags=["Openapi"])
     openapi_router.post("/retrieval", summary="搜索知识库")(retrieval)
+    openapi_router.post("/chat", summary="各种对话的总入口", )(chats)
     app.include_router(openapi_router)
 
     return openapi_router

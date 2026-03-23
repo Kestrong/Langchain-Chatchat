@@ -9,7 +9,7 @@ from langchain.chains import LLMChain
 from langchain.memory import ConversationBufferWindowMemory
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import PromptTemplate
-from sse_starlette import EventSourceResponse
+from starlette.requests import Request
 
 from configs import TEMPERATURE, LLM_MODELS, HISTORY_LEN, TOP_P
 from server.agent import create_model_container, text2sql, AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
@@ -17,7 +17,8 @@ from server.callback_handler.conversation_callback_handler import ConversationCa
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, wrap_event_response, create_agent_executor, parse_llm_token_inner_json
+from server.chat.utils import History, create_agent_executor, parse_llm_token_inner_json, \
+    choose_response
 from server.db.repository import add_message_to_db, update_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.utils import wrap_done, get_prompt_template, get_ChatOpenAI
@@ -48,6 +49,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                        tool_names: List[str] = Body([], description="工具的名称"),
                        api_names: List[str] = Body([], description="api的名称"),
                        store_message: bool = Body(True, description="是否保存消息到数据库"),
+                       request: Request = None
                        ):
     if isinstance(max_tokens, int) and max_tokens <= 0:
         max_tokens = None
@@ -225,4 +227,4 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                                       "conversation_id": conversation_id}, ensure_ascii=False)
                 await task
 
-    return EventSourceResponse(wrap_event_response(agent_chat_iterator()))
+    return await choose_response(stream, agent_chat_iterator(), request)

@@ -152,7 +152,7 @@ async def do_chat_router(query: str,
                                         search_engine_name=search_engine_name, top_k=top_k, assistant_id=assistant_id,
                                         history_len=history_len, history=history, stream=stream, model_name=model_name,
                                         temperature=temperature, max_tokens=max_tokens, prompt_name=prompt_name,
-                                        split_result=split_result, tag=tag, extra=extra, top_p=top_p)
+                                        split_result=split_result, tag=tag, extra=extra, top_p=top_p, request=request, )
 
     elif chat_type == ChatType.AGENT_CHAT.value or tool_names:
         if assistant:
@@ -162,21 +162,22 @@ async def do_chat_router(query: str,
                 model_container.TOOL_CONFIG.update(tool_config)
                 if len(tool_names) == 1 and tool_config.get(tool_names[0], {}).get("call_direct", False):
                     return await tool_chat(query=query, knowledge_id=knowledge_id, conversation_id=conversation_id,
-                                           extra=extra, tool_names=tool_names, api_names=api_names,
-                                           store_message=store_message, assistant_id=assistant_id, tag=tag)
+                                           extra=extra, tool_names=tool_names, api_names=api_names, stream=stream,
+                                           store_message=store_message, assistant_id=assistant_id, tag=tag,
+                                           request=request, )
 
         return await agent_chat(query=query, history_len=history_len, history=history, stream=stream,
                                 model_name=model_name, temperature=temperature, tool_names=tool_names,
                                 conversation_id=conversation_id, extra=extra, top_p=top_p,
                                 store_message=store_message, max_tokens=max_tokens, prompt_name=prompt_name,
-                                api_names=api_names, assistant_id=assistant_id, tag=tag)
+                                api_names=api_names, assistant_id=assistant_id, tag=tag, request=request, )
 
     elif chat_type == ChatType.FILE_CHAT.value or (knowledge_id and not un_format_online_llm_model(model_name)):
 
         return await file_chat(query=query, knowledge_id=knowledge_id, history_len=history_len, history=history,
                                stream=stream, model_name=model_name, temperature=temperature, max_tokens=max_tokens,
                                prompt_name=prompt_name, conversation_id=conversation_id, store_message=store_message,
-                               assistant_id=assistant_id, tag=tag, extra=extra, top_p=top_p, )
+                               assistant_id=assistant_id, tag=tag, extra=extra, top_p=top_p, request=request, )
 
     elif chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or knowledge_base_names:
 
@@ -185,13 +186,13 @@ async def do_chat_router(query: str,
                                          score_threshold=score_threshold, history_len=history_len, history=history,
                                          stream=stream, model_name=model_name, temperature=temperature, tag=tag,
                                          max_tokens=max_tokens, prompt_name=prompt_name, store_message=store_message,
-                                         top_p=top_p, background_tasks=background_tasks)
+                                         top_p=top_p, background_tasks=background_tasks, request=request, )
 
     elif chat_type == ChatType.COMPLETION.value:
 
         return await completion(query=query, extra=extra, stream=stream, top_p=top_p,
                                 model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                                prompt_name=prompt_name)
+                                prompt_name=prompt_name, request=request, )
 
     else:
 
