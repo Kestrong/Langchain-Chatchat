@@ -14,7 +14,7 @@ class ConversationModel(Base):
     assistant_id = Column(Integer, comment='助手ID')
     # chat/agent_chat等
     chat_type = Column(String(50), comment='聊天类型')
-    create_time = Column(DateTime, default=func.now(), server_default=func.now(), comment='创建时间')
+    create_time = Column(DateTime, index=True, default=func.now(), server_default=func.now(), comment='创建时间')
     create_by = Column(String(50), index=True, comment='创建人id')
 
     def __repr__(self):

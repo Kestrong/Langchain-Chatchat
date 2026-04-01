@@ -203,7 +203,7 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
                                      chunk_size=chunk_size,
                                      chunk_overlap=chunk_overlap,
                                      zh_title_enhance=zh_title_enhance,
-                                     separators=[separators] if separators and len(separators.strip()) > 0 else None,)
+                                     separators=[separators] if separators and len(separators.strip()) > 0 else None, )
             if msg := check_success_msg(ret):
                 st.toast(msg, icon="✔")
             elif msg := check_error_msg(ret):
@@ -353,50 +353,94 @@ def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
             top_k = st.slider("匹配条数", 1, 100, VECTOR_SEARCH_TOP_K)
 
         st.write("文件内文档列表。双击进行修改，在删除列填入 Y 可删除对应行。")
-        docs = []
-        df = pd.DataFrame([], columns=["seq", "id", "content", "source"])
         if selected_rows:
             file_name = selected_rows[0]["file_name"]
-            docs = api.search_kb_docs(knowledge_base_name=selected_kb, file_name=file_name)
+
+            grid_key = f"edit_docs_{file_name}"
+            if grid_key not in st.session_state:
+                st.session_state[grid_key] = 0
+
+            docs = api.search_kb_docs(knowledge_base_name=selected_kb, file_name=file_name, top_k=1000)
             data = [
-                {"seq": i + 1, "id": x["id"], "page_content": x["page_content"], "source": x["metadata"].get("source"),
-                 "type": x["type"],
-                 "metadata": json.dumps(x["metadata"], ensure_ascii=False),
-                 "to_del": "",
-                 } for i, x in enumerate(docs)]
+                {
+                    "seq": i + 1,
+                    "id": x["id"],
+                    "page_content": x["page_content"],
+                    "source": x["metadata"].get("source"),
+                    "type": x["type"],
+                    "metadata": json.dumps(x["metadata"], ensure_ascii=False),
+                    "to_del": "N"
+                }
+                for i, x in enumerate(docs)
+            ]
             df = pd.DataFrame(data)
 
             gb = GridOptionsBuilder.from_dataframe(df)
             gb.configure_columns(["id", "source", "type", "metadata"], hide=True)
             gb.configure_column("seq", "No.", width=50)
-            gb.configure_column("page_content", "内容", editable=True, autoHeight=True, wrapText=True, flex=1,
-                                cellEditor="agLargeTextCellEditor", cellEditorPopup=True)
-            gb.configure_column("to_del", "删除", editable=True, width=50, wrapHeaderText=True,
-                                cellEditor="agCheckboxCellEditor", cellRender="agCheckboxCellRenderer")
-            # 启用分页
+            gb.configure_column(
+                "page_content",
+                "内容",
+                editable=True,
+                autoHeight=True,
+                wrapText=True,
+                flex=1,
+                cellEditor="agLargeTextCellEditor",
+                cellEditorPopup=False,
+                cellEditorParams={"maxLength": 10000},
+            )
+            gb.configure_column(
+                "to_del",
+                "删除",
+                editable=True,
+                width=50,
+                wrapHeaderText=True,
+                cellEditor="agCheckboxCellEditor",
+                cellRenderer="agCheckboxCellRenderer",  # 注意：是 cellRenderer 不是 cellRender
+            )
             gb.configure_pagination(enabled=True, paginationAutoPageSize=False, paginationPageSize=10)
             gb.configure_selection()
-            edit_docs = AgGrid(df, gb.build(), fit_columns_on_grid_load=True)
+
+            edit_docs = AgGrid(
+                df,
+                gb.build(),
+                fit_columns_on_grid_load=True,
+                key=f"{grid_key}_v{st.session_state[grid_key]}",
+                allow_unsafe_jscode=True,
+            )
 
             if st.button("保存更改"):
                 origin_docs = {
-                    x["id"]: {"page_content": x["page_content"], "type": x["type"], "metadata": x["metadata"]} for x in
-                    docs}
+                    x["id"]: {"page_content": x["page_content"], "type": x["type"], "metadata": x["metadata"]}
+                    for x in docs
+                }
                 changed_docs = []
-                for index, row in edit_docs.data.iterrows():
+                for _, row in edit_docs["data"].iterrows():
                     origin_doc = origin_docs[row["id"]]
-                    if row["page_content"] != origin_doc["page_content"]:
-                        if row["to_del"] not in ["Y", "y", 1]:
-                            changed_docs.append({
-                                "page_content": row["page_content"],
-                                "type": row["type"],
-                                "metadata": json.loads(row["metadata"]),
-                            })
+                    if row["to_del"] in ["Y", "y", 1]:
+                        changed_docs.append({
+                            "id": row["id"],
+                            "page_content": "",
+                            "type": row["type"],
+                            "metadata": json.loads(row["metadata"]),
+                        })
+                    elif row["page_content"] != origin_doc["page_content"]:
+                        changed_docs.append({
+                            "id": row["id"],
+                            "page_content": row["page_content"],
+                            "type": row["type"],
+                            "metadata": json.loads(row["metadata"]),
+                        })
 
                 if changed_docs:
-                    if api.update_kb_docs(knowledge_base_name=selected_kb,
-                                          file_names=[file_name],
-                                          docs={file_name: changed_docs}):
+                    ret = api.update_docs_by_id(
+                        knowledge_base_name=selected_kb,
+                        file_name=file_name,
+                        docs=changed_docs
+                    )
+                    if ret.get("code") == 200:
                         st.toast("更新文档成功")
+                        st.session_state[grid_key] += 1
+                        st.rerun()
                     else:
-                        st.toast("更新文档失败")
+                        st.toast(f"更新文档失败：{ret.get('msg', '')}")

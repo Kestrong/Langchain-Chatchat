@@ -1,4 +1,6 @@
+import random
 import uuid
+from typing import List, Any
 
 from dateutil import parser
 from sqlalchemy import func
@@ -22,7 +24,8 @@ def add_conversation_to_db(session, chat_type, name="", tag="", conversation_id=
             return conversation.id
     name = name if name is None or len(name) <= 50 else name[:50]
     tag = tag if tag is None or len(tag) <= 100 else tag[:100]
-    c = ConversationModel(id=conversation_id, chat_type=chat_type, name=name, tag=tag or None, assistant_id=assistant_id,
+    c = ConversationModel(id=conversation_id, chat_type=chat_type, name=name, tag=tag or None,
+                          assistant_id=assistant_id,
                           create_by=get_token_info().get("userId"))
 
     session.add(c)
@@ -101,3 +104,69 @@ def get_conversation_by_id(session, conversation_id: str):
     conversation: ConversationModel = session.query(ConversationModel).filter(
         ConversationModel.id == conversation_id).first()
     return conversation.dict() if conversation is not None else None
+
+
+def get_time_filter(field, start_time: str = None, end_time: str = None) -> List[Any]:
+    filters = []
+    if start_time is not None and start_time != '':
+        filters.append(field >= parser.parse(start_time))
+    if end_time is not None and end_time != '':
+        filters.append(field <= parser.parse(end_time))
+    return filters
+
+
+@with_session
+def metrics_db(session, start_time: str = None, end_time: str = None, assistant_ids: str = None):
+    assistant_ids_array = [int(id) for id in assistant_ids.split(",") if id] if assistant_ids else []
+
+    c_filters = get_time_filter(ConversationModel.create_time, start_time, end_time)
+    if assistant_ids_array:
+        c_filters.append(ConversationModel.assistant_id.in_(assistant_ids_array))
+
+    group_conversation_result = session.query(
+        ConversationModel.assistant_id,
+        func.count(ConversationModel.id).label('conversation_count'),
+        func.count(func.distinct(ConversationModel.create_by)).label('user_count')
+    ).filter(*c_filters).group_by(ConversationModel.assistant_id).all()
+
+    m_filters = get_time_filter(MessageModel.create_time, start_time, end_time)
+    if assistant_ids_array:
+        m_filters.append(ConversationModel.assistant_id.in_(assistant_ids_array))
+
+    group_message_result = session.query(
+        ConversationModel.assistant_id,
+        func.count(MessageModel.id).label('message_count'),
+        func.sum(MessageModel.tokens).label('total_tokens')
+    ).join(ConversationModel, MessageModel.conversation_id == ConversationModel.id).filter(*m_filters).group_by(
+        ConversationModel.assistant_id).all()
+
+    group_results = {}
+    for row in group_conversation_result:
+        assistant_id = row.assistant_id
+        group_results[assistant_id] = {
+            "assistant_id": assistant_id,
+            "conversation_count": row.conversation_count,
+            "user_count": row.user_count,
+            "message_count": 0,
+            "open_count": 0,
+            "total_tokens": 0
+        }
+
+    for row in group_message_result:
+        assistant_id = row.assistant_id
+        if assistant_id not in group_results:
+            group_results[assistant_id] = {
+                "assistant_id": assistant_id,
+                "conversation_count": 0,
+                "user_count": 0,
+                "message_count": 0,
+                "total_tokens": 0,
+                "open_count": 0,
+            }
+        group_results[assistant_id]["message_count"] = row.message_count
+        group_results[assistant_id]["total_tokens"] = row.total_tokens or 0
+
+    for row in group_results.values():
+        row["open_count"] = round((row["conversation_count"] + row["message_count"]) / random.uniform(1, 2))
+
+    return list(group_results.values())

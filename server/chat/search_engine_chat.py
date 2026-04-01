@@ -14,7 +14,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.utilities.bing_search import BingSearchAPIWrapper
 from langchain.utilities.duckduckgo_search import DuckDuckGoSearchAPIWrapper
 from markdownify import markdownify
-from sse_starlette import EventSourceResponse
+from starlette.requests import Request
 from strsimpy.normalized_levenshtein import NormalizedLevenshtein
 
 from configs import (BING_SEARCH_URL, BING_SUBSCRIPTION_KEY, METAPHOR_API_KEY,
@@ -23,7 +23,8 @@ from server.callback_handler.conversation_callback_handler import ConversationCa
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, wrap_event_response, un_format_online_llm_model, parse_llm_token_inner_json
+from server.chat.utils import History, un_format_online_llm_model, parse_llm_token_inner_json, \
+    choose_response
 from server.db.repository import add_message_to_db
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
@@ -151,6 +152,7 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
                              split_result: bool = Body(False,
                                                        description="是否对搜索结果进行拆分（主要用于metaphor搜索引擎）"),
                              store_message: bool = Body(True, description="是否保存消息到数据库"),
+                             request: Request = None
                              ):
     if search_engine_name not in SEARCH_ENGINES.keys():
         return BaseResponse(code=500, msg=Message_I18N.API_SEARCHENGINE_NOT_SUPPORT.value.format(
@@ -257,10 +259,9 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
             yield json.dumps(d, ensure_ascii=False)
         await task
 
-    return EventSourceResponse(wrap_event_response(search_engine_chat_iterator(query=query,
-                                                                               search_engine_name=search_engine_name,
-                                                                               top_k=top_k,
-                                                                               history=history,
-                                                                               model_name=model_name,
-                                                                               prompt_name=prompt_name),
-                                                   ))
+    return await choose_response(stream, search_engine_chat_iterator(query=query,
+                                                                     search_engine_name=search_engine_name,
+                                                                     top_k=top_k,
+                                                                     history=history,
+                                                                     model_name=model_name,
+                                                                     prompt_name=prompt_name), request)

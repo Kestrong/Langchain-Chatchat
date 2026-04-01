@@ -2,17 +2,43 @@ import logging
 from typing import (
     TYPE_CHECKING,
     Any,
-    Tuple, Dict
+    Tuple, Dict, List
 )
 
 import tiktoken
+from langchain.chains import LLMChain
 from langchain_community.chat_models import ChatOpenAI
 from langchain_community.utils.openai import is_openai_v1
+from langchain_core.outputs import LLMResult
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import tiktoken
+
+original_create_outputs = LLMChain.create_outputs
+
+
+def create_outputs(self, llm_result: LLMResult) -> List[Dict[str, Any]]:
+    """Create outputs from response."""
+    result = [
+        # Get the text of the top generated string.
+        {
+            self.output_key: self.output_parser.parse_result(generation),
+            "full_generation": generation,
+        }
+        for generation in llm_result.generations
+    ]
+    if self.return_final_only:
+        result = [{self.output_key: r[self.output_key]} for r in result]
+    if result:
+        from server.chat.utils import parse_llm_token_inner_json
+        origin_model_name = self.llm.metadata.get("origin_model_name") or self.llm.model_name
+        parse_llm_token_inner_json(token=result[0][self.output_key], model_name=origin_model_name)
+    return result
+
+
+LLMChain.create_outputs = create_outputs
 
 
 class MinxChatOpenAI(ChatOpenAI):

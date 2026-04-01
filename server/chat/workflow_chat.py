@@ -9,11 +9,13 @@ from functools import partial
 from typing import Dict, Any, AsyncIterable, AsyncIterator
 
 from fastapi import Body
-from sse_starlette import EventSourceResponse
+from starlette.requests import Request
 
+from common.exceptions import ChatBusinessException
 from configs import logger
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
+from server.chat.utils import choose_response
 from server.db.repository import get_assistant_detail_from_db, add_message_to_db, update_message
 from server.memory.message_i18n import Message_I18N
 from server.utils import BaseResponse
@@ -29,6 +31,7 @@ async def workflow_chat(query: str = Body(..., description="用户输入", examp
                         conversation_id: str = Body("", description="对话框ID"),
                         knowledge_id: str = Body("", description="临时知识库ID"),
                         store_message: bool = Body(True, description="是否保存消息到数据库"),
+                        request: Request = None
                         ):
     assistant = None
     if assistant_id >= 0:
@@ -36,7 +39,7 @@ async def workflow_chat(query: str = Body(..., description="用户输入", examp
     workflow_config = assistant.get("workflow_config", {})
     return await do_workflow_chat(query=query, stream=stream, assistant_id=assistant_id, extra=extra,
                                   conversation_id=conversation_id, knowledge_id=knowledge_id, tag=tag,
-                                  store_message=store_message, workflow_config=workflow_config)
+                                  store_message=store_message, workflow_config=workflow_config, request=request)
 
 
 def get_component_type(name: str):
@@ -56,6 +59,7 @@ async def do_workflow_chat(query: str,
                            conversation_id: str = None,
                            knowledge_id: str = "",
                            store_message: bool = True,
+                           request: Request = None
                            ):
     if workflow_config is None or len(workflow_config) == 0:
         return BaseResponse(code=500, msg=Message_I18N.API_PARAM_NOT_PRESENT.value.format(
@@ -94,32 +98,28 @@ async def do_workflow_chat(query: str,
                 node_context = context[next_node.get("id")]
                 if "outputs" not in node_context:
                     node_context["outputs"] = {}
-                node_context["outputs"]["error_info"] = msg
+                if isinstance(e, ChatBusinessException) and e.__cause__:
+                    node_context["outputs"]["answer"] = msg
+                    node_context["outputs"]["error_info"] = str(e.__cause__)
+                else:
+                    node_context["outputs"]["error_info"] = msg
                 response_node_result.update(node_context)
                 queue.put_nowait(response_node_result)
                 break
 
     async def iter_node_result(queue: asyncio.Queue, event: asyncio.Event) -> AsyncIterator[dict]:
         while not queue.empty() or not event.is_set():
-            done, other = await asyncio.wait(
-                [
-                    asyncio.ensure_future(queue.get()),
-                ],
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+            try:
+                # 直接等待队列获取，避免复杂的状态管理
+                item = await queue.get()
 
-            # Cancel the other task
-            if other:
-                other.pop().cancel()
+                # 如果获取到特殊信号，继续循环
+                if item is True:
+                    continue
 
-            # Extract the value of the first completed task
-            token_or_done = done.pop().result()
-
-            # If the extracted value is the boolean True, the done event was set
-            if token_or_done is True:
-                continue
-
-            yield token_or_done
+                yield item
+            except asyncio.CancelledError:
+                break
 
     def execute_node_callback(task: asyncio.Task, event: asyncio.Event, queue: asyncio.Queue):
         event.set()
@@ -196,4 +196,4 @@ async def do_workflow_chat(query: str,
                 update_message(message_id=message_id, response=json.dumps(db_message_response),
                                metadata={"trace": response_all_nodes}, response_time=datetime.now())
 
-    return EventSourceResponse(chat_iterator())
+    return await choose_response(stream, chat_iterator(), request)

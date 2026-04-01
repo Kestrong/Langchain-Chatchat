@@ -4,33 +4,31 @@ import uuid
 from collections import OrderedDict
 from typing import AsyncIterable, List, Optional
 
-from fastapi import Body
+from fastapi import Body, BackgroundTasks
 from fastapi.concurrency import run_in_threadpool
 from langchain.callbacks import AsyncIteratorCallbackHandler
 from langchain.chains import LLMChain
 from langchain.prompts.chat import ChatPromptTemplate
-from sse_starlette.sse import EventSourceResponse
+from starlette.requests import Request
 
 from configs import (LLM_MODELS,
                      VECTOR_SEARCH_TOP_K,
                      SCORE_THRESHOLD,
                      TEMPERATURE,
-                     USE_RERANKER,
-                     RERANKER_MODEL,
-                     RERANKER_MAX_LENGTH, TOP_P)
+                     TOP_P)
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, wrap_event_response, un_format_online_llm_model, parse_llm_token_inner_json
+from server.chat.utils import History, un_format_online_llm_model, parse_llm_token_inner_json, \
+    choose_response
 from server.db.repository import add_message_to_db
 from server.knowledge_base.kb_doc_api import search_docs
 from server.knowledge_base.kb_service.base import KBServiceFactory
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
-from server.utils import BaseResponse, get_prompt_template
-from server.utils import embedding_device
-from server.utils import wrap_done, get_ChatOpenAI, get_model_path
+from server.utils import BaseResponse, get_prompt_template, truncate_text
+from server.utils import wrap_done, get_ChatOpenAI
 
 
 async def knowledge_base_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
@@ -71,6 +69,8 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                   description="使用的prompt模板名称(在configs/prompt_config.py中配置)"
                               ),
                               store_message: bool = Body(True, description="是否保存消息到数据库"),
+                              request: Request = None,
+                              background_tasks: BackgroundTasks = None
                               ):
     if not knowledge_base_names:
         return BaseResponse(code=500, msg=Message_I18N.API_PARAM_NOT_PRESENT.value.format(name='knowledge_base_names'))
@@ -137,24 +137,12 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                                 top_k=top_k,
                                                 score_threshold=score_threshold,
                                                 file_name="",
-                                                metadata={})
+                                                metadata={},
+                                                background_tasks=background_tasks)
             for d in docs_part:
                 d.metadata['kb_name'] = knowledge_base_name
                 docs.append(d)
         docs.sort(key=lambda x: x.score)
-
-        # 加入reranker
-        if USE_RERANKER:
-            from server.reranker.reranker import LangchainReranker
-            reranker_model_path = get_model_path(RERANKER_MODEL)
-            reranker_model = LangchainReranker(top_n=max(top_k // 2, 3),
-                                               device=embedding_device(),
-                                               max_length=RERANKER_MAX_LENGTH,
-                                               model_name_or_path=reranker_model_path
-                                               )
-            docs = reranker_model.compress_documents(documents=docs,
-                                                     query=query)
-
         if len(docs) > top_k:
             docs = docs[:top_k]
         docs_map = OrderedDict()
@@ -169,14 +157,19 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                 value.sort(key=lambda x: x.metadata['index'])
             docs.extend(value)
         context = ""
+        grouped_docs = {}
         source_documents = []
-        exist_file = []
-        for inum, doc in enumerate(docs):
+        for doc in docs:
             context += doc.page_content + "\n"
-            filename = doc.metadata["source"]
-            if filename not in exist_file:
-                source_documents.append({"filename": filename, "knowledge_base_name": doc.metadata.get("kb_name")})
-                exist_file.append(filename)
+            key = f"{doc.metadata.get('kb_name')}:{doc.metadata.get('source')}"
+            if key not in grouped_docs:
+                grouped_docs[key] = {
+                    "filename": doc.metadata.get('source'),
+                    "knowledge_base_name": doc.metadata.get('kb_name'),
+                    "page_content": []
+                }
+                source_documents.append(grouped_docs[key])
+            grouped_docs[key]["page_content"].append(truncate_text(doc.page_content))
         conversation_callback.docs = source_documents
 
         prompt_template = get_prompt_template("knowledge_base_chat", prompt_name)
@@ -220,5 +213,5 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
             yield json.dumps(d, ensure_ascii=False)
         await task
 
-    return EventSourceResponse(
-        wrap_event_response(knowledge_base_chat_iterator(query, top_k, history, model_name, prompt_name)))
+    return await choose_response(stream, knowledge_base_chat_iterator(query, top_k, history, model_name, prompt_name),
+                                 request)

@@ -7,3 +7,4 @@ from .chat_menu_repository import *
 from .knowledge_metadata_repository import *
 from .model_metadata_repository import *
 from .chat_app_repository import *
+from .chat_dict_repository import *

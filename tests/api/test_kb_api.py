@@ -31,7 +31,7 @@ def test_delete_kb_before(api="/knowledge_base/delete_knowledge_base"):
 
     url = api_base_url + api
     print("\n测试知识库存在，需要删除")
-    r = requests.post(url, json=kb)
+    r = requests.delete(url, params={"knowledge_base_name": kb})
     data = r.json()
     pprint(data)
 
@@ -202,7 +202,7 @@ def test_recreate_vs(api="/knowledge_base/recreate_vector_store"):
 def test_delete_kb_after(api="/knowledge_base/delete_knowledge_base"):
     url = api_base_url + api
     print("\n删除知识库")
-    r = requests.post(url, json=kb)
+    r = requests.delete(url, params={"knowledge_base_name": kb})
     data = r.json()
     pprint(data)
 

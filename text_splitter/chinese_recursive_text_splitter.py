@@ -35,7 +35,7 @@ class ChineseRecursiveTextSplitter(RecursiveCharacterTextSplitter):
     ) -> None:
         """Create a new TextSplitter."""
         super().__init__(keep_separator=keep_separator, **kwargs)
-        self._separators = separators or [
+        self.default_separator = [
             "\n\n",
             "\n",
             "。|！|？",
@@ -43,6 +43,7 @@ class ChineseRecursiveTextSplitter(RecursiveCharacterTextSplitter):
             "；|;\s",
             "，|,\s"
         ]
+        self._separators = separators or self.default_separator
         self._is_separator_regex = is_separator_regex
 
     def _split_text(self, text: str, separators: List[str]) -> List[str]:
@@ -56,10 +57,16 @@ class ChineseRecursiveTextSplitter(RecursiveCharacterTextSplitter):
             if _s == "":
                 separator = _s
                 break
-            if re.search(_separator, text):
-                separator = _s
-                new_separators = separators[i + 1:]
-                break
+            try:
+                if re.search(_separator, text):
+                    separator = _s
+                    new_separators = separators[i + 1:]
+                    break
+            except Exception as e:
+                if re.search(re.escape(_separator), text):
+                    separator = re.escape(_s)
+                    new_separators = separators[i + 1:]
+                    break
 
         _separator = separator if self._is_separator_regex else re.escape(separator)
         splits = _split_text_with_regex_from_end(text, _separator, self._keep_separator)

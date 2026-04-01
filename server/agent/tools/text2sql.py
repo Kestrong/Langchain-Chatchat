@@ -2,10 +2,10 @@ import json
 import re
 from concurrent.futures import ThreadPoolExecutor, Future
 from copy import copy
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import date, datetime, time
 from typing import Dict, Any, Optional, Union, Literal, Sequence, List
 
+from fastapi.encoders import jsonable_encoder
 from langchain.chains import LLMChain
 from langchain.chains.sql_database.prompt import PROMPT
 from langchain_community.chat_models import ChatOpenAI
@@ -549,15 +549,11 @@ def intercept_sql(conn, cursor, statement, parameters, context, executemany):
         )
 
 
-def complex_handler(obj):
-    if isinstance(obj, Decimal):
-        return float(obj)
-    elif isinstance(obj, date):
-        return obj.strftime("%Y-%m-%d %H:%M:%S")
-    elif isinstance(obj, datetime):
-        return obj.strftime("%Y-%m-%d %H:%M:%S")
-    else:
-        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+def json_dumps(obj, indent=None):
+    _custom_encoder = {datetime: lambda o: o.strftime("%Y-%m-%d %H:%M:%S"),
+                       time: lambda o: o.strftime("%Y-%m-%d %H:%M:%S"),
+                       date: lambda o: o.strftime("%Y-%m-%d %H:%M:%S"), }
+    return json.dumps(jsonable_encoder(obj, custom_encoder=_custom_encoder), ensure_ascii=False, indent=indent)
 
 
 def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
@@ -660,16 +656,26 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
         """
     }
     result_types = set()
-    if "折线图" in query:
+
+    # 更智能的图表类型识别，支持多种表达方式
+    line_keywords = ["折线图", "线图", "趋势图", "曲线图", "line graph", "line chart", "trend chart", "curve chart"]
+    pie_keywords = ["饼图", "饼状图", "圆饼图", "扇形图", "pie chart", "circle chart", "sector chart"]
+    bar_keywords = ["柱状图", "柱图", "条形图", "直方图", "bar graph", "bar chart", "column chart", "histogram"]
+    table_keywords = ["表格", "列表", "table", "grid"]
+
+    query_lower = query.lower()
+
+    if any(keyword in query_lower for keyword in line_keywords):
         chart_type = "line"
-    elif "饼图" in query:
+    elif any(keyword in query_lower for keyword in pie_keywords):
         chart_type = "pie"
-    elif "柱状图" in query:
+    elif any(keyword in query_lower for keyword in bar_keywords):
         chart_type = "bar"
     else:
         chart_type = "table"
     result_types.add(chart_type)
-    if "表格" in query:
+
+    if any(keyword in query_lower for keyword in table_keywords):
         result_types.add("table")
     chart_json = {}
     if records and chart_type in chart_json_example:
@@ -690,7 +696,7 @@ def judge_chart_type(query: str, records: list, llm: ChatOpenAI):
                                       template=prompt, template_format="jinja2")
             chain = LLMChain(llm=llm, prompt=template)
             chart_json = chain.run(query=query,
-                                   records=json.dumps(records, default=complex_handler),
+                                   records=json_dumps(records),
                                    chart_type=chart_types[chart_type],
                                    chart_json_example=chart_json_example[chart_type])
             chart_json = json.loads(parse_json_md(chart_json))
@@ -945,22 +951,21 @@ def text2sql(natural_language_question: str):
         if isinstance(summarize, Future):
             summarize = summarize.result()
         if return_format == "json":
-            return json.dumps(
+            return json_dumps(
                 {"column_map": column_map, "records": records,
                  "chart_type": chart_type,
                  "chart_json": chart_json,
                  "summarize": summarize,
                  "metadata": {"sql": parse_sql_md(sql), "table_info": table_info, "db_name": db_name,
-                              "fix_sql": True if sql_cmd else False}},
-                default=complex_handler, ensure_ascii=False)
+                              "fix_sql": True if sql_cmd else False}})
         return Message_I18N.TOOL_SQL_DETAIL_PRODUCE.value.format(sql=parse_sql_md(sql),
-                                                                 records=json.dumps(
+                                                                 records=json_dumps(
                                                                      {"chart_type": chart_type,
                                                                       "chart_json": chart_json,
-                                                                      "column_map": column_map, "records": records, },
-                                                                     default=complex_handler, indent=4),
+                                                                      "column_map": column_map,
+                                                                      "records": records, }, indent=4),
                                                                  summarize=summarize)
-    except Exception as e:
+    except BaseException as e:
         error_info = str(e)
         logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
         if isinstance(e, ChatBusinessException):
@@ -981,7 +986,7 @@ def shorter_records(records: list, used_count: int = 0):
     result = []
     length = 0
     for rr in records:
-        r_str = json.dumps(rr, default=complex_handler)
+        r_str = json_dumps(rr)
         length += len(r_str)
         if length > MAX_TOKENS_INPUT - used_count:
             break

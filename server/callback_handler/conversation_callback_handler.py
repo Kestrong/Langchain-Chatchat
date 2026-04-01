@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import time
 from asyncio import CancelledError
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
@@ -11,13 +12,14 @@ from langchain_core.agents import AgentFinish
 from langchain_core.outputs import GenerationChunk, ChatGenerationChunk
 
 from common.exceptions import ChatBusinessException
-from server.db.repository import update_message
+from configs import logger
+from server.db.repository import update_message, add_performance_metrics_to_db
 from server.memory.message_i18n import Message_I18N
 
 
 class ConversationCallbackHandler(BaseCallbackHandler):
     raise_error: bool = True
-    token_save_interval: int = os.environ.get("TOKEN_SAVE_INTERVAL", 100)
+    token_save_interval: int = int(os.environ.get("TOKEN_SAVE_INTERVAL", 100))
 
     def __init__(self, model_name: str, conversation_id: str, message_id: str, chat_type: str, query: str,
                  agent: bool = False, stream: bool = False, realtime_token_save: bool = False):
@@ -29,6 +31,9 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         self.agent = agent
         self.updated = False
         self.generated_tokens = []
+        self.start_time = None
+        self.first_token_time = None
+        self.token_count = 0
         self.docs = None
         self.extra = {'stream': stream, 'realtime_token_save': realtime_token_save, 'answer': '', 'metadata': {},
                       'response_time_updated': False}
@@ -61,12 +66,15 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             self.update_message(final_answer, metadata=metadata)
             self.generated_tokens = []
             self.updated = True
+            self.token_count += len(final_answer)
+            self._log_performance_metrics()
 
     def on_llm_start(
             self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any
     ) -> None:
         # 如果想存更多信息，则prompts 也需要持久化
-        pass
+        self.start_time = time.time()
+        self.first_token_time = None
 
     def on_llm_new_token(
             self,
@@ -77,10 +85,12 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             parent_run_id: Optional[UUID] = None,
             **kwargs: Any,
     ) -> Any:
+        if self.first_token_time is None and token:
+            self.first_token_time = time.time()
         if not self.agent:
             self.generated_tokens.append(token)
             realtime_token_save = self.extra.get("realtime_token_save", False)
-            if realtime_token_save and os.environ.get("REALTIME_TOKEN_SAVE", True):
+            if realtime_token_save and os.environ.get("REALTIME_TOKEN_SAVE", "True") == "True":
                 answer, metadata = self.parse_token(token)
                 self.extra['answer'] = self.extra.get('answer', '') + answer
                 self.extra['metadata'].update(metadata)
@@ -96,6 +106,8 @@ class ConversationCallbackHandler(BaseCallbackHandler):
                 if stream and not response_time_updated and token:
                     update_message(message_id=self.message_id, response_time=datetime.datetime.now(), )
                     self.extra['response_time_updated'] = True
+        else:
+            self.token_count += len(token)
 
     def parse_token(self, token: str, metadata: dict = None, error: str = None):
         mark = f'###[{self.model_name}]###'
@@ -105,7 +117,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         if mark in token:
             parts = token.split(mark)
             extra_key_map = {"message_id": "third_message_id", "conversation_id": "third_conversation_id",
-                             "user": "user", "api_key": "api_key", "appId": "appId"}
+                             "user": "user", "api_key": "api_key", "appId": "appId", "docs": "docs"}
             for part in parts:
                 if part is not None and part.strip() != '':
                     if part.startswith('{') and part.endswith('}'):
@@ -131,13 +143,63 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         answer, metadata = self.parse_token(answer, metadata, error)
         update_message(self.message_id, answer, metadata if len(metadata) > 0 else None,
                        response_time=datetime.datetime.now())
+        return answer
+
+    def _log_performance_metrics(self):
+        """记录性能指标到日志和数据库"""
+        if self.start_time is None:
+            return
+
+        end_time = time.time()
+        total_time = end_time - self.start_time
+
+        # 计算各项指标
+        first_token_latency = (self.first_token_time - self.start_time) if self.first_token_time else 0
+        tokens_per_second = self.token_count / total_time if total_time > 0 else 0
+        start_datetime = datetime.datetime.fromtimestamp(self.start_time)
+        end_datetime = datetime.datetime.fromtimestamp(end_time)
+
+        # 使用logger记录性能指标
+        logger.info(
+            f"Model Performance Metrics - "
+            f"Model: {self.model_name}, "
+            f"Conversation ID: {self.conversation_id}, "
+            f"Message ID: {self.message_id}, "
+            f"Start Time: {start_datetime.strftime('%Y-%m-%d %H:%M:%S')}, "
+            f"First Token Latency: {first_token_latency:.4f}s, "
+            f"Tokens/Second: {tokens_per_second:.2f}, "
+            f"Total Tokens: {self.token_count}, "
+            f"Total Time: {total_time:.4f}s, "
+            f"End Time: {end_datetime.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        # 根据环境变量决定是否将性能指标写入数据库，默认关闭
+        if os.environ.get("ENABLE_PERFORMANCE_METRICS_DB", "False") == "True":
+            try:
+                add_performance_metrics_to_db(
+                    conversation_id=self.conversation_id,
+                    message_id=self.message_id,
+                    model_name=self.model_name,
+                    chat_type=self.chat_type,
+                    start_time=start_datetime,
+                    first_token_latency=first_token_latency,
+                    tokens_per_second=tokens_per_second,
+                    total_tokens=self.token_count,
+                    total_time=total_time,
+                    end_time=end_datetime,
+                    extra_info={}
+                )
+            except Exception as e:
+                logger.error(f"Failed to save performance metrics to database: {e}")
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         if not self.agent and not self.updated:
             answer = response.generations[0][0].text
-            self.update_message(answer)
+            answer = self.update_message(answer)
             self.generated_tokens = []
             self.updated = True
+            self.token_count = len(answer)
+
+            self._log_performance_metrics()
 
     def on_chain_error(
             self,

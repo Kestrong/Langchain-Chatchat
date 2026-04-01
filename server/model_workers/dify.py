@@ -6,12 +6,14 @@ from typing import List, Dict, Literal
 import requests
 from fastchat import conversation as conv
 from fastchat.conversation import Conversation
+from langchain_core.prompts.string import DEFAULT_FORMATTER_MAPPING
 
 from configs import logger
 from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
 from server.knowledge_base.oss import default_oss
 from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelWorker, ApiChatParams
+from server.utils import truncate_text
 
 # 自定义 MIME 类型和文件类别映射
 MIME_TYPE_MAP = {
@@ -100,6 +102,26 @@ def get_mime_type(ext):
     return MIME_TYPE_MAP.get(ext_lower, MIME_TYPE_MAP['unknown'])
 
 
+def parse_inputs_expr(inputs, query, contentObj):
+    for k, v in inputs.items():
+        if k in ['cookie', 'token_info']:
+            continue
+        if isinstance(v, str):
+            matches = re.findall(r'\{\{(\s*[.\w-]+\s*)}}', v)
+            for var_name in set(matches):
+                placeholder = "{{" + var_name + "}}"
+                if var_name.strip() == "query":
+                    v = v.replace(placeholder, query)
+                else:
+                    try:
+                        var_val = DEFAULT_FORMATTER_MAPPING["jinja2"](placeholder, **contentObj)
+                        if var_val:
+                            v = v.replace(placeholder, var_val)
+                    except:
+                        pass
+            inputs[k] = v
+
+
 class DifyWorker(ApiModelWorker):
 
     def __init__(
@@ -118,7 +140,7 @@ class DifyWorker(ApiModelWorker):
     def get_inputs(self, role_meta: dict, model_config: dict):
         return model_config.get('inputs') or role_meta.get("inputs", {})
 
-    def get_chunk_response(self, json_data, is_workflow, mark, user, api_key, events, node_types):
+    def get_chunk_response(self, json_data, is_workflow, mark, user, api_key, events, node_types, attachments):
         event = json_data.get('event')
         if is_workflow:
             if event == "workflow_finished":
@@ -126,7 +148,10 @@ class DifyWorker(ApiModelWorker):
             elif event == "tts_message":
                 return json_data.get('audio', '')
             elif event == "node_finished":
-                return mark + json.dumps({"answer": json_data.get('data', {}).get('outputs')}) + mark
+                obj = {"answer": json_data.get('data', {}).get('outputs')}
+                if attachments:
+                    obj["docs"] = attachments
+                return mark + json.dumps(obj) + mark
             else:
                 return None
         else:
@@ -158,6 +183,34 @@ class DifyWorker(ApiModelWorker):
                     {"conversation_id": conversation_id, "message_id": message_id,
                      "user": user, "api_key": api_key, "answer": msg})
                 return mark + inner_json + mark
+            elif event == "message_end":
+                conversation_id = json_data.get('conversation_id')
+                message_id = json_data.get('message_id')
+                metadata = json_data.get('metadata') or {}
+                retriever_resources = metadata.get('retriever_resources') or []
+                if retriever_resources:
+                    grouped_docs = {}
+                    docs = [a for a in attachments]
+                    for r in retriever_resources:
+                        key = f"{r.get('dataset_name')}:{r.get('document_name')}"
+                        if key not in grouped_docs:
+                            grouped_docs[key] = {
+                                "filename": r.get('document_name'),
+                                "knowledge_base_name": r.get('dataset_name'),
+                                "page_content": []
+                            }
+                            docs.append(grouped_docs[key])
+                        grouped_docs[key]["page_content"].append(truncate_text(r.get('content')))
+                    inner_json = json.dumps(
+                        {"conversation_id": conversation_id, "message_id": message_id,
+                         "user": user, "api_key": api_key, "docs": docs})
+                    return mark + inner_json + mark
+                elif attachments:
+                    inner_json = json.dumps(
+                        {"conversation_id": conversation_id, "message_id": message_id,
+                         "user": user, "api_key": api_key, "docs": attachments})
+                    return mark + inner_json + mark
+                return None
             elif event == "tts_message":
                 return json_data.get('audio', '')
             elif event == "error":
@@ -166,12 +219,12 @@ class DifyWorker(ApiModelWorker):
                 return None
 
     def upload_files(self, url, api_key, user, contentObj, file_type, extra_headers):
-        result = []
+        result, attachments = [], []
         knowledge_id = contentObj.get('knowledge_id')
         files = contentObj.get('files')
         if not knowledge_id and not files:
             logger.debug("knowledge_id和files都为空，不需要上传")
-            return result
+            return result, attachments
         headers = {'Authorization': f'Bearer {api_key}'}
         if 'X-APP-ID' in extra_headers:
             headers['X-APP-ID'] = extra_headers['X-APP-ID']
@@ -186,6 +239,7 @@ class DifyWorker(ApiModelWorker):
             if attachment_names:
                 for a in attachment_names:
                     logger.debug(f"upload file: {a}")
+                    attachments.append({"filename": a, "knowledge_base_name": "temp", "path": knowledge_id})
                     with default_oss().get_object(bucket_name="temp", object_name=f"{knowledge_id}/{a}") as o:
                         file_prop = analyze_file(a)
                         with requests.post(url=upload_url, headers=headers, data=data,
@@ -208,6 +262,7 @@ class DifyWorker(ApiModelWorker):
                 get_file_headers = {"Authorization": contentObj.get('token')}
             for f in files:
                 logger.debug(f"upload file: {f.get('name')}")
+                attachments.append({"filename": f.get('name'), "url": f.get('url')})
                 response = requests.get(f.get('url'), headers=get_file_headers, cookies=cookies, stream=True,
                                         verify=False)
                 if not response.ok:
@@ -236,7 +291,7 @@ class DifyWorker(ApiModelWorker):
                         result.append(file)
                 finally:
                     file_stream.close()
-        return result
+        return result, attachments
 
     def do_chat(self, params: ApiChatParams) -> Dict:
         params = params.load_config(self.model_names[0])
@@ -261,12 +316,14 @@ class DifyWorker(ApiModelWorker):
         file_type = model_config.get('file_type') or role_meta.get("file_type")
         extra_headers = model_config.get("extra_headers") or role_meta.get("extra_headers", {})
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", **extra_headers}
+        query = contentObj.get('question', '')
         inputs = self.get_inputs(role_meta, model_config)
+        parse_inputs_expr(inputs, query, contentObj)
         inputs['cookie'] = contentObj.get('cookie')
         inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
         data = {
             "inputs": inputs,
-            "query": contentObj.get('question', ''),
+            "query": query,
             "response_mode": "streaming" if response_mode else "blocking",
             "user": user,
             "conversation_id": contentObj.get('conversation_id'),
@@ -274,7 +331,7 @@ class DifyWorker(ApiModelWorker):
         text = ""
         mark = f'###[{self.model_names[0]}]###'
         try:
-            files = self.upload_files(url, api_key, user, contentObj, file_type, extra_headers)
+            files, attachments = self.upload_files(url, api_key, user, contentObj, file_type, extra_headers)
             data['files'] = files
             logger.debug(f"请求dify接口参数：{data}")
             data.update({"input_data": inputs, "mode": data.get('response_mode')})
@@ -292,7 +349,7 @@ class DifyWorker(ApiModelWorker):
                             try:
                                 json_data = json.loads(json_str)
                                 result = self.get_chunk_response(json_data, is_workflow, mark, data.get('user'),
-                                                                 api_key, events, node_types)
+                                                                 api_key, events, node_types, attachments)
                                 if not result:
                                     continue
                                 if result == mark + '[BREAK]' + mark:
@@ -304,14 +361,36 @@ class DifyWorker(ApiModelWorker):
                 else:
                     json_data = response.json()
                     if is_workflow:
-                        inner_json = json.dumps({"answer": json_data.get('data', {}).get('outputs')})
+                        inner_json_obj = {"answer": json_data.get('data', {}).get('outputs')}
+                        if attachments:
+                            inner_json_obj['docs'] = attachments
+                        inner_json = json.dumps(inner_json_obj)
                         yield {"error_code": 0, "text": mark + inner_json + mark}
                     else:
                         conversation_id = json_data.get('conversation_id')
                         message_id = json_data.get('message_id')
-                        inner_json = json.dumps({"conversation_id": conversation_id, "message_id": message_id,
-                                                 "user": data.get('user'), "api_key": api_key,
-                                                 "answer": json_data.get('answer', '')})
+                        inner_json_obj = {"conversation_id": conversation_id, "message_id": message_id,
+                                          "user": data.get('user'), "api_key": api_key,
+                                          "answer": json_data.get('answer', '')}
+                        metadata = json_data.get('metadata') or {}
+                        retriever_resources = metadata.get('retriever_resources') or []
+                        if retriever_resources:
+                            grouped_docs = {}
+                            docs = [a for a in attachments]
+                            for r in retriever_resources:
+                                key = f"{r.get('dataset_name')}:{r.get('document_name')}"
+                                if key not in grouped_docs:
+                                    grouped_docs[key] = {
+                                        "filename": r.get('document_name'),
+                                        "knowledge_base_name": r.get('dataset_name'),
+                                        "page_content": []
+                                    }
+                                    docs.append(grouped_docs[key])
+                                grouped_docs[key]["page_content"].append(truncate_text(r.get('content')))
+                            inner_json_obj['docs'] = docs
+                        elif attachments:
+                            inner_json_obj['docs'] = attachments
+                        inner_json = json.dumps(inner_json_obj)
                         yield {"error_code": 0, "text": mark + inner_json + mark}
         except Exception as e:
             logger.error(f"{e}")

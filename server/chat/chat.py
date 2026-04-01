@@ -9,7 +9,6 @@ from langchain.callbacks import AsyncIteratorCallbackHandler
 from langchain.chains import LLMChain
 from langchain.prompts.chat import ChatPromptTemplate
 from langchain_core.prompts import PromptTemplate
-from sse_starlette.sse import EventSourceResponse
 from starlette.requests import Request
 
 from configs import LLM_MODELS, TEMPERATURE, logger, TOP_P
@@ -18,7 +17,7 @@ from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
-    wrap_event_response, un_format_online_llm_model
+    un_format_online_llm_model, choose_response
 from server.db.repository import add_message_to_db, filter_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.model_workers import ApiModelParams
@@ -53,9 +52,17 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
     if not conversation_id:
         conversation_id = uuid.uuid4().hex
     if un_format_online_llm_model(model_name):
-        extra['question'] = query
+        if prompt_name == "default":
+            question = query
+        else:
+            try:
+                question = PromptTemplate.from_template(prompt_name, template_format="jinja2").format(input=query)
+            except Exception:
+                question = prompt_name
+        extra['question'] = question
         extra['stream'] = stream
         extra["cookie"] = request.headers.get('cookie')
+        extra['mark'] = f'###[{model_name}]###'
         apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=model_name)
         if apiModelParams.provider in ['DifyWorker', 'FuXiWorker', 'QimingWorker']:
             if not extra.get("conversation_id"):
@@ -154,7 +161,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
 
             await task
 
-    return EventSourceResponse(wrap_event_response(chat_iterator()))
+    return await choose_response(stream, chat_iterator(), request)
 
 
 def recommend_question(query: str = Body(..., description="用户输入", examples=["今天天气很好"]),

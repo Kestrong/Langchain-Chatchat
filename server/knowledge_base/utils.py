@@ -143,8 +143,7 @@ def get_loader(loader_name: str, file_path: str, loader_kwargs: Dict = None):
         DocumentLoader = getattr(document_loaders_module, loader_name)
     except Exception as e:
         msg = f"为文件{file_path}查找加载器{loader_name}时出错：{e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         document_loaders_module = importlib.import_module('langchain.document_loaders')
         DocumentLoader = getattr(document_loaders_module, "UnstructuredFileLoader")
 
@@ -252,7 +251,14 @@ def make_text_splitter(
         TextSplitter = getattr(text_splitter_module, "RecursiveCharacterTextSplitter")
         text_splitter = TextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     if separators and len(separators) > 0 and hasattr(text_splitter, '_separators'):
-        setattr(text_splitter, '_separators', separators)
+        separators_copy = [s for s in separators if s != ""]
+        if hasattr(text_splitter, 'default_separator'):
+            default_separator = getattr(text_splitter, 'default_separator') or []
+            for s in default_separator:
+                if s not in separators_copy:
+                    separators_copy.append(s)
+        setattr(text_splitter, '_separators', separators_copy)
+
     # If you use SpacyTextSplitter you can use GPU to do split likes Issue #1287
     # text_splitter._tokenizer.max_length = 37016792
     # text_splitter._tokenizer.prefer_gpu()
@@ -314,10 +320,16 @@ class KnowledgeFile:
             return []
         if self.ext not in [".csv"]:
             if text_splitter is None:
+                if self.ext in [".md", ".mdx", ".markdown"] and zh_title_enhance:
+                    self.text_splitter_name = "MarkdownHeaderTextSplitter"
                 text_splitter = make_text_splitter(splitter_name=self.text_splitter_name, chunk_size=chunk_size,
                                                    chunk_overlap=chunk_overlap, separators=self.separators)
             if self.text_splitter_name == "MarkdownHeaderTextSplitter":
                 docs = text_splitter.split_text(docs[0].page_content)
+                sub_text_splitter = make_text_splitter(splitter_name='ChineseRecursiveTextSplitter',
+                                                       chunk_size=chunk_size,
+                                                       chunk_overlap=chunk_overlap, separators=self.separators)
+                docs = sub_text_splitter.split_documents(docs)
             else:
                 docs = text_splitter.split_documents(docs)
 
@@ -325,9 +337,9 @@ class KnowledgeFile:
             return []
 
         print(f"文档切分示例：{docs[0]}")
-        if zh_title_enhance:
+        if zh_title_enhance and self.ext in [".md", ".mdx", ".markdown"]:
             docs = func_zh_title_enhance(docs)
-        i = 0
+        i = 1
         for doc in docs:
             doc.metadata['index'] = i
             i += 1

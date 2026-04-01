@@ -3,6 +3,7 @@ import os
 import re
 from base64 import b64encode, b64decode
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import deepcopy
 from datetime import datetime
 from typing import List
 from typing import (
@@ -423,7 +424,7 @@ def get_model_worker_config(model_name: str = None) -> dict:
         if path and os.path.isdir(path):
             config["model_path_exists"] = True
         config["device"] = llm_device(config.get("device"))
-    return config
+    return deepcopy(config)
 
 
 def get_all_model_worker_configs() -> dict:
@@ -666,18 +667,31 @@ def get_httpx_client(
         return httpx.Client(**kwargs)
 
 
-def get_server_configs() -> Dict:
+def get_server_configs() -> BaseResponse:
     '''
     获取configs中的原始配置项，供前端使用
     '''
-
-    _custom = {
-        "controller_address": fschat_controller_address(),
-        "openai_api_address": fschat_openai_api_address(),
-        "api_address": api_address(),
+    from configs import kb_config
+    import importlib
+    importlib.reload(kb_config)
+    server = {
+        "server_endpoints": {
+            "controller_endpoint": fschat_controller_address(),
+            "openai_api_endpoint": fschat_openai_api_address(),
+            "api_endpoint": api_address(),
+        }
     }
 
-    return {**{k: v for k, v in locals().items() if k[0] != "_"}, **_custom}
+    kb_config = {
+        "splitter_config": {
+            "chunk_size": kb_config.CHUNK_SIZE,
+            "overlap_size": kb_config.OVERLAP_SIZE,
+            "zh_title_enhance": kb_config.ZH_TITLE_ENHANCE,
+            "separators": []
+        }
+    }
+
+    return BaseResponse(code=200, data={"server_config": server, "kb_config": kb_config})
 
 
 def list_online_embed_models() -> List[str]:
@@ -770,3 +784,46 @@ def parse_json_md(command):
         if match:
             command = match.group(2)
     return command
+
+
+def truncate_text(text, max_length=250):
+    if not text:
+        return text
+    if len(text) <= max_length:
+        return text
+    return text[:max_length] + "..."
+
+
+def text_similarity(text1, text2):
+    if text1 in text2 or text2 in text1:
+        return min(len(text1), len(text2)) / max(len(text1), len(text2))
+
+    words1 = set(text1.split())
+    words2 = set(text2.split())
+
+    if not words1 or not words2:
+        return 0
+
+    intersection = len(words1.intersection(words2))
+    union = len(words1.union(words2))
+
+    jaccard_similarity = intersection / union if union > 0 else 0
+
+    length_similarity = 1 - abs(len(text1) - len(text2)) / max(len(text1), len(text2))
+
+    return 0.5 * (text1 == text2) + 0.3 * jaccard_similarity + 0.2 * length_similarity
+
+
+def fuzzy_sensitive_info(model_config: dict):
+    if model_config:
+        if 'api_proxy' in model_config:
+            model_config['api_proxy'] = '*' * len(model_config['api_proxy'])
+        if 'api_key' in model_config:
+            model_config['api_key'] = '*' * len(model_config['api_key'])
+        if 'secret_key' in model_config:
+            model_config['secret_key'] = '*' * len(model_config['secret_key'])
+        extra_headers = model_config.get('extra_headers')
+        if extra_headers:
+            for k, v in extra_headers.items():
+                extra_headers[k] = '*' * len(v)
+        return model_config

@@ -72,7 +72,7 @@ class FilteredCSVLoader(CSVLoader):
                 if self.source_column is not None
                 else self.file_path
             )
-            metadata = {"source": source, "row": i}
+            metadata = {"source": source}
 
             for col in self.metadata_columns:
                 if col in row:

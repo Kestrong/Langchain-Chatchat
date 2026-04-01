@@ -1,39 +1,47 @@
-import json
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 from langchain.schema import Document
-from langchain.vectorstores.pgvector import PGVector, DistanceStrategy
+from langchain.vectorstores.pgvector import DistanceStrategy
 from sqlalchemy import text
-
-from configs import kbs_config
-
-from server.knowledge_base.kb_service.base import SupportedVSType, KBService, EmbeddingsFunAdapter, \
-    score_threshold_process
-from server.knowledge_base.utils import KnowledgeFile
-import shutil
-import sqlalchemy
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.orm import Session
 
+from configs import kbs_config
+from server.db.base import create_engine_wrapper
+from server.knowledge_base.kb_service.base import SupportedVSType, KBService, EmbeddingsFunAdapter, \
+    score_threshold_process
+from server.knowledge_base.kb_service.pgvertor.pgvertor import PGVector
+from server.knowledge_base.utils import KnowledgeFile
+
 
 class PGKBService(KBService):
-    engine: Engine = sqlalchemy.create_engine(kbs_config.get("pg").get("connection_uri"), pool_size=10)
+    engine: Engine = create_engine_wrapper(uri=kbs_config.get("pg").get("connection_uri"))
 
     def _load_pg_vector(self):
         self.pg_vector = PGVector(embedding_function=EmbeddingsFunAdapter(self.embed_model),
                                   collection_name=self.kb_name,
-                                  distance_strategy=DistanceStrategy.EUCLIDEAN,
+                                  distance_strategy=kbs_config.get("pg").get(
+                                      "distance_strategy") or DistanceStrategy.COSINE,
                                   connection=PGKBService.engine,
                                   connection_string=kbs_config.get("pg").get("connection_uri"))
 
     def get_doc_by_ids(self, ids: List[str]) -> List[Document]:
+        if not ids:
+            return []
         with Session(PGKBService.engine) as session:
             stmt = text("SELECT document, cmetadata FROM langchain_pg_embedding WHERE custom_id = ANY(:ids)")
             results = [Document(page_content=row[0], metadata=row[1]) for row in
-                      session.execute(stmt, {'ids': ids}).fetchall()]
+                       session.execute(stmt, {'ids': ids}).fetchall()]
             return results
+
     def del_doc_by_ids(self, ids: List[str]) -> bool:
-        return super().del_doc_by_ids(ids)
+        if ids:
+            with Session(PGKBService.engine) as session:
+                session.execute(
+                    text('DELETE FROM langchain_pg_embedding WHERE custom_id = ANY(:ids);'),
+                    {'ids': ids}
+                )
+                session.commit()
 
     def do_init(self):
         self._load_pg_vector()
@@ -56,7 +64,6 @@ class PGKBService(KBService):
                     DELETE FROM langchain_pg_collection WHERE name = '{self.kb_name}';
             '''))
             session.commit()
-            shutil.rmtree(self.kb_path)
 
     def do_search(self, query: str, top_k: int, score_threshold: float):
         embed_func = EmbeddingsFunAdapter(self.embed_model)
@@ -70,11 +77,21 @@ class PGKBService(KBService):
         return doc_infos
 
     def do_delete_doc(self, kb_file: KnowledgeFile, **kwargs):
+        select_query = text("SELECT uuid FROM langchain_pg_collection WHERE name = :name;")
+        delete_query = text("""
+                    DELETE FROM langchain_pg_embedding
+                    WHERE cmetadata::jsonb @> :cmetadata
+                    AND collection_id = :collection_id;
+                """)
         with Session(PGKBService.engine) as session:
+            collection_id = session.execute(select_query, {"name": kb_file.kb_name}).fetchone()[0]
             session.execute(
-                text(
-                    ''' DELETE FROM langchain_pg_embedding WHERE cmetadata::jsonb @> '{"source": "filepath"}'::jsonb;'''.replace(
-                        "filepath", self.get_relative_source_path(kb_file.filepath))))
+                delete_query,
+                {
+                    "cmetadata": '{"source": "%s"}' % kb_file.filename,
+                    "collection_id": collection_id
+                }
+            )
             session.commit()
 
     def do_clear_vs(self):

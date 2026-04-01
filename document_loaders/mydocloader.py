@@ -3,6 +3,8 @@ from typing import List
 import tqdm
 from langchain.document_loaders.unstructured import UnstructuredFileLoader
 
+from configs import DOC_OCR_ENABLE
+
 
 class RapidOCRDocLoader(UnstructuredFileLoader):
     def _get_elements(self) -> List:
@@ -43,16 +45,17 @@ class RapidOCRDocLoader(UnstructuredFileLoader):
                 b_unit.refresh()
                 if isinstance(block, Paragraph):
                     resp += block.text.strip() + "\n"
-                    images = block._element.xpath('.//pic:pic')  # 获取所有图片
-                    for image in images:
-                        for img_id in image.xpath('.//a:blip/@r:embed'):  # 获取图片id
-                            part = doc.part.related_parts[img_id]  # 根据图片id获取对应的图片
-                            if isinstance(part, ImagePart):
-                                image = Image.open(BytesIO(part._blob))
-                                result, _ = ocr(np.array(image))
-                                if result:
-                                    ocr_result = [line[1] for line in result]
-                                    resp += "\n".join(ocr_result)
+                    if DOC_OCR_ENABLE:
+                        images = block._element.xpath('.//pic:pic')  # 获取所有图片
+                        for image in images:
+                            for img_id in image.xpath('.//a:blip/@r:embed'):  # 获取图片id
+                                part = doc.part.related_parts[img_id]  # 根据图片id获取对应的图片
+                                if isinstance(part, ImagePart):
+                                    image = Image.open(BytesIO(part._blob))
+                                    result, _ = ocr(np.array(image))
+                                    if result:
+                                        ocr_result = [line[1] for line in result]
+                                        resp += "\n".join(ocr_result)
                 elif isinstance(block, Table):
                     row_cells, column_cells = [], []
                     index = []

@@ -37,6 +37,9 @@ ZH_TITLE_ENHANCE = False
 # 这样可以避免 PDF 中一些小图片的干扰，提高非扫描版 PDF 处理速度
 PDF_OCR_THRESHOLD = (0.6, 0.6)
 
+# 是否开启文档OCR 对图片识别提取文字 会影响文档处理速度
+DOC_OCR_ENABLE = False
+
 # 每个知识库的初始化介绍，用于在初始化知识库时显示和Agent调用，没写则没有介绍，不会被Agent调用。
 KB_INFO = {
     "知识库名称": "知识库介绍",
@@ -49,7 +52,7 @@ KB_INFO = {
 # 知识库默认存储路径
 KB_ROOT_PATH = os.environ.get('KB_ROOT_PATH', os.path.join(os.path.dirname(os.path.dirname(__file__)), "knowledge_base"))
 if not os.path.exists(KB_ROOT_PATH):
-    os.mkdir(KB_ROOT_PATH)
+    os.makedirs(KB_ROOT_PATH, exist_ok=True)
 # 数据库默认存储路径。
 # 如果使用sqlite，可以直接修改DB_ROOT_PATH；如果使用其它数据库，请直接修改SQLALCHEMY_DATABASE_URI。
 DB_ROOT_PATH = os.path.join(KB_ROOT_PATH, "info.db")
@@ -57,8 +60,8 @@ DATABASE_SCHEMA = os.environ.get('DATABASE_SCHEMA')
 # SQLALCHEMY_DATABASE_URI = f"sqlite:///{DB_ROOT_PATH}"
 SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL','postgresql+psycopg2://user:password@ip:port/database?client_encoding=utf8')
 # SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://user:password@ip:port/database?charset=utf8"
-AUTO_CREATE_TABLES = os.environ.get('AUTO_CREATE_TABLES', True)
-ECHO_SQL = os.environ.get('ECHO_SQL', False)
+AUTO_CREATE_TABLES = os.environ.get('AUTO_CREATE_TABLES', 'True') == 'True'
+ECHO_SQL = os.environ.get('ECHO_SQL', 'False') == 'True'
 
 # 可选向量库类型及对应配置
 kbs_config = {
@@ -69,7 +72,7 @@ kbs_config = {
         "port": os.environ.get('MILVUS_PORT', '19530'),
         "user": os.environ.get('MILVUS_USER', ''),
         "password": os.environ.get('MILVUS_PASSWORD', ''),
-        "secure": os.environ.get('MILVUS_SECURE', False),
+        "secure": os.environ.get('MILVUS_SECURE', 'False') == 'True',
     },
     "zilliz": {
         "host": "in01-a7ce524e41e3935.ali-cn-hangzhou.vectordb.zilliz.com.cn",
@@ -79,7 +82,9 @@ kbs_config = {
         "secure": True,
         },
     "pg": {
-        "connection_uri": "postgresql://postgres:postgres@127.0.0.1:5432/langchain_chatchat",
+        "connection_uri": os.environ.get('PGVECTOR_DATABASE_URL', 'postgresql://postgres:postgres@127.0.0.1:5432/flm-chat'),
+        "distance_strategy": os.environ.get('PGVECTOR_DISTANCE_STRATEGY', 'cosine'),
+        "schema": os.environ.get('PGVECTOR_DATABASE_SCHEMA')
     },
     "relyt": {
         "connection_uri": "postgresql+psycopg2://postgres:postgres@127.0.0.1:7000/langchain_chatchat",
@@ -107,17 +112,17 @@ oss_config = {
         "default_bucket_name": "knowledgebase",
         "access_key": os.environ.get('MINIO_ACCESS_KEY', 'minioadmin'),
         "secret_key": os.environ.get('MINIO_SECRET_KEY', 'minioadmin'),
-        "secure": os.environ.get('MINIO_SECURE', False),
-        "cert_check": os.environ.get('MINIO_CERT_CHECK', False),
-        "enabled": os.environ.get('MINIO_ENABLED', False),
+        "secure": os.environ.get('MINIO_SECURE', 'False') == 'True',
+        "cert_check": os.environ.get('MINIO_CERT_CHECK', 'False') == 'True',
+        "enabled": os.environ.get('MINIO_ENABLED', 'False') == 'True',
     }
 }
 
 # TextSplitter配置项，如果你不明白其中的含义，就不要修改。
 text_splitter_dict = {
     "ChineseRecursiveTextSplitter": {
-        "source": "huggingface",   # 选择tiktoken则使用openai的方法
-        "tokenizer_name_or_path": "",
+        "source": "tiktoken",  # 选择tiktoken则使用openai的方法
+        "tokenizer_name_or_path": "cl100k_base",
     },
     "SpacyTextSplitter": {
         "source": "huggingface",

@@ -1,15 +1,16 @@
+import time
 from datetime import datetime
 from typing import List, Dict, Any
 
 from sqlalchemy import func
 
 from configs import logger
-from server.memory.token_info_memory import get_token_info
 from server.db.models.knowledge_base_model import KnowledgeBaseModel
 from server.db.models.knowledge_file_model import KnowledgeFileModel, FileDocModel
 from server.db.repository import get_kb_detail
 from server.db.session import with_session
 from server.knowledge_base.utils import KnowledgeFile
+from server.memory.token_info_memory import get_token_info
 
 
 @with_session
@@ -18,6 +19,7 @@ def list_file_doc_model_by_kb_name_and_file_name(session,
                                                  file_name: str,
                                                  query: Any,
                                                  metadata=None,
+                                                 top_k: int = 1000
                                                  ):
     '''
     列出某知识库某文件对应的所有Document
@@ -27,6 +29,7 @@ def list_file_doc_model_by_kb_name_and_file_name(session,
         return None
     kb_id = kb["id"]
     filters = [FileDocModel.kb_id == kb_id]
+    page_size = min(abs(top_k), 1000)
     if file_name:
         file = get_file_detail_by_kb_id(kb_id, file_name)
         if len(file) == 0:
@@ -35,12 +38,12 @@ def list_file_doc_model_by_kb_name_and_file_name(session,
     if metadata is not None:
         for k, v in metadata.items():
             filters.append(FileDocModel.meta_data[k].as_string() == str(v))
-    return session.query(query).filter(*filters)
+    return session.query(query).filter(*filters).limit(page_size)
 
 
 def list_file_num_docs_id_by_kb_name_and_file_name(kb_name: str,
                                                    file_name: str,
-                                                   ) -> List[int]:
+                                                   ) -> List[str]:
     '''
     列出某知识库某文件对应的所有Document的id。
     返回形式：[str, ...]
@@ -51,7 +54,7 @@ def list_file_num_docs_id_by_kb_name_and_file_name(kb_name: str,
                                                         query=FileDocModel.doc_id)
     if docs is None:
         return list()
-    return [int(doc.doc_id) for doc in docs.all()]
+    return [doc.doc_id for doc in docs.all()]
 
 
 @with_session
@@ -59,6 +62,7 @@ def list_docs_from_db(session,
                       kb_name: str,
                       file_name: str = None,
                       metadata=None,
+                      top_k: int = 1000,
                       ) -> List[Dict]:
     '''
     列出某知识库某文件对应的所有Document。
@@ -68,7 +72,7 @@ def list_docs_from_db(session,
         metadata = {}
     docs = list_file_doc_model_by_kb_name_and_file_name(kb_name=kb_name, file_name=file_name,
                                                         query=FileDocModel,
-                                                        metadata=metadata)
+                                                        metadata=metadata, top_k=top_k)
     if docs is None:
         return list()
     return [{"id": x.doc_id, "metadata": x.meta_data} for x in docs.all()]
@@ -78,12 +82,15 @@ def list_docs_from_db(session,
 def delete_docs_from_db(session,
                         kb_id: int,
                         file_id: int,
+                        doc_ids: List[str] = None
                         ) -> List[Dict]:
     '''
     删除某知识库某文件对应的所有Document，并返回被删除的Document。
     返回形式：[{"id": str, "metadata": dict}, ...]
     '''
     query = session.query(FileDocModel).filter(FileDocModel.kb_id == kb_id, FileDocModel.file_id == file_id)
+    if doc_ids:
+        query = query.filter(FileDocModel.doc_id.in_(doc_ids))
     query.delete(synchronize_session=False)
     session.commit()
     return list()
@@ -119,6 +126,14 @@ def add_docs_to_db(session,
 
 
 @with_session
+def pending_file_doc(session, file_id, word_count: int = 0, doc_count: int = 0):
+    file: KnowledgeFileModel = session.query(KnowledgeFileModel).filter(KnowledgeFileModel.id == file_id).first()
+    if file:
+        file.docs_count += doc_count
+        file.word_count += word_count
+
+
+@with_session
 def count_files_from_db(session, kb_name: str) -> int:
     kb = get_kb_detail(kb_name)
     if kb is None:
@@ -133,7 +148,8 @@ def list_files_from_db(session, kb_name,
                        keyword: str = None,
                        create_time_begin: datetime = None,
                        create_time_end: datetime = None,
-                       only_name: bool = True):
+                       only_name: bool = True,
+                       states: list = None):
     kb = session.query(KnowledgeBaseModel).filter(KnowledgeBaseModel.kb_name == kb_name).first()
     if kb is None:
         if only_name:
@@ -143,6 +159,8 @@ def list_files_from_db(session, kb_name,
     page_num = max(page_num, 1)
     offset = (page_num - 1) * page_size
     filters = [KnowledgeFileModel.kb_id == kb.id]
+    if states:
+        filters.append(KnowledgeFileModel.enabled.in_(states))
     if keyword is not None and keyword.strip() != "":
         filters.append(KnowledgeFileModel.file_name.like(f"%{keyword}%"))
 
@@ -168,6 +186,7 @@ def add_file_to_db(session,
                    kb_file: KnowledgeFile,
                    docs_count: int = 0,
                    custom_docs: bool = False,
+                   word_count: int = 0,
                    doc_infos: List[Dict] = [],  # 形式：[{"id": str, "metadata": dict}, ...]
                    ):
     kb = session.query(KnowledgeBaseModel).filter_by(kb_name=kb_file.kb_name).first()
@@ -177,9 +196,14 @@ def add_file_to_db(session,
                                              .filter(KnowledgeFileModel.kb_id == kb.id,
                                                      KnowledgeFileModel.file_name == kb_file.filename)
                                              .first())
-        mtime = kb_file.get_mtime()
-        size = kb_file.get_size()
-
+        try:
+            mtime = kb_file.get_mtime()
+        except Exception:
+            mtime = int(time.time())
+        try:
+            size = kb_file.get_size()
+        except Exception:
+            size = 0
         if existing_file:
             file_id = existing_file.id
             existing_file.file_mtime = mtime
@@ -187,6 +211,9 @@ def add_file_to_db(session,
             existing_file.docs_count = docs_count
             existing_file.custom_docs = custom_docs
             existing_file.file_version += 1
+            existing_file.word_count = word_count
+            existing_file.document_loader_name = kb_file.document_loader_name or existing_file.document_loader_name
+            existing_file.text_splitter_name = kb_file.text_splitter_name or existing_file.text_splitter_name
         # 否则，添加新文件
         else:
             user_id = get_token_info().get("userId")
@@ -199,6 +226,7 @@ def add_file_to_db(session,
                 file_mtime=mtime,
                 file_size=size,
                 docs_count=docs_count,
+                word_count=word_count,
                 custom_docs=custom_docs,
                 create_by=user_id
             )
@@ -280,3 +308,50 @@ def get_file_detail_by_kb_id(session, kb_id: int, filename: str) -> dict:
     if file is None:
         return {}
     return file.dict()
+
+
+@with_session
+def batch_increment_files_hit_count(session, kb_id: int, filenames: List[str]) -> bool:
+    if not filenames:
+        return True
+
+    if kb_id is None:
+        return False
+
+    # 批量更新文件的hit_count字段
+    session.query(KnowledgeFileModel).filter(
+        KnowledgeFileModel.kb_id == kb_id,
+        KnowledgeFileModel.file_name.in_(filenames)
+    ).update(
+        {KnowledgeFileModel.hit_count: KnowledgeFileModel.hit_count + 1},
+        synchronize_session=False
+    )
+
+    session.commit()
+    return True
+
+
+@with_session
+def get_enabled_filenames(session, kb_id: int, filenames: List[str]) -> List[str]:
+    if not filenames:
+        return []
+
+    if kb_id is None:
+        return []
+
+    fs = session.query(KnowledgeFileModel).filter(
+        KnowledgeFileModel.kb_id == kb_id,
+        KnowledgeFileModel.file_name.in_(filenames),
+        KnowledgeFileModel.enabled == '0BT'
+    )
+    return [f.file_name for f in fs]
+
+
+@with_session
+def update_file_enabled(session, file_id: int, enabled: str) -> bool:
+    if file_id is None:
+        return False
+    file: KnowledgeFileModel = session.query(KnowledgeFileModel).filter(KnowledgeFileModel.id == file_id).first()
+    if file:
+        file.enabled = enabled
+    return True

@@ -10,6 +10,7 @@ from configs import logger
 from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
 from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelWorker, ApiChatParams
+from server.model_workers.dify import parse_inputs_expr
 
 
 class SichuanMassWorker(ApiModelWorker):
@@ -57,8 +58,11 @@ class SichuanMassWorker(ApiModelWorker):
         enable_thinking = model_config.get('enable_thinking', contentObj.get('enable_thinking', False))
         truncate_mark = model_config.get('truncate_mark') or role_meta.get('truncate_mark', '</think>')
         timeout = model_config.get("timeout") or role_meta.get("timeout", 30)
+        extra_headers = model_config.get("extra_headers") or role_meta.get("extra_headers", {})
         refs = model_config.get('refs') or role_meta.get("refs", [])
+        query = contentObj.get('question', '')
         agentlink = model_config.get('agentlink') or role_meta.get("agentlink", {})
+        parse_inputs_expr(agentlink, query, contentObj)
         agentlink['cookie'] = contentObj.get('cookie')
         agentlink['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
         text = ''
@@ -67,11 +71,12 @@ class SichuanMassWorker(ApiModelWorker):
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}",
+                **extra_headers
             }
             conversation_id = contentObj.get('conversation_id')
             chat_request = {
                 "chatId": self.uuid_to_12id(conversation_id) if multi_conv and conversation_id else None,
-                "messages": [{"role": "user", "content": contentObj.get('question', '')}],
+                "messages": [{"role": "user", "content": query}],
                 "stream": stream,
                 "refs": refs,
                 "agentlink": agentlink

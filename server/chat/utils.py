@@ -8,12 +8,14 @@ from langchain.chains import LLMChain
 from langchain.prompts.chat import ChatMessagePromptTemplate
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
+from sse_starlette import EventSourceResponse
+from starlette.requests import Request
 
-from common.exceptions import ChatBusinessException
+from common.exceptions import ChatBusinessException, WorkerBusinessException
 from configs import logger, log_verbose
 from server.db.repository import update_message
 from server.memory.message_i18n import Message_I18N
-from server.utils import get_model_worker_config
+from server.utils import get_model_worker_config, BaseResponse
 
 
 class History(BaseModel):
@@ -59,8 +61,7 @@ class History(BaseModel):
 
 def parse_llm_token_inner_json(model_name: str, token: str):
     mark = f'###[{model_name}]###'
-    answer = ''
-    thought = ''
+    answer, thought, error_info = '', '', ''
     extra = {}
     d = {}
     if mark in token:
@@ -75,10 +76,18 @@ def parse_llm_token_inner_json(model_name: str, token: str):
                         extra['conversation_id'] = inner_json['conversation_id']
                     if 'message_id' in inner_json:
                         extra['message_id'] = inner_json['message_id']
+                    if 'error_info' in inner_json:
+                        error_info = inner_json['error_info']
+                    if 'docs' in inner_json:
+                        d["docs"] = inner_json['docs']
                 else:
                     answer += part
     else:
         answer = token
+    if error_info:
+        err = WorkerBusinessException(answer)
+        err.__cause__ = WorkerBusinessException(error_info)
+        raise err
     d["answer"] = answer
     d["thought"] = thought
     if len(extra) > 0:
@@ -110,19 +119,44 @@ async def wrap_event_response(event_response: AsyncIterable[str]) -> AsyncIterab
         yield json.dumps(d, ensure_ascii=False)
     except BaseException as e:
         d["error"] = True
-        if isinstance(e, ChatBusinessException):
+        if isinstance(e, WorkerBusinessException):
             d["answer"] = str(e)
             e = e.__cause__
+            d["error_info"] = str(e)
+            logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
+            if d.get("message_id"):
+                update_message(message_id=d.get("message_id"), response=d["answer"], metadata={"error_info": str(e)},
+                               append=True, response_time=datetime.datetime.now())
+            yield json.dumps(d, ensure_ascii=False)
+        elif isinstance(e, ChatBusinessException):
+            d["answer"] = str(e)
+            e = e.__cause__
+            d["error_info"] = str(e)
             logger.error(f'{e.__class__.__name__}: {e}', exc_info=e if log_verbose else None)
             yield json.dumps(d, ensure_ascii=False)
         else:
             msg = f'{e.__class__.__name__}: {e}'
             logger.error(msg, exc_info=e if log_verbose else None)
             d["answer"] = Message_I18N.WORKER_CHAT_ERROR.value
+            d["error_info"] = msg
             if d.get("message_id"):
                 update_message(message_id=d.get("message_id"), response=d["answer"], metadata={"error_info": msg},
                                append=True, response_time=datetime.datetime.now())
             yield json.dumps(d, ensure_ascii=False)
+
+
+async def choose_response(stream: bool, chat_iterator: AsyncIterable[str], request: Request = None):
+    openapi = True if request and "/openapi/" in request.url.path else False
+    if not openapi:
+        return EventSourceResponse(wrap_event_response(chat_iterator))
+    if stream:
+        return EventSourceResponse(wrap_event_response(chat_iterator))
+    else:
+        last_response = None
+        async for item in wrap_event_response(chat_iterator):
+            last_response = item
+        last_response = json.loads(last_response) if last_response else {}
+        return BaseResponse(code=200, data=last_response)
 
 
 EMPTY_LLM_CHAT_PROMPT = PromptTemplate.from_template("{{ input }}", template_format="jinja2")

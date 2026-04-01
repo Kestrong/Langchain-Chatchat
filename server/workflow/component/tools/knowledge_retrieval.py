@@ -4,7 +4,7 @@ from configs import VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD
 from server.db.repository import list_kbs_from_db
 from server.knowledge_base.kb_doc_api import search_docs
 from server.workflow.component.base.component import Component
-from server.workflow.utils.inputs import TextInput, ListInput, IntegerInput, FloatInput
+from server.workflow.utils.inputs import TextInput, ListInput, IntegerInput, FloatInput, BooleanInput
 from server.workflow.utils.outputs import ListOutput
 
 
@@ -40,6 +40,12 @@ class KnowledgeRetrievalComponent(Component):
             info="${WORKFLOW_INPUT_INFO_SCORE_THRESHOLD}",
             value=SCORE_THRESHOLD
         ),
+        BooleanInput(
+            name="only_content",
+            display_name="Only Content",
+            info="Only return page content or other info",
+            value=False
+        ),
     ]
 
     outputs = [
@@ -70,5 +76,5 @@ class KnowledgeRetrievalComponent(Component):
                     document.extend(
                         [{"id": doc.id, "page_content": doc.page_content, "score": doc.score,
                           "source": doc.metadata.get("source"),
-                          "kb_name": k} for doc in docs])
+                          "kb_name": k} if inputs.get("only_content") else doc.page_content for doc in docs])
         return {"document": document}

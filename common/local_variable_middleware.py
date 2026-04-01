@@ -2,14 +2,15 @@ import datetime
 import hashlib
 import hmac
 import json
+import os
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from configs import CIAM_TOKEN_COOKIE_NAME, MOCK_TOKEN_INFO_ENABLED
+from configs import CIAM_TOKEN_COOKIE_NAME, MOCK_TOKEN_INFO_ENABLED, logger
 from server.db.repository import get_app_by_api_key_from_db
-from server.memory.token_info_memory import set_token_context, i18n_context
+from server.memory.token_info_memory import set_token_context, i18n_context, get_token_info
 
 
 def signature(params, secret, algorithm='HmacSHA256'):
@@ -39,51 +40,81 @@ def signature(params, secret, algorithm='HmacSHA256'):
         return mac.hexdigest()
 
 
+def check_app_code(app_code):
+    app = get_app_by_api_key_from_db(api_key=app_code)
+    if app is None:
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "msg": "Invalid App Code"}
+        )
+    if app.get('expired_time') and app.get('expired_time') <= datetime.datetime.now():
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "msg": "App expired"}
+        )
+    return app
+
+
 class LocaleVariableMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        token = request.headers.get("Authorization")
-        if token is None or token.strip() == '':
-            token = request.cookies.get(CIAM_TOKEN_COOKIE_NAME)
-        if token:
-            set_token_context({'token_type': 'jwt', 'token': token})
+        app_code = request.headers.get('X-App-Code')
+        if app_code:
+            app = check_app_code(app_code)
+            if isinstance(app, JSONResponse):
+                return app
+            user_id = request.headers.get('X-User-Id')
+            timestamp = request.headers.get('X-Timestamp')
+            nonce = request.headers.get('X-Nonce')
+            algorithm = request.headers.get('X-Algorithm')
+            sign = request.headers.get('X-Sign')
+            secret_key = app.get('secret_key')
+            if secret_key:
+                signature_timeout_minutes = int(os.environ.get('SIGNATURE_TIMEOUT_MINUTES', 30))
+                time_diff = abs(datetime.datetime.now() - datetime.datetime.fromtimestamp(int(timestamp) / 1000))
+                if time_diff > datetime.timedelta(minutes=signature_timeout_minutes):
+                    return JSONResponse(
+                        status_code=401,
+                        content={"code": 401, "msg": "Timestamp expired"}
+                    )
+                gen_sign = signature(
+                    params={'app_code': app_code, 'user_id': user_id, 'timestamp': timestamp, 'nonce': nonce},
+                    secret=secret_key,
+                    algorithm=algorithm)
+                if sign != gen_sign:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"code": 401, "msg": "Signature verification failed"}
+                    )
+            set_token_context(
+                {'token_type': 'sign',
+                 'token': json.dumps({'appCode': app_code, 'userId': user_id, 'tenantId': None})})
+            logger.info(f"Operator by sign user: {user_id}, app code: {app_code}")
         else:
-            app_code = request.headers.get('X-App-Code')
-            if app_code:
-                app = get_app_by_api_key_from_db(api_key=app_code)
-                if app is None:
-                    return JSONResponse(
-                        status_code=401,
-                        content={"code": 401, "msg": "Invalid App Code"}
-                    )
-                if app.get('expired_time') and app.get('expired_time') <= datetime.datetime.now():
-                    return JSONResponse(
-                        status_code=401,
-                        content={"code": 401, "msg": "App expired"}
-                    )
-                user_id = request.headers.get('X-UserId')
-                timestamp = request.headers.get('X-Timestamp')
-                nonce = request.headers.get('X-Nonce')
-                algorithm = request.headers.get('X-Algorithm')
-                sign = request.headers.get('X-Sign')
-                if algorithm != 'Basic':
-                    gen_sign = signature(
-                        params={'app_code': app_code, 'user_id': user_id, 'timestamp': timestamp, 'nonce': nonce},
-                        secret=app.get('secret_key'),
-                        algorithm=algorithm)
-                    if sign != gen_sign:
-                        return JSONResponse(
-                            status_code=401,
-                            content={"code": 401, "msg": "Signature verification failed"}
-                        )
-                set_token_context(
-                    {'token_type': 'sign',
-                     'token': json.dumps({'appCode': app_code, 'userId': user_id, 'tenantId': None})})
+            token = request.headers.get("Authorization")
+            if token is None or token.strip() == '':
+                token = request.cookies.get(CIAM_TOKEN_COOKIE_NAME)
+            if token:
+                if "/openapi/" in request.url.path:
+                    token_parts = token.split("Bearer ")
+                    app_code = token_parts[1] if len(token_parts) > 1 else token
+                    app = check_app_code(app_code)
+                    if isinstance(app, JSONResponse):
+                        return app
+                    set_token_context(
+                        {'token_type': 'sign',
+                         'token': json.dumps(
+                             {'appCode': app_code, 'userId': f"app-{app.get('id')}", 'tenantId': None})})
+                    logger.info(f"Operator by app code: {app_code}")
+                else:
+                    set_token_context({'token_type': 'jwt', 'token': token})
+                    logger.info(f"Operator by user: {get_token_info().get('userId')}")
             else:
-                if not MOCK_TOKEN_INFO_ENABLED:
+                if not MOCK_TOKEN_INFO_ENABLED or "/openapi/" in request.url.path:
                     return JSONResponse(
                         status_code=401,
                         content={"code": 401, "msg": "Missing Jwt token or signature"}
                     )
+                logger.info(f"Operator by mock user: {get_token_info().get('userId')}")
         locale = request.cookies.get('LOCALE')
         if locale:
             i18n_context.set(locale)

@@ -13,11 +13,8 @@ from server.utils import BaseResponse, get_httpx_client
 
 def post_feedback_to_qiming(message_id: str, model_name: str, score: int, reason: str, extra: dict):
     if model_name == 'qiming-api':
-        message = get_message_by_id(message_id=message_id)
-        if message:
-            meta_data = message.get('meta_data', {})
-            if 'third_message_id' in meta_data:
-                return None
+        if extra.get('scene') is None:
+            return None
         params = ApiChatWithFeedbackParams(messages=[]).load_config(worker_name=model_name)
         headers = {"X-APP-ID": params.api_key, "X-APP-KEY": params.secret_key}
         extra['feedbackProvice'] = params.role_meta['prov']
@@ -127,8 +124,7 @@ def chat_feedback(message_id: str = Body(..., max_length=32, description="聊天
         feedback_message_to_db(message_id, score, reason)
     except Exception as e:
         msg = f"反馈聊天记录出错： {e}"
-        logger.error(f'{e.__class__.__name__}: {msg}',
-                     exc_info=e if log_verbose else None)
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
         return BaseResponse(code=500, msg=Message_I18N.API_FEEDBACK_ERROR.value)
 
     return BaseResponse(code=200, msg=Message_I18N.API_FEEDBACK_SUCCESS.value)

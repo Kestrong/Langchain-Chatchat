@@ -6,7 +6,7 @@ from typing import AsyncIterable, Optional, List, Dict, Any, Union
 
 from fastapi import Body
 from langchain.memory import ConversationBufferWindowMemory
-from sse_starlette.sse import EventSourceResponse
+from starlette.requests import Request
 
 from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, logger, TOP_P
 from server.agent import create_model_container
@@ -18,7 +18,8 @@ from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.customize_agent.customize_agent_type import customize_agent_types
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, wrap_event_response, un_format_online_llm_model, create_agent_executor
+from server.chat.utils import History, un_format_online_llm_model, create_agent_executor, \
+    parse_llm_token_inner_json, choose_response
 from server.db.repository import add_message_to_db, get_assistant_simple_from_db, update_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.message_i18n import Message_I18N
@@ -71,13 +72,10 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                      tool_names: List[str] = Body([], description="工具的名称"),
                      api_names: List[str] = Body([], description="api的名称"),
                      store_message: bool = Body(True, description="是否保存消息到数据库"),
+                     request: Request = None
                      ):
     if not conversation_id:
         conversation_id = uuid.uuid4().hex
-    if un_format_online_llm_model(model_name):
-        return BaseResponse(code=500,
-                            msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(chat_type=ChatType.AGENT_CHAT.value,
-                                                                                    model_name=model_name))
     customize_agent_type = extra.get("customize_agent_type") if extra else None
     if customize_agent_type and customize_agent_type in customize_agent_types:
         return await customize_agent_types.get(customize_agent_type)(query=query, history_len=history_len, tag=tag,
@@ -86,7 +84,12 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                                      temperature=temperature, assistant_id=assistant_id,
                                                                      conversation_id=conversation_id, top_p=top_p,
                                                                      store_message=store_message, max_tokens=max_tokens,
-                                                                     prompt_name=prompt_name, api_names=api_names, )
+                                                                     prompt_name=prompt_name, api_names=api_names,
+                                                                     request=request)
+    if un_format_online_llm_model(model_name):
+        return BaseResponse(code=500,
+                            msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(chat_type=ChatType.AGENT_CHAT.value,
+                                                                                    model_name=model_name))
     history = [History.from_data(h) for h in history]
     model_container = create_model_container()
     if extra:
@@ -164,7 +167,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         if stream:
             async for chunk in callback.aiter():
                 # Use server-sent-events to stream the response
-                data = json.loads(chunk)
+                data = json.loads(parse_llm_token_inner_json(model_name, chunk)["answer"])
                 if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
                     continue
                 elif data["status"] == AgentStatus.error:
@@ -196,7 +199,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             answer = ""
             thought = ""
             async for chunk in callback.aiter():
-                data = json.loads(chunk)
+                data = json.loads(parse_llm_token_inner_json(model_name, chunk)["answer"])
                 if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
                     continue
                 elif data["status"] == AgentStatus.error:
@@ -221,11 +224,10 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                               "conversation_id": conversation_id}, ensure_ascii=False)
         await task
 
-    return EventSourceResponse(wrap_event_response(agent_chat_iterator(query=query,
-                                                                       history=history,
-                                                                       model_name=model_name,
-                                                                       prompt_name=prompt_name),
-                                                   ))
+    return await choose_response(stream, agent_chat_iterator(query=query,
+                                                             history=history,
+                                                             model_name=model_name,
+                                                             prompt_name=prompt_name), request)
 
 
 async def do_call_tool_chain(walk_results: List[Any], tool_name: str, api_names: List[str],
@@ -275,11 +277,13 @@ async def tool_chat(query: str = Body(..., description="用户输入", examples=
                     tag: str = Body(default="", description="会话标签"),
                     assistant_id: int = Body(-1, description="助手ID"),
                     knowledge_id: str = Body("", description="临时知识库ID"),
+                    stream: bool = Body(False, description="流式输出"),
                     extra: Dict[str, Any] = Body({}, description="额外的属性"),
                     conversation_id: str = Body("", description="对话框ID"),
                     tool_names: List[str] = Body([], description="工具的名称"),
                     api_names: List[str] = Body([], description="api的名称"),
-                    store_message: bool = Body(True, description="是否保存消息到数据库"), ):
+                    store_message: bool = Body(True, description="是否保存消息到数据库"),
+                    request: Request = None):
     if not tool_names:
         return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
     if not conversation_id:
@@ -308,9 +312,9 @@ async def tool_chat(query: str = Body(..., description="用户输入", examples=
                              ensure_ascii=False)
         finally:
             if result:
-                update_message(message_id=message_id, response=result, response_time=datetime.datetime.now(),)
+                update_message(message_id=message_id, response=result, response_time=datetime.datetime.now(), )
 
-    return EventSourceResponse(wrap_event_response(chat_iterator()))
+    return await choose_response(stream, chat_iterator(), request)
 
 
 async def call_tool(

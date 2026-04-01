@@ -20,11 +20,14 @@ class KnowledgeFileModel(Base):
     file_size = Column(Integer, default=0, server_default='0', comment="文件大小")
     custom_docs = Column(Boolean, default=False, server_default=text('false'), comment="是否自定义docs")
     docs_count = Column(Integer, default=0, server_default='0', comment="切分文档数量")
+    word_count = Column(Integer, default=0, server_default='0', comment='文件字符数')
+    hit_count = Column(Integer, default=0, server_default='0', comment='检索次数')
+    enabled = Column(String(4), default='0BT', server_default='0BT', comment='是否启用：0BT是、0BF否')
     create_by = Column(String(50), comment='创建人id')
     create_time = Column(DateTime, index=True, default=func.now(), comment='创建时间')
 
     def __repr__(self):
-        return f"<KnowledgeFile(id='{self.id}', file_name='{self.file_name}', file_ext='{self.file_ext}', kb_id='{self.kb_id}', document_loader_name='{self.document_loader_name}', text_splitter_name='{self.text_splitter_name}', file_version='{self.file_version}', create_time='{self.create_time}', create_by='{self.create_by}')>"
+        return f"<KnowledgeFile(id='{self.id}', file_name='{self.file_name}', file_ext='{self.file_ext}', kb_id='{self.kb_id}', document_loader_name='{self.document_loader_name}', text_splitter_name='{self.text_splitter_name}', file_version='{self.file_version}', file_mtime='{self.file_mtime}', file_size='{self.file_size}', docs_count='{self.docs_count}', word_count='{self.word_count}', hit_count='{self.hit_count}', enabled='{self.enabled}', create_by='{self.create_by}', create_time='{self.create_time}')>"
 
     def dict(self):
         return {
@@ -39,6 +42,9 @@ class KnowledgeFileModel(Base):
             "file_size": self.file_size,
             "custom_docs": self.custom_docs,
             "docs_count": self.docs_count,
+            "word_count": self.word_count,
+            "hit_count": self.hit_count,
+            "enabled": self.enabled,
             "create_by": self.create_by,
             "create_time": self.create_time
         }
