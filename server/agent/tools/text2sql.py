@@ -912,9 +912,10 @@ def text2sql(natural_language_question: str):
         records = intermediate_steps[2]
         table_info = intermediate_steps[0]['table_info']
         logger.info(f"knowledgebase:{knowledgebase},\n query:{origin_query},\n sql:{sql}")
+        summarize = ''
         if not records and not sql_cmd:
-            summarize = "很抱歉，本次查询没有返回数据。请检查您提供的查询条件是否准确，例如：\n1. 姓名的拼写是否正确和完整；\n2. 区域的命名是否跟业务上一致；\n3. 查询时间是否明确上周、本月或者完整的年月日；\n4. 其他可能影响查询的条件或语法上造成的歧义等；\n5. 数据库确实存在此类数据。\n\n如果您已经检查过以上几点并确认无误，可以重新提问一次或者换个问题尝试。"
-        else:
+            summarize = "很抱歉，本次查询没有返回数据。请检查您提供的查询条件是否准确、数据库是否存在此类数据。如果您已经检查过以上几点并确认无误，可以重新提问一次或者换个问题尝试。"
+        elif report_prompt:
             records = records[:top_k]
             summarize_template = PromptTemplate(input_variables=["query", "records", "report_prompt"],
                                                 template=report_prompt, template_format="jinja2")
