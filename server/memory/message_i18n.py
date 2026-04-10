@@ -49,7 +49,7 @@ tool = {
         "en": "I'm sorry, I can't answer your question. I can only respond to questions within the scope of the following database: ``` {database_comments} ```"
     },
     "TOOL_SQL_DETAIL_PRODUCE": {
-        "zh": "生成的SQL如下：\n```sql\n{sql}\n```\n数据库查询结果如下：\n```json\n{records}\n```\n总结：\n{summarize}\n",
+        "zh": "生成的SQL如下：\n```sql\n{sql}\n```\n数据库查询结果如下：\n```json\n{records}\n```\n\n{summarize}\n",
         "en": "The generated SQL is as follows:\n```sql\n{sql}\n```\nrecords:\n```json\n{records}\n```\nsummarize:\n{summarize}\n"
     },
     "TOOL_SQL_PRODUCE": {
