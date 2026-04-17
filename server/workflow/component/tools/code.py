@@ -1,4 +1,5 @@
-import concurrent.futures
+import asyncio
+import inspect
 from typing import Dict, Any, Union
 
 from configs import PYTHON_REPL_TIMEOUT
@@ -7,14 +8,21 @@ from server.workflow.utils.inputs import TextInput, DictInput
 from server.workflow.utils.outputs import DictOutput
 
 
-def exec_python(python_code: str, args: Dict[str, Any], _globals: Dict[str, Any],
-                _locals: Dict[str, Any]) -> Any:
+async def exec_python_async(python_code: str, args: Dict[str, Any], _globals: Dict[str, Any],
+                            _locals: Dict[str, Any]) -> Any:
+    """执行异步 Python 代码"""
     try:
         exec(python_code, _globals, _locals)
-        result = _locals['main'](**args)
+        func = _locals.get('main')
+        if not callable(func):
+            return "Error: 'main' function not found in code"
+
+        result = func(**args)
+        if inspect.iscoroutine(result):
+            return await result
         return result
     except Exception as e:
-        return str(e)
+        return f"Error: {type(e).__name__}: {str(e)}"
 
 
 class PythonREPLComponent(Component):
@@ -57,11 +65,18 @@ class PythonREPLComponent(Component):
         args = inputs.get("args")
         _globals = {}
         _locals = {}
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(exec_python, python_code, args, _globals, _locals)
-            try:
-                # 设置超时时间
-                result = future.result(timeout=PYTHON_REPL_TIMEOUT) if PYTHON_REPL_TIMEOUT > 0 else future.result()
-            except concurrent.futures.TimeoutError as e:
-                result = str(e)
+
+        try:
+            if PYTHON_REPL_TIMEOUT and PYTHON_REPL_TIMEOUT > 0:
+                result = await asyncio.wait_for(
+                    exec_python_async(python_code, args, _globals, _locals),
+                    timeout=PYTHON_REPL_TIMEOUT
+                )
+            else:
+                result = await exec_python_async(python_code, args, _globals, _locals)
+        except asyncio.TimeoutError:
+            result = f"Error: Execution timed out after {PYTHON_REPL_TIMEOUT} seconds"
+        except Exception as e:
+            result = f"Error: {type(e).__name__}: {str(e)}"
+
         return {"result": result}
