@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 import re
 import time
 import uuid
@@ -15,7 +16,7 @@ from server.db.repository import get_assistant_simple_from_db, get_model_metadat
 from server.knowledge_base.oss import default_oss
 from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelWorker, ApiChatParams
-from server.model_workers.dify import analyze_file, parse_inputs_expr
+from server.model_workers.dify import analyze_file, parse_inputs_expr, filter_sensitive_data
 from server.utils import truncate_text
 
 
@@ -284,7 +285,8 @@ class QimingWorker(ApiModelWorker):
         mark = f'###[{self.model_names[0]}]###'
         text = ''
         try:
-            logger.debug(f"请求qiming-v2接口参数: {data}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"请求qiming-v2接口参数: {filter_sensitive_data(data)}")
             timeout = model_config.get("timeout") or params.role_meta.get("timeout", 30)
             # 发送POST请求
             with requests.post(uri, headers=headers, json=data, stream=stream, timeout=timeout,

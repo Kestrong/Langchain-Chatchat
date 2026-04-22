@@ -1,5 +1,7 @@
+import copy
 import io
 import json
+import logging
 import re
 from typing import List, Dict, Literal
 
@@ -120,6 +122,22 @@ def parse_inputs_expr(inputs, query, contentObj):
                     except:
                         pass
             inputs[k] = v
+
+    for k in ['default_reply_text']:
+        if k not in inputs and k in contentObj:
+            inputs[k] = contentObj.get(k)
+
+def filter_sensitive_data(data: dict, target: str = "inputs") -> dict:
+    """过滤敏感信息用于日志打印"""
+    filtered_data = copy.deepcopy(data)
+
+    inputs = filtered_data.get(target)
+    if inputs and isinstance(inputs, dict):
+        for key in ["cookie", "token_info"]:
+            if key in inputs and inputs[key]:
+                inputs[key] = '***FILTERED***'
+
+    return filtered_data
 
 
 class DifyWorker(ApiModelWorker):
@@ -333,7 +351,8 @@ class DifyWorker(ApiModelWorker):
         try:
             files, attachments = self.upload_files(url, api_key, user, contentObj, file_type, extra_headers)
             data['files'] = files
-            logger.debug(f"请求dify接口参数：{data}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"请求dify接口参数：{filter_sensitive_data(data)}")
             data.update({"input_data": inputs, "mode": data.get('response_mode')})
             with requests.post(url, stream=response_mode, headers=headers, timeout=timeout, json=data,
                                verify=False) as response:

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from typing import List, Dict, Literal
 
 import requests
@@ -10,7 +11,7 @@ from configs import logger
 from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
 from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelWorker, ApiChatParams
-from server.model_workers.dify import parse_inputs_expr
+from server.model_workers.dify import parse_inputs_expr, filter_sensitive_data
 
 
 class SichuanMassWorker(ApiModelWorker):
@@ -81,7 +82,8 @@ class SichuanMassWorker(ApiModelWorker):
                 "refs": refs,
                 "agentlink": agentlink
             }
-            logger.debug(f"multi_conv: {multi_conv}, chat request: {chat_request}, header: {headers}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"multi_conv: {multi_conv}, chat request: {filter_sensitive_data(chat_request, target='agentlink')}")
             response = requests.post(api_proxy, timeout=timeout, json=chat_request, headers=headers,
                                      stream=stream, verify=False)
             if response.status_code != 200:

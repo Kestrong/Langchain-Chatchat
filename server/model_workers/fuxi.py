@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 import re
 from typing import List, Dict, Literal
 from urllib.parse import urlunparse, urlparse
@@ -13,7 +14,7 @@ from server.db.repository import get_assistant_simple_from_db, get_model_metadat
 from server.knowledge_base.oss import default_oss
 from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelWorker, ApiChatParams
-from server.model_workers.dify import analyze_file
+from server.model_workers.dify import analyze_file, filter_sensitive_data, parse_inputs_expr
 
 
 class FuXiWorker(ApiModelWorker):
@@ -144,14 +145,16 @@ class FuXiWorker(ApiModelWorker):
         file_type = model_config.get('file_type') or role_meta.get("file_type")
         extra_headers = model_config.get("extra_headers") or role_meta.get("extra_headers", {})
         headers = {"X-API-KEY": api_key, "Content-Type": "application/json", **extra_headers}
+        query = contentObj.get('question', '')
         inputs = self.get_inputs(role_meta, model_config)
+        parse_inputs_expr(inputs, query, contentObj)
         inputs['cookie'] = contentObj.get('cookie')
         inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
         conversation_id = contentObj.get('conversation_id')
         files = self.upload_files(url, api_key, contentObj, file_type, extra_headers)
         data = {
             "inputs": inputs,
-            "query": contentObj.get('question', ''),
+            "query": query,
             "stream": stream,
             "conversationId": conversation_id,
             "files": files,
@@ -168,7 +171,8 @@ class FuXiWorker(ApiModelWorker):
                     response.raise_for_status()
                     conversation_id = response.text
                     data['conversationId'] = conversation_id
-            logger.debug(f"请求fuxi接口参数：{data}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"请求fuxi接口参数：{filter_sensitive_data(data)}")
             with requests.post(url, stream=stream, headers=headers, timeout=timeout, json=data,
                                verify=False) as response:
                 if response.status_code != 200:
