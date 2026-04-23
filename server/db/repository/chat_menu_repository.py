@@ -1,4 +1,4 @@
-from sqlalchemy import func, or_, and_
+from sqlalchemy import func, or_
 
 from server.db.client.ciam_client import get_resource_action_codes
 from server.db.models.chat_menu_model import ChatMenuModel
@@ -8,10 +8,10 @@ from server.memory.token_info_memory import get_token_info
 
 @with_session
 def add_menu_to_db(session, menu_name: str, menu_name_en: str, menu_icon: str, url: str, auth_level: int, enabled: str,
-                   sort_id: int, auth_users:str):
+                   sort_id: int, auth_users: str, open_type: str, component_url: str):
     c = ChatMenuModel(menu_name=menu_name, menu_name_en=menu_name_en, menu_icon=menu_icon, url=url,
-                      auth_level=auth_level, enabled=enabled, auth_users=auth_users,
-                      create_by=get_token_info().get("userId"), sort_id=sort_id)
+                      auth_level=auth_level, enabled=enabled, auth_users=auth_users, open_type=open_type,
+                      component_url=component_url, create_by=get_token_info().get("userId"), sort_id=sort_id)
     session.add(c)
     session.flush()
     return c.id
@@ -19,7 +19,7 @@ def add_menu_to_db(session, menu_name: str, menu_name_en: str, menu_icon: str, u
 
 @with_session
 def update_menu_to_db(session, menu_id: int, menu_name: str, menu_name_en: str, menu_icon: str, url: str,
-                      auth_level: int, enabled: str, auth_users:str ,sort_id: int):
+                      auth_level: int, enabled: str, auth_users: str, sort_id: int, open_type: str, component_url: str):
     menu: ChatMenuModel = session.query(ChatMenuModel).filter(ChatMenuModel.id == menu_id).first()
     if menu is not None:
         menu.menu_name = menu_name
@@ -30,6 +30,8 @@ def update_menu_to_db(session, menu_id: int, menu_name: str, menu_name_en: str, 
         menu.enabled = enabled
         menu.sort_id = sort_id
         menu.auth_users = auth_users
+        menu.open_type = open_type
+        menu.component_url = component_url
     else:
         raise ValueError("ChatMenu with id {} does not exist".format(menu))
     return menu.id
