@@ -448,7 +448,7 @@ class ApiRequest:
             prompt_name: str = "default",
     ):
         '''
-        对应api.py/chat/file_chat接口
+        对应api.py/chat/llm_chat接口
         '''
         data = {
             "query": query,
@@ -463,7 +463,7 @@ class ApiRequest:
         }
 
         response = self.post(
-            "/chat/file_chat",
+            "/chat/llm_chat",
             json=data,
             stream=True,
         )

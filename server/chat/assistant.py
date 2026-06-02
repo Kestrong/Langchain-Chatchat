@@ -28,6 +28,8 @@ def create_assistant(avatar: str = Body(None, description="头像图标"),
                      top_k: int = Body(-1, description="知识库匹配条数"),
                      score_threshold: float = Body(-1, description="知识库匹配阈值，建议0.00-1.00"),
                      sort_id: int = Body(0, description="排序顺序,值越小越靠前"),
+                     region_id: str = Body(None, description="区域标识"),
+                     system_id: str = Body(None, description="业务系统标识"),
                      model_config: Dict[str, Any] = Body({}, description="模型附加配置"),
                      tool_config: Dict[str, Any] = Body({}, description="工具配置"),
                      workflow_config: Dict[str, Any] = Body({}, description="流程配置"),
@@ -37,8 +39,9 @@ def create_assistant(avatar: str = Body(None, description="头像图标"),
                                            model_name=model_name, prologue=prologue, state=state,
                                            knowledge_base_ids=knowledge_base_ids, force_feedback=force_feedback,
                                            history_len=history_len, top_k=top_k, score_threshold=score_threshold,
-                                           extra=extra, model_config=model_config,
-                                           tool_config=tool_config, workflow_config=workflow_config, sort_id=sort_id)
+                                           extra=extra, model_config=model_config, region_id=region_id,
+                                           system_id=system_id, tool_config=tool_config,
+                                           workflow_config=workflow_config, sort_id=sort_id)
     except Exception as e:
         msg = f"创建助手出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
@@ -61,6 +64,8 @@ def update_assistant(id: int = Body(description="助手id"),
                      top_k: int = Body(-1, description="知识库匹配条数"),
                      score_threshold: float = Body(-1, description="知识库匹配阈值，建议0.00-1.00"),
                      sort_id: int = Body(0, description="排序顺序,值越小越靠前"),
+                     region_id: str = Body(None, description="区域标识"),
+                     system_id: str = Body(None, description="业务系统标识"),
                      model_config: Dict[str, Any] = Body(None, description="模型附加配置"),
                      tool_config: Dict[str, Any] = Body({}, description="工具配置"),
                      workflow_config: Dict[str, Any] = Body({}, description="流程配置"),
@@ -71,7 +76,8 @@ def update_assistant(id: int = Body(description="助手id"),
                                               model_config=model_config, knowledge_base_ids=knowledge_base_ids,
                                               force_feedback=force_feedback, history_len=history_len, top_k=top_k,
                                               score_threshold=score_threshold, extra=extra, state=state,
-                                              tool_config=tool_config, workflow_config=workflow_config, sort_id=sort_id)
+                                              tool_config=tool_config, workflow_config=workflow_config, sort_id=sort_id,
+                                              region_id=region_id, system_id=system_id)
     except Exception as e:
         msg = f"修改助手出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)

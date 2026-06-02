@@ -11,6 +11,8 @@ from langchain_community.chat_models import ChatOpenAI
 from langchain_community.utils.openai import is_openai_v1
 from langchain_core.outputs import LLMResult
 
+from configs import ONLINE_LLM_MODEL
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -404,6 +406,9 @@ async def get_gen_params(
     if isinstance(messages, str):
         prompt = messages
         images = []
+    elif model_name in ONLINE_LLM_MODEL:
+        prompt = messages
+        images = []
     else:
         for message in messages:
             msg_role = message["role"]
@@ -434,7 +439,10 @@ async def get_gen_params(
         # Add a blank message for the assistant.
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
-        images = conv.get_images()
+        try:
+            images = conv.get_images()
+        except:
+            images = []
 
     gen_params = {
         "model": model_name,

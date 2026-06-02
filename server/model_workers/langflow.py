@@ -59,12 +59,7 @@ class LangflowWorker(ApiModelWorker):
         token_info = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
         tweaks = contentObj.get('tweaks', inputs.get('tweaks', {}))
         parse_inputs_expr(tweaks, query, contentObj)
-        for key, value in tweaks.items():
-            if isinstance(value, dict):
-                if 'cookie' in value and value.get('cookie') == "{cookie}":
-                    value['cookie'] = cookie
-                if 'token_info' in value and value.get('token_info') == "{token_info}":
-                    value['token_info'] = token_info
+
         data = {
             "input_value": query,
             "input_type": contentObj.get('input_type') or inputs.get('input_type', 'chat'),
@@ -80,6 +75,13 @@ class LangflowWorker(ApiModelWorker):
         try:
             logger.debug(f"请求Langflow接口参数：{data}")
             logger.debug(f"请求Langflow URL: {url}")
+
+            for key, value in tweaks.items():
+                if isinstance(value, dict):
+                    if 'cookie' in value and value.get('cookie') == "{cookie}":
+                        value['cookie'] = cookie
+                    if 'token_info' in value and value.get('token_info') == "{token_info}":
+                        value['token_info'] = token_info
 
             with requests.post(langflow_url, headers=headers, params=query_params, json=data, stream=stream,
                                verify=False, timeout=timeout) as response:

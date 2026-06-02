@@ -28,6 +28,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                        tag: str = Body(default="", description="会话标签"),
                        extra: Dict[str, Any] = Body({}, description="额外的属性"),
                        assistant_id: int = Body(-1, description="助手ID"),
+                       knowledge_id: str = Body("", description="临时知识库ID"),
                        conversation_id: str = Body("", description="对话框ID"),
                        history_len: int = Body(-1, description="从数据库中取历史消息的数量"),
                        history: List[History] = Body([],
@@ -53,6 +54,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                        ):
     if isinstance(max_tokens, int) and max_tokens <= 0:
         max_tokens = None
+    history = [History.from_data(h) for h in history]
     model_container = create_model_container()
     if extra:
         model_container.TOOL_ARGS.update(extra)
@@ -111,7 +113,10 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                     return content_obj.get('summarize')
                 return content
 
-            memory = ConversationBufferWindowMemory(k=max(HISTORY_LEN * 2, len(history) if history else 0))
+            prompt_template = get_prompt_template("agent_chat", prompt_name)
+            memory = ConversationBufferWindowMemory(model_name=model_name, return_messages=True,
+                                                    message_limit=max(HISTORY_LEN * 2, len(history) if history else 0),
+                                                    prompt_length=len(query) + len(prompt_template))
             history_var = []
             if history:
                 for message in history:
@@ -124,7 +129,8 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                         history_var.append({"role": message.role, "content": parse_message})
             elif conversation_id and history_len > 0:
                 memory_ = ConversationBufferDBMemory(conversation_id=conversation_id,
-                                                     llm=model,
+                                                     model_name=model_name, return_messages=True,
+                                                     prompt_length=len(query) + len(prompt_template),
                                                      message_limit=history_len)
                 for a in memory_.buffer:
                     if isinstance(a, HumanMessage):
@@ -191,7 +197,6 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
 
             if continue_flag:
                 model.callbacks = [callback]
-                prompt_template = get_prompt_template("agent_chat", prompt_name)
                 agent_executor = create_agent_executor(model, memory, available_tools, prompt_template,
                                                        max_iterations=1)
                 while True:

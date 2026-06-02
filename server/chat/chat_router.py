@@ -9,13 +9,14 @@ from server.chat.agent_chat import agent_chat, tool_chat
 from server.chat.chat import chat
 from server.chat.chat_type import ChatType
 from server.chat.completion import completion
-from server.chat.file_chat import file_chat
 from server.chat.knowledge_base_chat import knowledge_base_chat
 from server.chat.search_engine_chat import search_engine_chat
 from server.chat.utils import History, un_format_online_llm_model
 from server.chat.workflow_chat import do_workflow_chat
 from server.db.repository import get_assistant_detail_from_db
+from server.knowledge_base.oss import default_oss
 from server.memory.token_info_memory import get_token
+from server.utils import get_chat_file_kb
 
 
 async def chat_router(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
@@ -78,6 +79,27 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                 api_names=api_names, request=request, background_tasks=background_tasks)
 
 
+def check_file_type(knowledge_id: str = "", third_party_files: list = None, uploader: dict = None):
+    if not uploader:
+        return True
+    allowed_types = uploader.get("allowed_types")
+    if not allowed_types:
+        return True
+    msg = f"File type not allowed. Please upload files in {allowed_types} format."
+    if knowledge_id:
+        files = default_oss().list_objects(bucket_name=get_chat_file_kb(), object_name=knowledge_id)
+        for filename in files:
+            ext = filename.rsplit('.', 1)[-1].strip() if '.' in filename else ''
+            if ext not in allowed_types:
+                raise ValueError(msg)
+    if third_party_files:
+        for f in third_party_files:
+            filename = f.get("name")
+            ext = filename.rsplit('.', 1)[-1].strip() if '.' in filename else ''
+            if ext not in allowed_types:
+                raise ValueError(msg)
+
+
 async def do_chat_router(query: str,
                          chat_type: str = ChatType.LLM_CHAT.value,
                          tag: str = "",
@@ -107,11 +129,15 @@ async def do_chat_router(query: str,
                          background_tasks: BackgroundTasks = None,
                          ):
     if un_format_online_llm_model(model_name):
-        extra["knowledge_id"] = knowledge_id
         extra["token"] = get_token()
+        extra['stream'] = stream
+        extra["cookie"] = request.headers.get('cookie')
+        extra['mark'] = f'###[{model_name}]###'
     if assistant is None and assistant_id >= 0:
         assistant = get_assistant_detail_from_db(assistant_id=assistant_id)
     if assistant:
+        check_file_type(knowledge_id=knowledge_id, third_party_files=extra.get("files"),
+                        uploader=assistant.get("model_config", {}).get("uploader", {}))
         if assistant.get('extra') is not None:
             extra.update(assistant.get('extra'))
         extra['assistant_id'] = assistant_id
@@ -152,7 +178,8 @@ async def do_chat_router(query: str,
                                         search_engine_name=search_engine_name, top_k=top_k, assistant_id=assistant_id,
                                         history_len=history_len, history=history, stream=stream, model_name=model_name,
                                         temperature=temperature, max_tokens=max_tokens, prompt_name=prompt_name,
-                                        split_result=split_result, tag=tag, extra=extra, top_p=top_p, request=request, )
+                                        split_result=split_result, tag=tag, extra=extra, top_p=top_p, request=request,
+                                        knowledge_id=knowledge_id)
 
     elif chat_type == ChatType.AGENT_CHAT.value or tool_names:
         if assistant:
@@ -168,16 +195,9 @@ async def do_chat_router(query: str,
 
         return await agent_chat(query=query, history_len=history_len, history=history, stream=stream,
                                 model_name=model_name, temperature=temperature, tool_names=tool_names,
-                                conversation_id=conversation_id, extra=extra, top_p=top_p,
+                                conversation_id=conversation_id, extra=extra, top_p=top_p, knowledge_id=knowledge_id,
                                 store_message=store_message, max_tokens=max_tokens, prompt_name=prompt_name,
                                 api_names=api_names, assistant_id=assistant_id, tag=tag, request=request, )
-
-    elif chat_type == ChatType.FILE_CHAT.value or (knowledge_id and not un_format_online_llm_model(model_name)):
-
-        return await file_chat(query=query, knowledge_id=knowledge_id, history_len=history_len, history=history,
-                               stream=stream, model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                               prompt_name=prompt_name, conversation_id=conversation_id, store_message=store_message,
-                               assistant_id=assistant_id, tag=tag, extra=extra, top_p=top_p, request=request, )
 
     elif chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or knowledge_base_names:
 
@@ -186,7 +206,8 @@ async def do_chat_router(query: str,
                                          score_threshold=score_threshold, history_len=history_len, history=history,
                                          stream=stream, model_name=model_name, temperature=temperature, tag=tag,
                                          max_tokens=max_tokens, prompt_name=prompt_name, store_message=store_message,
-                                         top_p=top_p, background_tasks=background_tasks, request=request, )
+                                         top_p=top_p, background_tasks=background_tasks, request=request,
+                                         knowledge_id=knowledge_id)
 
     elif chat_type == ChatType.COMPLETION.value:
 
@@ -199,4 +220,5 @@ async def do_chat_router(query: str,
         return await chat(query=query, extra=extra, conversation_id=conversation_id, tag=tag, top_p=top_p,
                           history_len=history_len, history=history, stream=stream, request=request,
                           model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                          prompt_name=prompt_name, store_message=store_message, assistant_id=assistant_id)
+                          prompt_name=prompt_name, store_message=store_message, assistant_id=assistant_id,
+                          knowledge_id=knowledge_id)

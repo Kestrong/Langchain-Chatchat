@@ -165,6 +165,9 @@ FSCHAT_MODEL_WORKERS = {
     "deepseek-api": {
         "port": 21014,
     },
+    "qwen-vl-api": {
+        "port": 21021,
+    },
 }
 
 FSCHAT_CONTROLLER = {

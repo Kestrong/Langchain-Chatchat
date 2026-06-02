@@ -85,7 +85,6 @@ def mount_chat_routes(app: FastAPI):
     from server.chat.chat import chat, recommend_question
     from server.chat.search_engine_chat import search_engine_chat
     from server.chat.knowledge_base_chat import knowledge_base_chat
-    from server.chat.file_chat import file_chat
     from server.chat.agent_chat import agent_chat
     from server.chat.workflow_chat import workflow_chat
     from server.chat.feedback import chat_feedback
@@ -104,7 +103,6 @@ def mount_chat_routes(app: FastAPI):
     chat_router.post("/llm_chat", summary="与llm模型对话(通过LLMChain)", )(chat)
     chat_router.post("/search_engine_chat", summary="与搜索引擎对话", )(search_engine_chat)
     chat_router.post("/knowledge_base_chat", summary="与知识库对话")(knowledge_base_chat)
-    chat_router.post("/file_chat", summary="文件对话")(file_chat)
     chat_router.post("/agent_chat", summary="与agent对话")(agent_chat)
     chat_router.post("/workflow_chat", summary="工作流对话", )(workflow_chat)
     chat_router.post("/recommend_question", summary="返回建议的问题列表", )(recommend_question)
@@ -140,8 +138,8 @@ def mount_chat_routes(app: FastAPI):
 
 
 def mount_knowledge_routes(app: FastAPI):
-    from server.chat.file_chat import delete_temp_docs
-    from server.chat.file_chat import upload_temp_docs
+    from server.knowledge_base.kb_doc_api import delete_temp_docs
+    from server.knowledge_base.kb_doc_api import upload_temp_docs
     from server.knowledge_base.kb_api import list_kbs, create_kb, delete_kb, update_info, get_kb_detail
     from server.knowledge_base.kb_doc_api import (list_files, upload_docs, delete_docs, list_docs,
                                                   update_docs, download_doc, recreate_vector_store,
