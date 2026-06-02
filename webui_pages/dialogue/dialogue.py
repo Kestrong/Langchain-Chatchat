@@ -53,7 +53,8 @@ def upload_temp_docs(files, prev_id, _api: ApiRequest) -> Tuple[bool, str]:
     failed = response.get('code') != 200
     if failed:
         st.error(response.get('msg'))
-    return not failed, response.get("data").get("id")
+        return False, ""
+    return not failed, response.get("data", {}).get("id")
 
 
 def parse_command(text: str, modal: Modal) -> bool:
@@ -455,7 +456,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                 chat_box.update_msg(text, element_index=0, streaming=False)
                 docs = [
                     f"""[{inum + 1}] [{doc["filename"]}]({api.base_url}/knowledge_base/download_doc?preview=true&{urlencode(doc)})"""
-                    for inum, doc in enumerate(d.get("docs", []))]
+                    for inum, doc in enumerate(d.get("chat_files", []))]
                 chat_box.update_msg("\n\n".join(docs), element_index=1, streaming=False)
             elif dialogue_mode == "搜索引擎问答":
                 chat_box.ai_say([
@@ -480,7 +481,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                         chat_box.update_msg(text, element_index=0)
                 chat_box.update_msg(text, element_index=0, streaming=False)
                 docs = [f"""[{inum + 1}] [{doc["filename"]}]({doc.get("url")})""" for inum, doc in
-                        enumerate(d.get("docs"))]
+                        enumerate(d.get("docs", []))]
                 if len(docs) == 0:
                     docs.append("<span style='color:red'>" + Message_I18N.API_DOC_NOT_FOUND.value + "</span>")
                 chat_box.update_msg("\n\n".join(docs), element_index=1, streaming=False)

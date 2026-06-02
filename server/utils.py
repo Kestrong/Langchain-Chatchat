@@ -827,3 +827,78 @@ def fuzzy_sensitive_info(model_config: dict):
             for k, v in extra_headers.items():
                 extra_headers[k] = '*' * len(v)
         return model_config
+
+
+# 自定义 MIME 类型和文件类别映射
+MIME_TYPE_MAP = {
+    # 文档类
+    'txt': 'text/plain',
+    'log': 'text/plain',
+    'properties': 'text/plain',
+    'md': 'text/markdown',
+    'markdown': 'text/markdown',
+    'pdf': 'application/pdf',
+    'html': 'text/html',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'xls': 'application/vnd.ms-excel',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'doc': 'application/msword',
+    'csv': 'text/csv',
+    'eml': 'message/rfc822',
+    'msg': 'application/vnd.ms-outlook',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'ppt': 'application/vnd.ms-powerpoint',
+    'xml': 'application/xml',
+    'epub': 'application/epub+zip',
+
+    # 图像类
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'svg': 'image/svg+xml',
+
+    # 音频类
+    'mp3': 'audio/mpeg',
+    'm4a': 'audio/x-m4a',
+    'wav': 'audio/wav',
+    'webm': 'audio/webm',
+    'amr': 'audio/amr',
+
+    # 视频类
+    'mp4': 'video/mp4',
+    'mov': 'video/quicktime',
+    'mpeg': 'video/mpeg',
+    'mpga': 'audio/mpeg',  # 注意：MPGA 有时是音频
+
+    # 其他通用类型
+    'bin': 'application/octet-stream',
+    'unknown': 'application/octet-stream'
+}
+
+# 文件分类规则
+FILE_CATEGORY_MAP = {
+    'document': ['txt', 'md', 'markdown', 'pdf', 'html', 'xlsx', 'xls', 'docx', 'doc', 'csv', 'eml', 'msg', 'pptx',
+                 'ppt', 'xml', 'epub', 'properties', 'log'],
+    'image': ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'],
+    'audio': ['mp3', 'm4a', 'wav', 'webm', 'amr'],
+    'video': ['mp4', 'mov', 'mpeg', 'mpga']
+}
+
+
+def get_file_category(ext):
+    ext_lower = ext.lower()
+    for category, extensions in FILE_CATEGORY_MAP.items():
+        if ext_lower in extensions:
+            return category
+    return 'custom'
+
+
+def get_mime_type(ext):
+    ext_lower = ext.lower()
+    return MIME_TYPE_MAP.get(ext_lower, MIME_TYPE_MAP['unknown'])
+
+
+def get_chat_file_kb():
+    return "temp"

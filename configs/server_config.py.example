@@ -183,6 +183,9 @@ FSCHAT_MODEL_WORKERS = {
     "sichuanmass-api": {
         "port": 21020,
     },
+    "qwen-vl-api": {
+        "port": 21021,
+    },
 }
 
 FSCHAT_CONTROLLER = {

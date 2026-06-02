@@ -2,7 +2,7 @@ import fastchat.constants
 from fastchat.conversation import Conversation
 
 from configs import LOG_PATH, TEMPERATURE, MAX_TOKENS_INPUT
-from server.chat.utils import un_format_online_llm_model
+from server.chat.utils import un_format_online_llm_model, calculate_token_len
 
 fastchat.constants.LOGDIR = LOG_PATH
 from fastchat.serve.base_model_worker import BaseModelWorker
@@ -11,7 +11,7 @@ import json
 from pydantic import BaseModel, root_validator
 import asyncio
 from server.utils import get_model_worker_config
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 __all__ = ["ApiModelWorker", "ApiModelParams", "ApiChatParams", "ApiCompletionParams", "ApiChatWithFeedbackParams",
            "ApiEmbeddingsParams"]
@@ -76,7 +76,7 @@ class ApiChatParams(ApiModelParams):
     '''
     chat请求参数
     '''
-    messages: List[Dict[str, str]]
+    messages: List[Dict[str, Union[str, List]]]
     system_message: Optional[str] = None  # for minimax
     role_meta: Dict = {}  # for minimax
 
@@ -134,18 +134,23 @@ class ApiModelWorker(BaseModelWorker):
 
     def count_token(self, params):
         prompt = params["prompt"]
-        return {"count": len(str(prompt)), "error_code": 0}
+        length = 0
+        if isinstance(prompt, list):
+            for p in prompt:
+                length += calculate_token_len(p.get("role", ""), p.get("content", ""))
+        else:
+            length += len(str(prompt))
+        return {"count": length, "error_code": 0}
 
     def generate_stream_gate(self, params: Dict):
         self.call_ct += 1
 
         try:
             prompt = params["prompt"]
-            if self._is_chat(prompt):
-                messages = self.prompt_to_messages(prompt)
-                messages = self.validate_messages(messages)
-            else:  # 使用chat模仿续写功能，不支持历史消息
-                messages = [{"role": self.user_role, "content": f"please continue writing from here: {prompt}"}]
+            if isinstance(prompt, list):
+                messages = prompt
+            else:
+                messages = [{"role": self.user_role, "content": prompt}]
 
             if un_format_online_llm_model(self.model_names[0]):
                 content = messages[-1].get('content')
@@ -157,9 +162,8 @@ class ApiModelWorker(BaseModelWorker):
                     contentObj = {"question": content}
                 messages[-1]["content"] = json.dumps(contentObj, ensure_ascii=False)
 
-
             p = ApiChatParams(
-                messages=messages,
+                messages=self.validate_messages(messages),
                 temperature=params.get("temperature"),
                 top_p=params.get("top_p"),
                 max_tokens=params.get("max_new_tokens"),
@@ -236,34 +240,6 @@ class ApiModelWorker(BaseModelWorker):
         将chat函数返回的结果按照fastchat openai-api-server的格式返回
         '''
         return json.dumps(data, ensure_ascii=False).encode() + b"\0"
-
-    def _is_chat(self, prompt: str) -> bool:
-        '''
-        检查prompt是否由chat messages拼接而来
-        TODO: 存在误判的可能，也许从fastchat直接传入原始messages是更好的做法
-        '''
-        key = f"{self.conv.sep}{self.user_role}:"
-        return key in prompt
-
-    def prompt_to_messages(self, prompt: str) -> List[Dict]:
-        '''
-        将prompt字符串拆分成messages.
-        '''
-        result = []
-        user_role = self.user_role
-        ai_role = self.ai_role
-        user_start = user_role + ":"
-        ai_start = ai_role + ":"
-        for msg in prompt.split(self.conv.sep)[1:-1]:
-            if msg.startswith(user_start):
-                if content := msg[len(user_start):].strip():
-                    result.append({"role": user_role, "content": content})
-            elif msg.startswith(ai_start):
-                if content := msg[len(ai_start):].strip():
-                    result.append({"role": ai_role, "content": content})
-            else:
-                raise RuntimeError(f"unknown role in msg: {msg}")
-        return result
 
     @classmethod
     def can_embedding(cls):

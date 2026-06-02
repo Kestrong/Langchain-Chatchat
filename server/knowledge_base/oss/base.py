@@ -48,7 +48,7 @@ class Base:
             file_content = d.read()  # 读取上传文件的内容
 
             if not os.path.isdir(os.path.dirname(file_path)):
-                os.makedirs(os.path.dirname(file_path))
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
             with open(file_path, "wb") as f:
                 f.write(file_content)
 

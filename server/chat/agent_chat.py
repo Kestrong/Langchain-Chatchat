@@ -5,7 +5,6 @@ import uuid
 from typing import AsyncIterable, Optional, List, Dict, Any, Union
 
 from fastapi import Body
-from langchain.memory import ConversationBufferWindowMemory
 from starlette.requests import Request
 
 from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, logger, TOP_P
@@ -19,9 +18,10 @@ from server.chat.chat_type import ChatType
 from server.chat.customize_agent.customize_agent_type import customize_agent_types
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, un_format_online_llm_model, create_agent_executor, \
-    parse_llm_token_inner_json, choose_response
+    parse_llm_token_inner_json, choose_response, unify_chat_files
 from server.db.repository import add_message_to_db, get_assistant_simple_from_db, update_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
+from server.memory.conversation_window_buffer_memory import ConversationBufferWindowMemory
 from server.memory.message_i18n import Message_I18N
 from server.utils import wrap_done, get_ChatOpenAI, get_prompt_template, BaseResponse, get_tool_config
 
@@ -53,6 +53,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                      tag: str = Body(default="", description="会话标签"),
                      extra: Dict[str, Any] = Body({}, description="额外的属性"),
                      assistant_id: int = Body(-1, description="助手ID"),
+                     knowledge_id: str = Body("", description="临时知识库ID"),
                      conversation_id: str = Body("", description="对话框ID"),
                      history_len: int = Body(-1, description="从数据库中取历史消息的数量"),
                      history: List[History] = Body([],
@@ -85,7 +86,8 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                                      conversation_id=conversation_id, top_p=top_p,
                                                                      store_message=store_message, max_tokens=max_tokens,
                                                                      prompt_name=prompt_name, api_names=api_names,
-                                                                     request=request)
+                                                                     request=request, knowledge_id=knowledge_id)
+    un_format = un_format_online_llm_model(model_name)
     if un_format_online_llm_model(model_name):
         return BaseResponse(code=500,
                             msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(chat_type=ChatType.AGENT_CHAT.value,
@@ -99,6 +101,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
 
     if not available_tools:
         return BaseResponse(code=500, msg=Message_I18N.API_TOOL_NOT_FOUND.value)
+    chat_files = unify_chat_files(third_party_files=extra.pop('files', []), knowledge_id=knowledge_id, request=request)
 
     async def agent_chat_iterator(
             query: str,
@@ -114,7 +117,8 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         callbacks = [callback]
         message_id = add_message_to_db(chat_type=ChatType.AGENT_CHAT.value, query=query,
                                        conversation_id=conversation_id, tag=tag,
-                                       store=store_message, assistant_id=assistant_id)
+                                       store=store_message, assistant_id=assistant_id,
+                                       metadata={'chat_files': chat_files} if chat_files else {}, )
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type=ChatType.AGENT_CHAT.value,
                                                             query=query, agent=True, stream=stream)
@@ -140,22 +144,30 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         )
 
         prompt_template = get_prompt_template("agent_chat", prompt_name)
-        memory = ConversationBufferWindowMemory(k=max(HISTORY_LEN * 2, len(history) if history else 0))
+        in_tuple = History(role="user", content=query, chat_files=chat_files).get_content_tuple(
+            format_openai=not un_format)
+        input_content, image_urls, input_len, _ = in_tuple
+        input_template = History(role="user", content=prompt_template, ).to_msg_template(format_openai=not un_format,
+                                                                                         image_urls=image_urls)
+        memory = ConversationBufferWindowMemory(model_name=model_name, return_messages=True,
+                                                message_limit=max(HISTORY_LEN * 2, len(history) if history else 0),
+                                                prompt_length=input_len + len(prompt_template))
         if history:
             for message in history:
-                if message.role == 'user':
-                    memory.chat_memory.add_user_message(message.content)
+                if message.role in ["user", "human"]:
+                    memory.chat_memory.add_user_message(message.to_msg_tuple(format_openai=not un_format)[1])
                 else:
                     memory.chat_memory.add_ai_message(message.content)
         elif conversation_id and history_len > 0:
             memory = ConversationBufferDBMemory(conversation_id=conversation_id,
-                                                llm=model,
+                                                model_name=model_name, return_messages=True,
+                                                prompt_length=input_len + len(prompt_template),
                                                 message_limit=history_len)
-        agent_executor = create_agent_executor(model, memory, available_tools, prompt_template)
+        agent_executor = create_agent_executor(model, memory, available_tools, input_template)
         while True:
             try:
                 task = asyncio.create_task(wrap_done(
-                    agent_executor.acall(query, callbacks=callbacks, include_run_info=True),
+                    agent_executor.acall(input_content, callbacks=callbacks, include_run_info=True),
                     callback.done))
                 break
             except:

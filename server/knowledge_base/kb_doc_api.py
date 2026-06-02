@@ -1,8 +1,9 @@
 import json
 import mimetypes
 import urllib
+import uuid
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Union, Iterable, Tuple, Optional, Any
 from urllib.parse import quote
 
 from fastapi import File, Form, Body, Query, UploadFile, BackgroundTasks
@@ -14,17 +15,19 @@ from starlette.responses import StreamingResponse
 from configs import (DEFAULT_VS_TYPE, EMBEDDING_MODEL,
                      VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD,
                      CHUNK_SIZE, OVERLAP_SIZE, ZH_TITLE_ENHANCE,
-                     logger, log_verbose, MAX_KNOWLEDGE_FILE_SIZE, RERANKER_MODEL)
+                     logger, log_verbose, MAX_KNOWLEDGE_FILE_SIZE, RERANKER_MODEL, MAX_TEMP_FILE_NUM,
+                     MAX_TEMP_FILE_SIZE)
 from server.db.repository import get_kb_detail_by_id, get_kb_detail
 from server.db.repository.knowledge_file_repository import get_file_detail, batch_increment_files_hit_count, \
     get_enabled_filenames, update_file_enabled
 from server.knowledge_base.kb_service.base import KBServiceFactory
 from server.knowledge_base.model.kb_document_model import DocumentWithVSId
 from server.knowledge_base.oss import default_oss
-from server.knowledge_base.utils import (validate_kb_name, list_files_from_folder, files2docs_in_thread, KnowledgeFile)
+from server.knowledge_base.utils import (validate_kb_name, list_files_from_folder, files2docs_in_thread, KnowledgeFile,
+                                         get_file_path)
 from server.memory.message_i18n import Message_I18N
 from server.reranker.reranker import LangchainReranker
-from server.utils import BaseResponse, run_in_thread_pool, PageResponse, Page
+from server.utils import BaseResponse, run_in_thread_pool, PageResponse, Page, get_chat_file_kb
 
 
 def retrieval(
@@ -417,7 +420,7 @@ def download_doc(
     if not validate_kb_name(knowledge_base_name):
         return BaseResponse(code=500, msg="Invalid knowledge base name")
 
-    if knowledge_base_name not in ["samples", "temp"]:
+    if knowledge_base_name not in ["samples", get_chat_file_kb()]:
         kb = KBServiceFactory.get_service_by_name(knowledge_base_name)
         if kb is None:
             return BaseResponse(code=500, msg=Message_I18N.API_KB_NOT_EXIST.value.format(kb_name=knowledge_base_name))
@@ -521,3 +524,95 @@ def recreate_vector_store(
                 kb.save_vector_store()
 
     return EventSourceResponse(output())
+
+
+def _parse_files_in_thread(
+        files: Union[List[UploadFile], Iterable[str]],
+        dir: str,
+        doc: bool
+):
+    """
+    通过多线程将上传的文件保存到对应目录内。
+    生成器返回保存结果：[success or error, filename, msg, docs]
+    """
+
+    def parse_file(file: Union[UploadFile, str]) -> Tuple[bool, Optional[str], str, Any]:
+        '''
+        保存单个文件。
+        '''
+        filename = file.filename if not doc else file
+        file_path = f"{dir}/{filename}"
+        try:
+            docs = None
+            if doc:
+                kb_file = KnowledgeFile(filename=filename, knowledge_base_name=get_chat_file_kb())
+                kb_file.filepath = get_file_path(kb_file.kb_name, file_path)
+                kb_file.filename = file_path
+                docs = kb_file.file2docs()
+            else:
+                default_oss().put_object(data=file.file, bucket_name=get_chat_file_kb(), object_name=file_path, override=True)
+            return True, filename, f"成功上传文件 {filename}", docs
+        except Exception as e:
+            msg = f"{filename} 文件上传失败，报错信息为: {e}"
+            return False, filename, msg, None
+
+    params = [{"file": file} for file in files]
+    for result in run_in_thread_pool(parse_file, params=params):
+        yield result
+
+
+def is_generator_empty(generator):
+    try:
+        next(generator)
+        return False
+    except StopIteration:
+        return True
+
+
+def delete_temp_docs(files: List[str] = Body([], description="删除临时知识库文件"),
+                     prev_id: str = Body("", description="前知识库ID"), ) -> BaseResponse:
+    failed_files = []
+    if prev_id:
+        if files:
+            for f in files:
+                try:
+                    default_oss().delete_object(get_chat_file_kb(), f"{prev_id}/{f}")
+                except:
+                    failed_files.append(f)
+        if not files or is_generator_empty(default_oss().list_objects(bucket_name=get_chat_file_kb(), object_name=prev_id)):
+            default_oss().delete_object(bucket_name=get_chat_file_kb(), object_name=prev_id)
+
+    return BaseResponse(data={"failed_files": failed_files})
+
+
+def upload_temp_docs(
+        files: List[UploadFile] = File([], description="上传文件，支持多文件"),
+        prev_id: str = Form("", description="前知识库ID"),
+        delete_prev: bool = Form(False, description="是否清空之前上传的文件"),
+) -> BaseResponse:
+    '''
+    将文件保存到临时目录，并返回切片文档。
+    '''
+    if prev_id and delete_prev:
+        default_oss().delete_object(bucket_name=get_chat_file_kb(), object_name=prev_id)
+
+    if not files:
+        return BaseResponse(data={"id": None, "failed_files": []})
+
+    if len(files) > MAX_TEMP_FILE_NUM:
+        return BaseResponse(code=413, msg=f"max file num is {MAX_TEMP_FILE_NUM}")
+
+    total_file_size = 0
+    for file in files:
+        total_file_size += file.size
+        if 0 < MAX_TEMP_FILE_SIZE < total_file_size:
+            return BaseResponse(code=413,
+                                msg=f"total file size is too large, max total size is {MAX_TEMP_FILE_SIZE} bytes")
+
+    failed_files = []
+    id = prev_id or str(uuid.uuid4())
+    for success, file, msg, _ in _parse_files_in_thread(files=files, dir=id, doc=False):
+        if not success:
+            failed_files.append({file: msg})
+
+    return BaseResponse(data={"id": id, "failed_files": failed_files})

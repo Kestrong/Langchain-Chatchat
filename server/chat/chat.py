@@ -11,15 +11,16 @@ from langchain.prompts.chat import ChatPromptTemplate
 from langchain_core.prompts import PromptTemplate
 from starlette.requests import Request
 
-from configs import LLM_MODELS, TEMPERATURE, logger, TOP_P
+from configs import LLM_MODELS, TEMPERATURE, logger, TOP_P, HISTORY_LEN
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
-    un_format_online_llm_model, choose_response
+    un_format_online_llm_model, choose_response, unify_chat_files
 from server.db.repository import add_message_to_db, filter_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
+from server.memory.conversation_window_buffer_memory import ConversationBufferWindowMemory
 from server.model_workers import ApiModelParams
 from server.utils import get_prompt_template, BaseResponse, parse_json_md
 from server.utils import wrap_done, get_ChatOpenAI
@@ -28,6 +29,7 @@ from server.utils import wrap_done, get_ChatOpenAI
 async def chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
                tag: str = Body(default="", description="会话标签"),
                assistant_id: int = Body(-1, description="助手ID"),
+               knowledge_id: str = Body("", description="临时知识库ID"),
                extra: dict = Body({}, description="额外的属性"),
                conversation_id: str = Body("", description="对话框ID"),
                history_len: int = Body(-1, description="从数据库中取历史消息的数量"),
@@ -51,7 +53,10 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
     message_id = uuid.uuid4().hex
     if not conversation_id:
         conversation_id = uuid.uuid4().hex
-    if un_format_online_llm_model(model_name):
+    chat_files = unify_chat_files(third_party_files=extra.pop('files', []), knowledge_id=knowledge_id, request=request)
+    extra['chat_files'] = chat_files
+    un_format = un_format_online_llm_model(model_name)
+    if un_format:
         if prompt_name == "default":
             question = query
         else:
@@ -60,9 +65,6 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
             except Exception:
                 question = prompt_name
         extra['question'] = question
-        extra['stream'] = stream
-        extra["cookie"] = request.headers.get('cookie')
-        extra['mark'] = f'###[{model_name}]###'
         apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=model_name)
         if apiModelParams.provider in ['DifyWorker', 'FuXiWorker', 'QimingWorker']:
             if not extra.get("conversation_id"):
@@ -84,9 +86,9 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
 
         # 负责保存llm response到message db
         realtime_token_save = extra.get("realtime_token_save", False)
-        add_message_to_db(chat_type=ChatType.LLM_CHAT.value, query=origin_query,
-                          response='' if realtime_token_save else None, conversation_id=conversation_id,
-                          store=store_message, message_id=message_id, assistant_id=assistant_id, tag=tag)
+        add_message_to_db(chat_type=ChatType.LLM_CHAT.value, query=origin_query, conversation_id=conversation_id,
+                          response='' if realtime_token_save else None, store=store_message, message_id=message_id,
+                          assistant_id=assistant_id, tag=tag, metadata={'chat_files': chat_files} if chat_files else {})
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                             message_id=message_id, chat_type=ChatType.LLM_CHAT.value,
                                                             query=origin_query, realtime_token_save=realtime_token_save,
@@ -118,18 +120,33 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         )
 
         prompt_template = get_prompt_template("llm_chat", prompt_name)
-        input_msg = History(role="user", content=prompt_template).to_msg_template(False)
+        in_tuple = History(role="user", content=query, chat_files=chat_files).get_content_tuple(
+            format_openai=not un_format)
+        input_content, image_urls, input_len, _ = in_tuple
+        input_template = History(role="user", content=prompt_template, ).to_msg_template(format_openai=not un_format,
+                                                                                         image_urls=image_urls)
         if history:  # 优先使用前端传入的历史消息
             history = [History.from_data(h) for h in history]
-            chat_prompt = ChatPromptTemplate.from_messages([i.to_msg_template() for i in history] + [input_msg])
+            if isinstance(history[-1].content, str) and history[-1].content == origin_query:
+                history = history[:-1]
+            memory = ConversationBufferWindowMemory(model_name=model_name, return_messages=True,
+                                                    message_limit=max(HISTORY_LEN * 2, len(history) if history else 0),
+                                                    prompt_length=input_len + len(prompt_template))
+            for h in history:
+                if h.role in ["user", "human"]:
+                    memory.chat_memory.add_user_message(h.to_msg_tuple(format_openai=not un_format)[1])
+                else:
+                    memory.chat_memory.add_ai_message(h.content)
+            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_template])
         elif conversation_id and history_len > 0:  # 前端要求从数据库取历史消息
             # 根据conversation_id 获取message 列表进而拼凑 memory
             memory = ConversationBufferDBMemory(conversation_id=conversation_id,
-                                                llm=model,
+                                                model_name=model_name, return_messages=True,
+                                                prompt_length=input_len + len(prompt_template),
                                                 message_limit=history_len)
-            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_msg])
+            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_template])
         else:
-            chat_prompt = ChatPromptTemplate.from_messages([input_msg])
+            chat_prompt = ChatPromptTemplate.from_messages([input_template])
 
         if un_format_online_llm_model(model_name):
             chat_prompt = EMPTY_LLM_CHAT_PROMPT
@@ -138,7 +155,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
 
         # Begin a task that runs in the background.
         task = asyncio.create_task(wrap_done(
-            chain.acall({"input": query}, callbacks=callbacks),
+            chain.acall({"input": input_content}, callbacks=callbacks),
             callback.done),
         )
 

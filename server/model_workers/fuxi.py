@@ -1,4 +1,3 @@
-import io
 import json
 import logging
 import re
@@ -57,10 +56,9 @@ class FuXiWorker(ApiModelWorker):
 
     def upload_files(self, url, api_key, contentObj, file_type, extra_headers):
         result = []
-        knowledge_id = contentObj.get('knowledge_id')
-        files = contentObj.get('files')
-        if not knowledge_id and not files:
-            logger.debug("knowledge_id和files都为空，不需要上传")
+        chat_files = contentObj.get('chat_files')
+        if not chat_files:
+            logger.debug("chat_files为空，不需要上传")
             return result
         headers = {"X-API-KEY": api_key}
         if 'X-APP-ID' in extra_headers:
@@ -69,58 +67,23 @@ class FuXiWorker(ApiModelWorker):
             headers['X-APP-KEY'] = extra_headers['X-APP-KEY']
         match = re.search(r'https?://[^?]*?/llm(?=/|$)', url)
         upload_url = f"{match.group(0)}/file/upload" if match else url
-        logger.debug(f"上传内部和第三方文件到fuxi, url={upload_url}, knowledge_id={knowledge_id}, files={files}")
-        if knowledge_id:
-            attachment_names = default_oss().list_objects(bucket_name="temp", object_name=knowledge_id)
-            if attachment_names:
-                for a in attachment_names:
-                    logger.debug(f"upload file: {a}")
-                    with default_oss().get_object(bucket_name="temp", object_name=f"{knowledge_id}/{a}") as o:
-                        file_prop = analyze_file(a)
-                        with requests.post(url=upload_url, headers=headers,
-                                           files=[("file", (a, o, file_prop.get('mime_type')))],
-                                           verify=False) as response:
-                            if not response.ok:
-                                logger.error(response.text)
-                            response.raise_for_status()
-                            file = {
-                                "type": file_type or file_prop.get('category'),
-                                "docId": response.json().get('fileId')
-                            }
-                            result.append(file)
-        if files:
-            cookies = contentObj.get('cookies')
-            get_file_headers = None
-            if contentObj.get('token'):
-                get_file_headers = {"Authorization": contentObj.get('token')}
-            for f in files:
-                logger.debug(f"upload file: {f.get('name')}")
-                response = requests.get(f.get('url'), headers=get_file_headers, cookies=cookies, stream=True,
-                                        verify=False)
-                if not response.ok:
-                    logger.error(response.text)
-                response.raise_for_status()
-
-                file_stream = io.BytesIO()
-                try:
-                    for chunk in response.iter_content(chunk_size=1024 * 64):
-                        if chunk:
-                            file_stream.write(chunk)
-                    file_stream.seek(0)
-                    file_prop = analyze_file(f.get('name'))
-                    with requests.post(url=upload_url, headers=headers,
-                                       files=[("file", (f.get('name'), file_stream, file_prop.get('mime_type')))],
-                                       verify=False) as response:
-                        if not response.ok:
-                            logger.error(response.text)
-                        response.raise_for_status()
-                        file = {
-                            "type": file_type or file_prop.get('category'),
-                            "docId": response.json().get('fileId')
-                        }
-                        result.append(file)
-                finally:
-                    file_stream.close()
+        logger.debug(f"上传内部和第三方文件到dify, url={upload_url}, chat_files={chat_files}")
+        for a in chat_files:
+            logger.debug(f"upload file: {a}")
+            with default_oss().get_object(bucket_name=a.get('knowledge_base_name'),
+                                          object_name=f"{a.get('path')}/{a.get('filename')}") as o:
+                file_prop = analyze_file(a.get('filename'))
+                with requests.post(url=upload_url, headers=headers,
+                                   files=[("file", (a.get('filename'), o, file_prop.get('mime_type')))],
+                                   verify=False) as response:
+                    if not response.ok:
+                        logger.error(response.text)
+                    response.raise_for_status()
+                    file = {
+                        "type": file_type or file_prop.get('category'),
+                        "docId": response.json().get('fileId')
+                    }
+                    result.append(file)
         return result
 
     def do_chat(self, params: ApiChatParams) -> Dict:
