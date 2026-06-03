@@ -2,7 +2,7 @@ import fastchat.constants
 from fastchat.conversation import Conversation
 
 from configs import LOG_PATH, TEMPERATURE, MAX_TOKENS_INPUT
-from server.chat.utils import un_format_online_llm_model, calculate_token_len
+from server.chat.utils import un_format_online_llm_model, calculate_token_len, get_tiktoken_num
 
 fastchat.constants.LOGDIR = LOG_PATH
 from fastchat.serve.base_model_worker import BaseModelWorker
@@ -139,7 +139,7 @@ class ApiModelWorker(BaseModelWorker):
             for p in prompt:
                 length += calculate_token_len(p.get("role", ""), p.get("content", ""))
         else:
-            length += len(str(prompt))
+            length += get_tiktoken_num(prompt)
         return {"count": length, "error_code": 0}
 
     def generate_stream_gate(self, params: Dict):

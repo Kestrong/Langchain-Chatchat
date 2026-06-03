@@ -24,9 +24,10 @@ from sqlalchemy.sql.ddl import CreateTable
 from sqlalchemy.sql.sqltypes import NullType
 
 from common.exceptions import ChatBusinessException
-from configs import logger, log_verbose, MAX_TOKENS_INPUT
+from configs import logger, log_verbose
 from server.agent import get_model_container, ModelContainer
 from server.agent.tools_select import register_tool
+from server.chat.utils import get_max_token_limit, get_tiktoken_num
 from server.db.base import create_engine_wrapper
 from server.knowledge_base.kb_doc_api import search_docs
 from server.memory.message_i18n import Message_I18N
@@ -917,14 +918,15 @@ def text2sql(natural_language_question: str):
             summarize = "很抱歉，本次查询没有返回数据。请检查您提供的查询条件是否准确、数据库是否存在此类数据。如果您已经检查过以上几点并确认无误，可以重新提问一次或者换个问题尝试。"
         elif report_prompt:
             records = records[:top_k]
-            summarize_template = PromptTemplate(input_variables=["query", "records", "report_prompt"],
+            summarize_template = PromptTemplate(input_variables=["query", "records"],
                                                 template=report_prompt, template_format="jinja2")
             summarize_chain = LLMChain(llm=llm, prompt=summarize_template)
-            used_token_count = len(origin_query) + len(report_prompt) + 1500
+            used_token = get_tiktoken_num(report_prompt + origin_query)
+            max_token_limit = get_max_token_limit(model_name)
             with ThreadPoolExecutor() as executor:
                 summarize = executor.submit(summarize_chain.predict,
                                             **{"query": origin_query,
-                                               "records": f"{shorter_records(records, used_token_count)}",
+                                               "records": f"{shorter_records(records, max_token_limit, used_token)}",
                                                "report_prompt": report_prompt})
         column_map = {}
         if isinstance(records, list) and len(records) > 0:
@@ -983,13 +985,14 @@ def text2sql(natural_language_question: str):
                 pass
 
 
-def shorter_records(records: list, used_count: int = 0):
+def shorter_records(records: list, max_token_limit: int, used_count: int = 0):
     result = []
     length = 0
+    max_token_limit = int(max_token_limit * 0.95)
     for rr in records:
         r_str = json_dumps(rr)
-        length += len(r_str)
-        if length > MAX_TOKENS_INPUT - used_count:
+        length += get_tiktoken_num(r_str)
+        if length > max_token_limit - used_count:
             break
         result.append(r_str)
     return result
