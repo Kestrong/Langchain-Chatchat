@@ -18,7 +18,7 @@ from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, create_agent_executor, parse_llm_token_inner_json, \
-    choose_response
+    choose_response, get_tiktoken_num
 from server.db.repository import add_message_to_db, update_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.utils import wrap_done, get_prompt_template, get_ChatOpenAI
@@ -114,9 +114,10 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                 return content
 
             prompt_template = get_prompt_template("agent_chat", prompt_name)
+            prompt_length = get_tiktoken_num(query + prompt_template + str(available_tools))
             memory = ConversationBufferWindowMemory(model_name=model_name, return_messages=True,
                                                     message_limit=max(HISTORY_LEN * 2, len(history) if history else 0),
-                                                    prompt_length=len(query) + len(prompt_template))
+                                                    prompt_length=prompt_length)
             history_var = []
             if history:
                 for message in history:
@@ -130,7 +131,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
             elif conversation_id and history_len > 0:
                 memory_ = ConversationBufferDBMemory(conversation_id=conversation_id,
                                                      model_name=model_name, return_messages=True,
-                                                     prompt_length=len(query) + len(prompt_template),
+                                                     prompt_length=prompt_length,
                                                      message_limit=history_len)
                 for a in memory_.buffer:
                     if isinstance(a, HumanMessage):

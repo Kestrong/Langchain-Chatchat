@@ -17,7 +17,7 @@ from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
-    un_format_online_llm_model, choose_response, unify_chat_files
+    un_format_online_llm_model, choose_response, unify_chat_files, get_tiktoken_num
 from server.db.repository import add_message_to_db, filter_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.conversation_window_buffer_memory import ConversationBufferWindowMemory
@@ -125,13 +125,14 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         input_content, image_urls, input_len, _ = in_tuple
         input_template = History(role="user", content=prompt_template, ).to_msg_template(format_openai=not un_format,
                                                                                          image_urls=image_urls)
+        prompt_length = input_len + get_tiktoken_num(prompt_template)
         if history:  # 优先使用前端传入的历史消息
             history = [History.from_data(h) for h in history]
             if isinstance(history[-1].content, str) and history[-1].content == origin_query:
                 history = history[:-1]
             memory = ConversationBufferWindowMemory(model_name=model_name, return_messages=True,
                                                     message_limit=max(HISTORY_LEN * 2, len(history) if history else 0),
-                                                    prompt_length=input_len + len(prompt_template))
+                                                    prompt_length=prompt_length)
             for h in history:
                 if h.role in ["user", "human"]:
                     memory.chat_memory.add_user_message(h.to_msg_tuple(format_openai=not un_format)[1])
@@ -142,7 +143,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
             # 根据conversation_id 获取message 列表进而拼凑 memory
             memory = ConversationBufferDBMemory(conversation_id=conversation_id,
                                                 model_name=model_name, return_messages=True,
-                                                prompt_length=input_len + len(prompt_template),
+                                                prompt_length=prompt_length,
                                                 message_limit=history_len)
             chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_template])
         else:

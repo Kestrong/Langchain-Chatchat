@@ -18,7 +18,7 @@ from server.chat.chat_type import ChatType
 from server.chat.customize_agent.customize_agent_type import customize_agent_types
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, un_format_online_llm_model, create_agent_executor, \
-    parse_llm_token_inner_json, choose_response, unify_chat_files
+    parse_llm_token_inner_json, choose_response, unify_chat_files, get_tiktoken_num
 from server.db.repository import add_message_to_db, get_assistant_simple_from_db, update_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.conversation_window_buffer_memory import ConversationBufferWindowMemory
@@ -149,9 +149,10 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         input_content, image_urls, input_len, _ = in_tuple
         input_template = History(role="user", content=prompt_template, ).to_msg_template(format_openai=not un_format,
                                                                                          image_urls=image_urls)
+        prompt_length = input_len + get_tiktoken_num(prompt_template + str(available_tools))
         memory = ConversationBufferWindowMemory(model_name=model_name, return_messages=True,
                                                 message_limit=max(HISTORY_LEN * 2, len(history) if history else 0),
-                                                prompt_length=input_len + len(prompt_template))
+                                                prompt_length=prompt_length)
         if history:
             for message in history:
                 if message.role in ["user", "human"]:
@@ -161,7 +162,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         elif conversation_id and history_len > 0:
             memory = ConversationBufferDBMemory(conversation_id=conversation_id,
                                                 model_name=model_name, return_messages=True,
-                                                prompt_length=input_len + len(prompt_template),
+                                                prompt_length=prompt_length,
                                                 message_limit=history_len)
         agent_executor = create_agent_executor(model, memory, available_tools, input_template)
         while True:

@@ -16,7 +16,7 @@ from sse_starlette import EventSourceResponse
 from starlette.requests import Request
 
 from common.exceptions import ChatBusinessException, WorkerBusinessException
-from configs import logger, log_verbose
+from configs import logger, log_verbose, MAX_TOKENS_INPUT
 from server.db.repository import update_message
 from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import get_token
@@ -24,16 +24,38 @@ from server.utils import get_model_worker_config, BaseResponse, run_in_thread_po
     get_chat_file_kb
 
 
+def get_max_token_limit(model_name: str):
+    from server.model_workers import ApiChatParams
+    api_chat_params = ApiChatParams(messages=[]).load_config(worker_name=model_name)
+    # 动态获取模型总的输入上限
+    total_limit = api_chat_params.role_meta.get('max_model_len') or MAX_TOKENS_INPUT
+    # 动态设定安全缓冲：模型窗口越大，缓冲可以适当加大；窗口小则缓冲减小
+    # 比如设定为总窗口的 10%，且最小不低于 128，最高不超过 2000
+    safety_margin = max(128, min(2000, int(total_limit * 0.1)))
+    # 计算最终的输入限制 = 总输入 - 输出 - 缓冲，并确保至少留有 1 个 Token 的空间，防止负数报错
+    max_token_limit = max(1, total_limit - safety_margin)
+    return max_token_limit
+
+
+def get_tiktoken_num(content):
+    import tiktoken
+    encoding = tiktoken.get_encoding("cl100k_base")
+    try:
+        return len(encoding.encode(str(content)))
+    except:
+        return len(str(content)) * 1.2
+
+
 def calculate_token_len(role: str, content):
     length = len(role) + 1
-    if isinstance(content, str):
-        length += len(content)
-    else:
+    if isinstance(content, list) and len(content) > 0 and isinstance(content[0], dict):
         for content in content:
             if content.get("type") == "text":
-                length += len(content.get("text"))
+                length += get_tiktoken_num(content.get("text"))
             elif content.get("type") == "image_url":
                 length += 1500
+    else:
+        length += get_tiktoken_num(content)
     return length
 
 
@@ -57,7 +79,7 @@ class History(BaseModel):
             filename = cf.get('filename')
             knowledge_id = cf.get('path')
             kb_name = cf.get('knowledge_base_name')
-            ext = filename.rsplit('.', 1)[-1].strip().lower() if '.' in filename else ''
+            ext = filename.rsplit('.', 1)[-1].strip().lower() if filename and '.' in filename else ''
             file_category = get_file_category(ext)
             file_path = f"{knowledge_id}/{filename}"
             try:

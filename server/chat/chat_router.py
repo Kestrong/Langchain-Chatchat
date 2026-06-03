@@ -89,13 +89,13 @@ def check_file_type(knowledge_id: str = "", third_party_files: list = None, uplo
     if knowledge_id:
         files = default_oss().list_objects(bucket_name=get_chat_file_kb(), object_name=knowledge_id)
         for filename in files:
-            ext = filename.rsplit('.', 1)[-1].strip() if '.' in filename else ''
+            ext = filename.rsplit('.', 1)[-1].strip() if filename and '.' in filename else ''
             if ext not in allowed_types:
                 raise ValueError(msg)
     if third_party_files:
         for f in third_party_files:
             filename = f.get("name")
-            ext = filename.rsplit('.', 1)[-1].strip() if '.' in filename else ''
+            ext = filename.rsplit('.', 1)[-1].strip() if filename and '.' in filename else ''
             if ext not in allowed_types:
                 raise ValueError(msg)
 
