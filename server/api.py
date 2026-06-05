@@ -2,7 +2,6 @@ import os
 import sys
 from typing import Literal
 
-import nltk
 from fastapi.security import APIKeyHeader
 
 from common.custom_gzip_middleware import CustomGZipMiddleware
@@ -11,7 +10,6 @@ from common.local_variable_middleware import LocaleVariableMiddleware
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from configs import VERSION
-from configs.model_config import NLTK_DATA_PATH
 from configs.server_config import OPEN_CROSS_DOMAIN
 import argparse
 import uvicorn
@@ -19,9 +17,6 @@ from fastapi import Depends, Security, APIRouter, Body
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 from server.utils import (BaseResponse, FastAPI, MakeFastAPIOffline)
-
-nltk.data.path = [NLTK_DATA_PATH] + nltk.data.path
-os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(NLTK_DATA_PATH, "tokenizers", "cl100k_base")
 
 
 def create_app(run_mode: str = None):
@@ -119,7 +114,7 @@ def mount_chat_routes(app: FastAPI):
     chat_router.get("/list_feedbacks", summary="获取会话详情", )(list_feedback)
     chat_router.get("/export_feedbacks", summary="获取会话详情", )(export_feedback_to_excel)
     chat_router.get("/metrics", summary="获取会话指标", )(metrics)
-    chat_router.delete("/model_performance_metrics", summary="删除模型性能指标数据",)(delete_performance_metrics)
+    chat_router.delete("/model_performance_metrics", summary="删除模型性能指标数据", )(delete_performance_metrics)
     chat_router.get("/hot_query", summary="获取热门问题", )(get_hot_query)
     chat_router.get("/assistants", summary="获取助手列表", )(get_assistants)
     chat_router.get("/assistant", summary="获取助手详情", )(get_assistant_detail)
