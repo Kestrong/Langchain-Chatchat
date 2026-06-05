@@ -6,6 +6,7 @@ import uuid
 from typing import List, Tuple, Dict, Union, AsyncIterable
 
 import requests
+import tiktoken
 from langchain.agents import LLMSingleActionAgent, AgentExecutor
 from langchain.agents.structured_chat.output_parser import StructuredChatOutputParserWithRetries
 from langchain.chains import LLMChain
@@ -38,7 +39,6 @@ def get_max_token_limit(model_name: str):
 
 
 def get_tiktoken_num(content):
-    import tiktoken
     encoding = tiktoken.get_encoding("cl100k_base")
     try:
         return len(encoding.encode(str(content)))
