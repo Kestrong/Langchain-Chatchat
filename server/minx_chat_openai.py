@@ -267,13 +267,13 @@ async def check_length(request, prompt, max_tokens, worker_addr):
 
     context_len = await fetch_remote(
         worker_addr + "/model_details", {"model": request.model}, "context_length"
-    )
+    ) or max_tokens
     token_num = await fetch_remote(
         worker_addr + "/count_token",
         {"model": request.model, "prompt": prompt},
         "count",
-    )
-    length = min(max_tokens, context_len - token_num)
+    ) or 0
+    length = min(max_tokens, int(context_len) - int(token_num))
 
     if length <= 0:
         return None, create_error_response(
