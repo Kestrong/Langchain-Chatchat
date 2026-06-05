@@ -128,11 +128,6 @@ async def do_chat_router(query: str,
                          request: Request = None,
                          background_tasks: BackgroundTasks = None,
                          ):
-    if un_format_online_llm_model(model_name):
-        extra["token"] = get_token()
-        extra['stream'] = stream
-        extra["cookie"] = request.headers.get('cookie')
-        extra['mark'] = f'###[{model_name}]###'
     if assistant is None and assistant_id >= 0:
         assistant = get_assistant_detail_from_db(assistant_id=assistant_id)
     if assistant:
@@ -170,6 +165,12 @@ async def do_chat_router(query: str,
                 api_names = [t.get("name") for t in assistant.get("tool_config").get("http_request", {}).get("apis", [])
                              if
                              t.get("selected", False)]
+
+    if un_format_online_llm_model(model_name):
+        extra["token"] = get_token()
+        extra['stream'] = stream
+        extra["cookie"] = request.headers.get('cookie')
+        extra['mark'] = f'###[{model_name}]###'
 
     if chat_type == ChatType.SEARCH_ENGINE_CHAT.value or (
             search_engine_name is not None and search_engine_name != ''):

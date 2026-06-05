@@ -43,7 +43,7 @@ def get_tiktoken_num(content):
     try:
         return len(encoding.encode(str(content)))
     except:
-        return len(str(content)) * 1.2
+        return int(len(str(content)) * 1.2)
 
 
 def calculate_token_len(role: str, content):
