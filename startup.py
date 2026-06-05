@@ -29,8 +29,11 @@ from configs import (
     FSCHAT_MODEL_WORKERS,
     API_SERVER,
     WEBUI_SERVER,
-    HTTPX_DEFAULT_TIMEOUT, MAX_TOKENS_INPUT,
+    HTTPX_DEFAULT_TIMEOUT, MAX_TOKENS_INPUT, NLTK_DATA_PATH
 )
+import nltk
+nltk.data.path = [NLTK_DATA_PATH] + nltk.data.path
+os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(NLTK_DATA_PATH, "tokenizers", "cl100k_base")
 from server.utils import (fschat_controller_address, fschat_model_worker_address,
                           fschat_openai_api_address, get_httpx_client, get_model_worker_config,
                           MakeFastAPIOffline, FastAPI, llm_device, embedding_device)
