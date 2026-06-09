@@ -171,10 +171,12 @@ fetch_timeout = aiohttp.ClientTimeout(total=3 * 3600)
 
 class MyChatCompletionRequest(ChatCompletionRequest):
     enable_thinking: Optional[bool] = None
+    extra: Optional[Dict[str, Any]] = None
 
 
 class MyAPIChatCompletionRequest(APIChatCompletionRequest):
     enable_thinking: Optional[bool] = None
+    extra: Optional[Dict[str, Any]] = None
 
 
 async def fetch_remote(url, pload=None, name=None):
@@ -387,6 +389,7 @@ async def get_gen_params(
         best_of: Optional[int] = None,
         use_beam_search: Optional[bool] = None,
         enable_thinking: Optional[bool] = None,
+        extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     conv = await get_conv(model_name, worker_addr)
     conv = Conversation(
@@ -456,6 +459,7 @@ async def get_gen_params(
         "max_new_tokens": max_tokens,
         "echo": echo,
         "stop_token_ids": conv.stop_token_ids,
+        "extra": extra,
     }
 
     if enable_thinking is not None:
@@ -548,6 +552,7 @@ async def create_chat_completion(request: MyChatCompletionRequest):
         echo=False,
         stop=request.stop,
         enable_thinking=request.enable_thinking,
+        extra=request.extra,
     )
 
     max_new_tokens, error_check_ret = await check_length(
@@ -700,7 +705,6 @@ async def create_completion(request: CompletionRequest):
                 stop=request.stop,
                 best_of=request.best_of,
                 use_beam_search=request.use_beam_search,
-                enable_thinking=request.enable_thinking,
             )
             for i in range(request.n):
                 content = asyncio.create_task(
@@ -757,7 +761,6 @@ async def generate_completion_stream_generator(
                 logprobs=request.logprobs,
                 echo=request.echo,
                 stop=request.stop,
-                enable_thinking=request.enable_thinking,
             )
             async for content in generate_completion_stream(gen_params, worker_addr):
                 if content["error_code"] != 0:
@@ -941,6 +944,7 @@ async def create_chat_completion(request: MyAPIChatCompletionRequest):
         echo=False,
         stop=request.stop,
         enable_thinking=request.enable_thinking,
+        extra=request.extra,
     )
 
     if request.repetition_penalty is not None:

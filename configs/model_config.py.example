@@ -230,19 +230,6 @@ ONLINE_LLM_MODEL = {
             # "truncate_mark": "</think>"
         }
     },
-    "sichuanmass-api": {
-        "version": "sichuanmass-v1",
-        "api_proxy": "http://ip:port/whaleagent/knowledgeService/api/v1/chat/completions",
-        "api_key": "EMPTY",
-        "enable_thinking": False,
-        "provider": "SichuanMassWorker",
-        "role_meta": {
-            "truncate_mark": "</think>",
-            "timeout": 30,
-            "refs": [],
-            "agentlink": {}
-        }
-    },
 }
 
 # 在以下字典中修改属性值，以指定本地embedding模型存储位置。支持3种设置方法：

@@ -37,7 +37,8 @@ class QimingWorker(ApiModelWorker):
     def do_chat(self, params: ApiChatParams) -> Dict:
         params = params.load_config(self.model_names[0])
         content = params.messages[-1].get('content')
-        contentObj = json.loads(content)
+        contentObj = params.extra or {}
+        contentObj['question'] = content
         assistant_id = contentObj.get('assistant_id')
         assistant = None
         if assistant_id and assistant_id >= 0:

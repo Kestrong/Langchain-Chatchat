@@ -4,7 +4,7 @@ from langchain.memory.chat_memory import BaseChatMemory
 from langchain.schema import get_buffer_string, BaseMessage
 
 from configs import LLM_MODELS
-from server.chat.utils import calculate_token_len
+from server.chat.utils import calculate_token_len, has_input_memory_key
 
 
 class ConversationBufferWindowMemory(BaseChatMemory):
@@ -61,3 +61,8 @@ class ConversationBufferWindowMemory(BaseChatMemory):
     def load_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Return history buffer."""
         return {self.memory_key: self.buffer}
+
+    def buffer_history(self, input_variables: List[str]) -> List[BaseMessage]:
+        if has_input_memory_key(input_variables, self.memory_variables):
+            return []
+        return self.buffer_as_messages

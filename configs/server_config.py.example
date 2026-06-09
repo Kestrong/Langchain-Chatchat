@@ -180,11 +180,8 @@ FSCHAT_MODEL_WORKERS = {
     "deepseek-api": {
         "port": 21019,
     },
-    "sichuanmass-api": {
-        "port": 21020,
-    },
     "qwen-vl-api": {
-        "port": 21021,
+        "port": 21020,
     },
 }
 

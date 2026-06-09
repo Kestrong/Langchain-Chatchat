@@ -14,6 +14,7 @@ from server.agent.tools.http_request import _http_request
 from server.agent.tools_select import get_all_tools, get_tool, create_dynamic_tool
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.chat.chat import process_extra
 from server.chat.chat_type import ChatType
 from server.chat.customize_agent.customize_agent_type import customize_agent_types
 from server.chat.task_manager import task_manager
@@ -88,10 +89,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                                      prompt_name=prompt_name, api_names=api_names,
                                                                      request=request, knowledge_id=knowledge_id)
     un_format = un_format_online_llm_model(model_name)
-    if un_format_online_llm_model(model_name):
-        return BaseResponse(code=500,
-                            msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(chat_type=ChatType.AGENT_CHAT.value,
-                                                                                    model_name=model_name))
+    chat_type = ChatType.AGENT_CHAT.value
     history = [History.from_data(h) for h in history]
     model_container = create_model_container()
     if extra:
@@ -115,12 +113,11 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             max_tokens = None
 
         callbacks = [callback]
-        message_id = add_message_to_db(chat_type=ChatType.AGENT_CHAT.value, query=query,
-                                       conversation_id=conversation_id, tag=tag,
+        message_id = add_message_to_db(chat_type=chat_type, query=query, conversation_id=conversation_id, tag=tag,
                                        store=store_message, assistant_id=assistant_id,
                                        metadata={'chat_files': chat_files} if chat_files else {}, )
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
-                                                            message_id=message_id, chat_type=ChatType.AGENT_CHAT.value,
+                                                            message_id=message_id, chat_type=chat_type,
                                                             query=query, agent=True, stream=stream)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id, agent=True)
         callbacks.extend([conversation_callback, task_callback])
@@ -134,16 +131,20 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             langfuse_handler = CallbackHandler()
             callbacks.append(langfuse_handler)
 
+        process_extra(stream=stream, model_name=model_name, extra=extra, conversation_id=conversation_id,
+                      request=request)
+
         model = get_ChatOpenAI(
             model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
-            callbacks=[callback],
+            callbacks=[],
             top_p=top_p,
-            enable_thinking=False
+            enable_thinking=False,
+            extra_body={"extra": extra} if un_format else None,
         )
 
-        prompt_template = get_prompt_template("agent_chat", prompt_name)
+        prompt_template = get_prompt_template(chat_type, prompt_name)
         in_tuple = History(role="user", content=query, chat_files=chat_files).get_content_tuple(
             format_openai=not un_format)
         input_content, image_urls, input_len, _ = in_tuple
@@ -168,7 +169,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
         while True:
             try:
                 task = asyncio.create_task(wrap_done(
-                    agent_executor.acall(input_content, callbacks=callbacks, include_run_info=True),
+                    agent_executor.acall({"input": input_content}, callbacks=callbacks, include_run_info=True),
                     callback.done))
                 break
             except:
@@ -177,64 +178,65 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
 
         d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
         yield json.dumps(d, ensure_ascii=False)
-        if stream:
-            async for chunk in callback.aiter():
-                # Use server-sent-events to stream the response
-                data = json.loads(parse_llm_token_inner_json(model_name, chunk)["answer"])
-                if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
-                    continue
-                elif data["status"] == AgentStatus.error:
-                    use_tool_name = data["tool_name"]
-                    use_tool = [a for a in available_tools if a.name == use_tool_name]
-                    thought = Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
-                        tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
-                        error=data["error"])
-                    yield json.dumps({"thought": thought, "message_id": message_id, "conversation_id": conversation_id},
-                                     ensure_ascii=False)
-                elif data["status"] == AgentStatus.tool_end:
-                    use_tool_name = data["tool_name"]
-                    use_tool = [a for a in available_tools if a.name == use_tool_name]
-                    thought = Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
-                        tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
-                        input_str=str(data.get("input_str")),
-                        output_str=str(data.get("output_str")))
-                    yield json.dumps({"thought": thought, "message_id": message_id, "conversation_id": conversation_id},
-                                     ensure_ascii=False)
-                elif data["status"] == AgentStatus.agent_finish:
-                    final_answer = data["final_answer"]
-                    yield json.dumps({"answer": final_answer, "message_id": message_id,
-                                      "conversation_id": conversation_id}, ensure_ascii=False)
-                else:
-                    yield json.dumps(
-                        {"thought": data["llm_token"], "message_id": message_id, "conversation_id": conversation_id},
-                        ensure_ascii=False)
-        else:
-            answer = ""
-            thought = ""
-            async for chunk in callback.aiter():
-                data = json.loads(parse_llm_token_inner_json(model_name, chunk)["answer"])
-                if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
-                    continue
-                elif data["status"] == AgentStatus.error:
-                    use_tool_name = data["tool_name"]
-                    use_tool = [a for a in available_tools if a.name == use_tool_name]
-                    thought += Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
-                        tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
-                        error=data["error"])
-                elif data["status"] == AgentStatus.tool_end:
-                    use_tool_name = data["tool_name"]
-                    use_tool = [a for a in available_tools if a.name == use_tool_name]
-                    thought += Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
-                        tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
-                        input_str=str(data.get("input_str")),
-                        output_str=str(data.get("output_str")))
-                elif data["status"] == AgentStatus.agent_finish:
-                    answer += data["final_answer"]
-                else:
-                    thought += data["llm_token"]
+        if not extra.get('backend'):
+            if stream:
+                async for chunk in callback.aiter():
+                    # Use server-sent-events to stream the response
+                    data = json.loads(parse_llm_token_inner_json(model_name, chunk)["answer"])
+                    if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
+                        continue
+                    elif data["status"] == AgentStatus.error:
+                        use_tool_name = data["tool_name"]
+                        use_tool = [a for a in available_tools if a.name == use_tool_name]
+                        thought = Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
+                            tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
+                            error=data["error"])
+                        yield json.dumps({"thought": thought, "message_id": message_id, "conversation_id": conversation_id},
+                                         ensure_ascii=False)
+                    elif data["status"] == AgentStatus.tool_end:
+                        use_tool_name = data["tool_name"]
+                        use_tool = [a for a in available_tools if a.name == use_tool_name]
+                        thought = Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
+                            tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
+                            input_str=str(data.get("input_str")),
+                            output_str=str(data.get("output_str")))
+                        yield json.dumps({"thought": thought, "message_id": message_id, "conversation_id": conversation_id},
+                                         ensure_ascii=False)
+                    elif data["status"] == AgentStatus.agent_finish:
+                        final_answer = data["final_answer"]
+                        yield json.dumps({"answer": final_answer, "message_id": message_id,
+                                          "conversation_id": conversation_id}, ensure_ascii=False)
+                    else:
+                        yield json.dumps(
+                            {"thought": data["llm_token"], "message_id": message_id, "conversation_id": conversation_id},
+                            ensure_ascii=False)
+            else:
+                answer = ""
+                thought = ""
+                async for chunk in callback.aiter():
+                    data = json.loads(parse_llm_token_inner_json(model_name, chunk)["answer"])
+                    if data["status"] == AgentStatus.llm_start or data["status"] == AgentStatus.llm_end:
+                        continue
+                    elif data["status"] == AgentStatus.error:
+                        use_tool_name = data["tool_name"]
+                        use_tool = [a for a in available_tools if a.name == use_tool_name]
+                        thought += Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
+                            tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
+                            error=data["error"])
+                    elif data["status"] == AgentStatus.tool_end:
+                        use_tool_name = data["tool_name"]
+                        use_tool = [a for a in available_tools if a.name == use_tool_name]
+                        thought += Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
+                            tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
+                            input_str=str(data.get("input_str")),
+                            output_str=str(data.get("output_str")))
+                    elif data["status"] == AgentStatus.agent_finish:
+                        answer += data["final_answer"]
+                    else:
+                        thought += data["llm_token"]
 
-            yield json.dumps({"thought": thought, "answer": answer, "message_id": message_id,
-                              "conversation_id": conversation_id}, ensure_ascii=False)
+                yield json.dumps({"thought": thought, "answer": answer, "message_id": message_id,
+                                  "conversation_id": conversation_id}, ensure_ascii=False)
         await task
 
     return await choose_response(stream, agent_chat_iterator(query=query,

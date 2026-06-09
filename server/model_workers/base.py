@@ -11,7 +11,7 @@ import json
 from pydantic import BaseModel, root_validator
 import asyncio
 from server.utils import get_model_worker_config
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 
 __all__ = ["ApiModelWorker", "ApiModelParams", "ApiChatParams", "ApiCompletionParams", "ApiChatWithFeedbackParams",
            "ApiEmbeddingsParams"]
@@ -79,6 +79,7 @@ class ApiChatParams(ApiModelParams):
     messages: List[Dict[str, Union[str, List]]]
     system_message: Optional[str] = None  # for minimax
     role_meta: Dict = {}  # for minimax
+    extra: Optional[Dict[str, Any]] = None # for extra input
 
 
 class ApiChatWithFeedbackParams(ApiChatParams):
@@ -152,16 +153,6 @@ class ApiModelWorker(BaseModelWorker):
             else:
                 messages = [{"role": self.user_role, "content": prompt}]
 
-            if un_format_online_llm_model(self.model_names[0]):
-                content = messages[-1].get('content')
-                try:
-                    contentObj = json.loads(content)
-                    if 'mark' not in contentObj or contentObj.get('mark') != f'###[{self.model_names[0]}]###':
-                        contentObj = {"question": content}
-                except Exception:
-                    contentObj = {"question": content}
-                messages[-1]["content"] = json.dumps(contentObj, ensure_ascii=False)
-
             p = ApiChatParams(
                 messages=self.validate_messages(messages),
                 temperature=params.get("temperature"),
@@ -169,6 +160,7 @@ class ApiModelWorker(BaseModelWorker):
                 max_tokens=params.get("max_new_tokens"),
                 version=self.version,
                 enable_thinking=params.get("enable_thinking"),
+                extra=params.get("extra"),
                 override_fields={"top_p": params.get("top_p") is not None,
                                  "max_tokens": params.get("max_new_tokens") is not None,
                                  "temperature": params.get("temperature") is not None,

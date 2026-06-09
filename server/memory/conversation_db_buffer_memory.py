@@ -15,7 +15,7 @@ class ConversationBufferDBMemory(ConversationBufferWindowMemory):
         return self.message_limit * 2
 
     @property
-    def buffer(self) -> List[BaseMessage]:
+    def buffer_as_messages(self) -> List[BaseMessage]:
         """String buffer of memory."""
         # fetch limited messages desc, and return reversed
         from server.chat.utils import un_format_online_llm_model
@@ -23,10 +23,11 @@ class ConversationBufferDBMemory(ConversationBufferWindowMemory):
         messages = filter_message(conversation_id=self.conversation_id, limit=self.message_limit)
         # 返回的记录按时间倒序，转为正序
         messages = list(reversed(messages))
+        self.chat_memory.clear()
         for message in messages:
             chat_files = (message.get('meta_data') or {}).get('chat_files')
             msg_tuple = History(role="user", content=message["query"], chat_files=chat_files).to_msg_tuple(
                 format_openai=not un_format)
             self.chat_memory.add_user_message(HumanMessage(content=msg_tuple[1]))
             self.chat_memory.add_ai_message(AIMessage(content=message["response"]))
-        return super().buffer
+        return super().buffer_as_messages
