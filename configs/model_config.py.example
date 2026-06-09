@@ -139,8 +139,8 @@ ONLINE_LLM_MODEL = {
     },
 
     # Claude API : https://www.anthropic.com/api
-    # Available models:
-    # Claude 3 Opus:    claude-3-opus-20240229
+    # Available models: 
+    # Claude 3 Opus:    claude-3-opus-20240229 
     # Claude 3 Sonnet	claude-3-sonnet-20240229
     # Claude 3 Haiku	claude-3-haiku-20240307
     "claude-api": {
@@ -178,7 +178,7 @@ ONLINE_LLM_MODEL = {
         "role_meta": {
             # "truncate_mark": "</think>"
         }
-    }
+    },
 }
 
 # 在以下字典中修改属性值，以指定本地embedding模型存储位置。支持3种设置方法：

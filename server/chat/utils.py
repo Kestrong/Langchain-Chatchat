@@ -130,10 +130,11 @@ class History(BaseModel):
             if documents:
                 part_documents = []
                 for file in documents:
-                    f_content = f"<input_files><filename>{file.get('filename')}</filename><file_content>{file.get('data')}</file_content></input_files>"
+                    f_content = f"<input_file><filename>{file.get('filename')}</filename><file_content>{file.get('data')}</file_content></input_file>"
                     part_documents.append(f_content)
                 f_document_contents = "\n".join(part_documents)
-                document_contents.append(f"{f_document_contents}\n<input_query>{self.content}</input_query>")
+                document_contents.append(
+                    f"<input_files>{f_document_contents}</input_files>\n<input_query>{self.content}</input_query>")
             else:
                 document_contents.append(self.content)
             if images:
@@ -276,13 +277,19 @@ async def choose_response(stream: bool, chat_iterator: AsyncIterable[str], reque
 EMPTY_LLM_CHAT_PROMPT = PromptTemplate.from_template("{{ input }}", template_format="jinja2")
 
 
-# 特殊的在线大模型，不支持知识库、agent对话等模式
+# 特殊的在线大模型
 def un_format_online_llm_model(model_name: str):
     config = get_model_worker_config(model_name)
     worker_class = config.get("worker_class")
     if worker_class:
         worker = worker_class()
         return not worker.format_online_llm()
+    return False
+
+
+def has_input_memory_key(input_variables: List[str], memory_variables: List[str]):
+    if input_variables and memory_variables and all(item in input_variables for item in memory_variables):
+        return True
     return False
 
 
@@ -295,9 +302,11 @@ def create_agent_executor(model, memory, available_tools: list, prompt_template:
         template=prompt_template,
         tools=available_tools,
         template_format='jinja2',
-        input_variables=["input", "intermediate_steps"]
+        input_variables=["input", "intermediate_steps"] + memory.memory_variables
     )
-    llm_chain = LLMChain(llm=model, prompt=ChatPromptTemplate.from_messages(memory.buffer + [prompt_template_agent]))
+    memory.return_messages = not has_input_memory_key(prompt_template.input_variables, memory.memory_variables)
+    llm_chain = LLMChain(llm=model, prompt=ChatPromptTemplate.from_messages(
+        memory.buffer_history(prompt_template.input_variables) + [prompt_template_agent]))
     output_parser = StructuredChatOutputParserWithRetries.from_llm(llm=model, base_parser=CustomOutputParser())
     output_parser.output_fixing_parser.max_retries = 3
     agent = LLMSingleActionAgent(

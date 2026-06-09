@@ -25,6 +25,7 @@ from Crypto.Util.Padding import pad, unpad
 from fastapi import FastAPI
 from langchain.chat_models import ChatOpenAI
 from langchain.llms import OpenAI
+from langchain_core.callbacks import BaseCallbackHandler
 from pathlib import Path
 from pydantic import BaseModel
 
@@ -50,7 +51,7 @@ def get_ChatOpenAI(
         temperature: float,
         max_tokens: int = None,
         streaming: bool = True,
-        callbacks: List[Callable] = [],
+        callbacks: List[BaseCallbackHandler] = [],
         verbose: bool = True,
         **kwargs: Any,
 ) -> ChatOpenAI:
@@ -58,7 +59,9 @@ def get_ChatOpenAI(
     config = get_model_worker_config(model_name)
     if model_name == "openai-api" or config.get('resource_name') == "openai-api":
         model_name = config.get("model_name")
-    extra_body = kwargs.get("extra_body") or config.get('role_meta', {}).get("extra_body", {})
+    extra_body = config.get('role_meta', {}).get("extra_body", {})
+    if kwargs and kwargs.get("extra_body"):
+        extra_body.update(kwargs.pop("extra_body"))
     if kwargs and "enable_thinking" in kwargs:
         enable_thinking = kwargs.pop("enable_thinking")
         if enable_thinking is not None:

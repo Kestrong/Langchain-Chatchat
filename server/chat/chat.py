@@ -11,19 +11,40 @@ from langchain.prompts.chat import ChatPromptTemplate
 from langchain_core.prompts import PromptTemplate
 from starlette.requests import Request
 
-from configs import LLM_MODELS, TEMPERATURE, logger, TOP_P, HISTORY_LEN
+from configs import LLM_MODELS, TEMPERATURE, TOP_P, HISTORY_LEN, logger
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
-from server.chat.utils import History, EMPTY_LLM_CHAT_PROMPT, parse_llm_token_inner_json, \
-    un_format_online_llm_model, choose_response, unify_chat_files, get_tiktoken_num
+from server.chat.utils import History, parse_llm_token_inner_json, \
+    un_format_online_llm_model, choose_response, unify_chat_files, get_tiktoken_num, has_input_memory_key
 from server.db.repository import add_message_to_db, filter_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.conversation_window_buffer_memory import ConversationBufferWindowMemory
+from server.memory.token_info_memory import get_token
 from server.model_workers import ApiModelParams
 from server.utils import get_prompt_template, BaseResponse, parse_json_md
 from server.utils import wrap_done, get_ChatOpenAI
+
+
+def process_extra(stream: bool, model_name: str, conversation_id: Union[str, None], extra: dict,
+                  request: Request, ):
+    if un_format_online_llm_model(model_name):
+        extra["token"] = get_token()
+        extra['stream'] = stream
+        extra["cookie"] = request.headers.get('cookie') if request else None
+        if conversation_id:
+            apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=model_name)
+            if apiModelParams.provider in ['DifyWorker', 'FuXiWorker', 'QimingWorker']:
+                if not extra.get("conversation_id"):
+                    m = filter_message(conversation_id=conversation_id, limit=1, not_response=False, reverse=True,
+                                       meta_data_key_exists=['third_conversation_id'])
+                    if m:
+                        extra['conversation_id'] = m[0].get('meta_data', {}).get('third_conversation_id')
+                    else:
+                        logger.warning(f"conversation_id[{conversation_id}] not found any associate messages")
+            else:
+                extra['conversation_id'] = conversation_id
 
 
 async def chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
@@ -49,49 +70,27 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                store_message: bool = Body(True, description="是否保存消息到数据库"),
                request: Request = None
                ):
-    origin_query = query
     message_id = uuid.uuid4().hex
     if not conversation_id:
         conversation_id = uuid.uuid4().hex
     chat_files = unify_chat_files(third_party_files=extra.pop('files', []), knowledge_id=knowledge_id, request=request)
     extra['chat_files'] = chat_files
     un_format = un_format_online_llm_model(model_name)
-    if un_format:
-        if prompt_name == "default":
-            question = query
-        else:
-            try:
-                question = PromptTemplate.from_template(prompt_name, template_format="jinja2").format(input=query)
-            except Exception:
-                question = prompt_name
-        extra['question'] = question
-        apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=model_name)
-        if apiModelParams.provider in ['DifyWorker', 'FuXiWorker', 'QimingWorker']:
-            if not extra.get("conversation_id"):
-                m = filter_message(conversation_id=conversation_id, limit=1, not_response=False, reverse=True,
-                                   meta_data_key_exists=['third_conversation_id'])
-                if m:
-                    extra['conversation_id'] = m[0].get('meta_data', {}).get('third_conversation_id')
-                else:
-                    logger.warning(f"conversation_id[{conversation_id}] not found any associate messages")
-        else:
-            extra['conversation_id'] = conversation_id
-            extra['message_id'] = message_id
-        query = json.dumps(extra)
+    chat_type = ChatType.LLM_CHAT.value
 
     async def chat_iterator() -> AsyncIterable[str]:
         nonlocal history, max_tokens
         callback = AsyncIteratorCallbackHandler()
-        callbacks = [callback]
+        callbacks = []
 
         # 负责保存llm response到message db
         realtime_token_save = extra.get("realtime_token_save", False)
-        add_message_to_db(chat_type=ChatType.LLM_CHAT.value, query=origin_query, conversation_id=conversation_id,
+        add_message_to_db(chat_type=chat_type, query=query, conversation_id=conversation_id,
                           response='' if realtime_token_save else None, store=store_message, message_id=message_id,
                           assistant_id=assistant_id, tag=tag, metadata={'chat_files': chat_files} if chat_files else {})
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
-                                                            message_id=message_id, chat_type=ChatType.LLM_CHAT.value,
-                                                            query=origin_query, realtime_token_save=realtime_token_save,
+                                                            message_id=message_id, chat_type=chat_type,
+                                                            query=query, realtime_token_save=realtime_token_save,
                                                             stream=stream)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         callbacks.extend([conversation_callback, task_callback])
@@ -110,16 +109,20 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         if isinstance(max_tokens, int) and max_tokens <= 0:
             max_tokens = None
 
+        process_extra(stream=stream, model_name=model_name, extra=extra, conversation_id=conversation_id,
+                      request=request)
+
         model = get_ChatOpenAI(
             model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
             callbacks=[callback],
             top_p=top_p,
-            enable_thinking=extra.get("enable_thinking")
+            enable_thinking=extra.get("enable_thinking"),
+            extra_body={"extra": extra} if un_format else None,
         )
 
-        prompt_template = get_prompt_template("llm_chat", prompt_name)
+        prompt_template = get_prompt_template(chat_type, prompt_name)
         in_tuple = History(role="user", content=query, chat_files=chat_files).get_content_tuple(
             format_openai=not un_format)
         input_content, image_urls, input_len, _ = in_tuple
@@ -128,31 +131,32 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
         prompt_length = input_len + get_tiktoken_num(prompt_template)
         if history:  # 优先使用前端传入的历史消息
             history = [History.from_data(h) for h in history]
-            if isinstance(history[-1].content, str) and history[-1].content == origin_query:
+            if isinstance(history[-1].content, str) and history[-1].content == query:
                 history = history[:-1]
-            memory = ConversationBufferWindowMemory(model_name=model_name, return_messages=True,
+            memory = ConversationBufferWindowMemory(model_name=model_name,
                                                     message_limit=max(HISTORY_LEN * 2, len(history) if history else 0),
                                                     prompt_length=prompt_length)
+            memory.return_messages = not has_input_memory_key(input_template.input_variables, memory.memory_variables)
             for h in history:
                 if h.role in ["user", "human"]:
                     memory.chat_memory.add_user_message(h.to_msg_tuple(format_openai=not un_format)[1])
                 else:
                     memory.chat_memory.add_ai_message(h.content)
-            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_template])
+            chat_prompt = ChatPromptTemplate.from_messages(
+                memory.buffer_history(input_template.input_variables) + [input_template])
         elif conversation_id and history_len > 0:  # 前端要求从数据库取历史消息
             # 根据conversation_id 获取message 列表进而拼凑 memory
-            memory = ConversationBufferDBMemory(conversation_id=conversation_id,
-                                                model_name=model_name, return_messages=True,
-                                                prompt_length=prompt_length,
-                                                message_limit=history_len)
-            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_template])
+            memory = ConversationBufferDBMemory(conversation_id=conversation_id, model_name=model_name,
+                                                prompt_length=prompt_length, message_limit=history_len)
+            memory.return_messages = not has_input_memory_key(input_template.input_variables, memory.memory_variables)
+            chat_prompt = ChatPromptTemplate.from_messages(
+                memory.buffer_history(input_template.input_variables) + [input_template])
         else:
             chat_prompt = ChatPromptTemplate.from_messages([input_template])
+            memory = ConversationBufferWindowMemory(model_name=model_name, return_messages=False, message_limit=0,
+                                                    prompt_length=prompt_length)
 
-        if un_format_online_llm_model(model_name):
-            chat_prompt = EMPTY_LLM_CHAT_PROMPT
-
-        chain = LLMChain(prompt=chat_prompt, llm=model)
+        chain = LLMChain(prompt=chat_prompt, llm=model, memory=memory)
 
         # Begin a task that runs in the background.
         task = asyncio.create_task(wrap_done(

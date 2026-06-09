@@ -11,11 +11,10 @@ from server.chat.chat_type import ChatType
 from server.chat.completion import completion
 from server.chat.knowledge_base_chat import knowledge_base_chat
 from server.chat.search_engine_chat import search_engine_chat
-from server.chat.utils import History, un_format_online_llm_model
+from server.chat.utils import History
 from server.chat.workflow_chat import do_workflow_chat
 from server.db.repository import get_assistant_detail_from_db
 from server.knowledge_base.oss import default_oss
-from server.memory.token_info_memory import get_token
 from server.utils import get_chat_file_kb
 
 
@@ -166,12 +165,6 @@ async def do_chat_router(query: str,
                              if
                              t.get("selected", False)]
 
-    if un_format_online_llm_model(model_name):
-        extra["token"] = get_token()
-        extra['stream'] = stream
-        extra["cookie"] = request.headers.get('cookie')
-        extra['mark'] = f'###[{model_name}]###'
-
     if chat_type == ChatType.SEARCH_ENGINE_CHAT.value or (
             search_engine_name is not None and search_engine_name != ''):
 
@@ -212,9 +205,9 @@ async def do_chat_router(query: str,
 
     elif chat_type == ChatType.COMPLETION.value:
 
-        return await completion(query=query, extra=extra, stream=stream, top_p=top_p,
-                                model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                                prompt_name=prompt_name, request=request, )
+        return await completion(query=query, assistant_id=assistant_id, tag=tag, extra=extra, stream=stream,
+                                top_p=top_p, model_name=model_name, temperature=temperature, max_tokens=max_tokens,
+                                prompt_name=prompt_name, store_message=store_message, request=request, )
 
     else:
 
