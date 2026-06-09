@@ -1,5 +1,4 @@
 import copy
-import io
 import json
 import logging
 import re
@@ -15,7 +14,7 @@ from server.db.repository import get_assistant_simple_from_db, get_model_metadat
 from server.knowledge_base.oss import default_oss
 from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelWorker, ApiChatParams
-from server.utils import truncate_text, get_mime_type, get_file_category, get_chat_file_kb
+from server.utils import truncate_text, get_mime_type, get_file_category
 
 
 def analyze_file(filename):
