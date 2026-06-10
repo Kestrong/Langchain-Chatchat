@@ -9,6 +9,8 @@ from langchain.callbacks import AsyncIteratorCallbackHandler
 from langchain.schema import AgentFinish
 from langchain.schema.output import LLMResult
 
+from server.chat.utils import parse_llm_token_inner_json
+
 
 def dumps(obj: Dict) -> str:
     return json.dumps(obj, ensure_ascii=False)
@@ -26,12 +28,13 @@ class AgentStatus:
 
 
 class AgentExecutorAsyncIteratorCallbackHandler(AsyncIteratorCallbackHandler):
-    def __init__(self):
+    def __init__(self, model_name: str):
         super().__init__()
         self.queue = asyncio.Queue()
         self.done = asyncio.Event()
         self.cur_tool = {}
         self.out = True
+        self.model_name = model_name
 
     async def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any) -> None:
         self.cur_tool.update(
@@ -42,6 +45,7 @@ class AgentExecutorAsyncIteratorCallbackHandler(AsyncIteratorCallbackHandler):
         self.queue.put_nowait(dumps(self.cur_tool))
 
     async def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+        token = parse_llm_token_inner_json(model_name=self.model_name, token=token, throw_error=False).get("answer")
         special_tokens = ["\nAction:", "Action:", "\nObservation:", "Observation:", "<|observation|>"]
         for stoken in special_tokens:
             if stoken in token:
@@ -82,7 +86,8 @@ class AgentExecutorAsyncIteratorCallbackHandler(AsyncIteratorCallbackHandler):
     async def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         self.cur_tool.update(
             status=AgentStatus.llm_end,
-            llm_token=response.generations[0][0].text,
+            llm_token=parse_llm_token_inner_json(model_name=self.model_name, token=response.generations[0][0].text,
+                                                 throw_error=False),
         )
         self.queue.put_nowait(dumps(self.cur_tool))
 

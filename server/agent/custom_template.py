@@ -11,7 +11,7 @@ from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import BaseMessage
 from langchain_core.prompts import BaseChatPromptTemplate, HumanMessagePromptTemplate
 
-from configs import logger
+from configs import logger, LLM_MODELS
 
 
 class CustomPromptTemplate(BaseChatPromptTemplate):
@@ -134,14 +134,18 @@ def parse_json(json_string: str, fallback: bool = True) -> Union[str, dict]:
 
 class CustomOutputParser(StructuredChatOutputParser):
     begin: bool = False
+    model_name: str = LLM_MODELS[0]
 
-    def __init__(self):
+    def __init__(self, model_name: str):
         super().__init__()
         self.begin = True
+        self.model_name = model_name
 
     def parse(self, text: str) -> Union[AgentAction, AgentFinish]:
         logger.debug(f"原始输入:{text},结束")
         try:
+            from server.chat.utils import parse_llm_token_inner_json
+            text = parse_llm_token_inner_json(model_name=self.model_name, token=text, throw_error=False).get("answer")
             if s := (re.findall(r"\n*Action\s*:\s*```(json)?\s*({.+})\s*```", text, flags=re.DOTALL) or
                      re.findall(r"\n*Action\s*:\s*({.+})", text, flags=re.DOTALL) or
                      re.findall(r"\s*({\s*\"action\"\s*:.+?\s*,\s*\"action_input\"\s*:.+\s*})\s*", text,

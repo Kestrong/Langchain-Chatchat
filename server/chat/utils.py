@@ -174,7 +174,7 @@ class History(BaseModel):
         return h
 
 
-def parse_llm_token_inner_json(model_name: str, token: str):
+def parse_llm_token_inner_json(model_name: str, token: str, throw_error: bool = True):
     mark = f'###[{model_name}]###'
     answer, thought, error_info = '', '', ''
     extra = {}
@@ -199,7 +199,7 @@ def parse_llm_token_inner_json(model_name: str, token: str):
                     answer += part
     else:
         answer = token
-    if error_info:
+    if throw_error and error_info:
         err = WorkerBusinessException(answer)
         err.__cause__ = WorkerBusinessException(error_info)
         raise err
@@ -307,7 +307,9 @@ def create_agent_executor(model, memory, available_tools: list, prompt_template:
     memory.return_messages = not has_input_memory_key(prompt_template.input_variables, memory.memory_variables)
     llm_chain = LLMChain(llm=model, prompt=ChatPromptTemplate.from_messages(
         memory.buffer_history(prompt_template.input_variables) + [prompt_template_agent]))
-    output_parser = StructuredChatOutputParserWithRetries.from_llm(llm=model, base_parser=CustomOutputParser())
+    origin_model_name = model.metadata.get("origin_model_name") or model.model_name
+    custom_output_parser = CustomOutputParser(model_name=origin_model_name)
+    output_parser = StructuredChatOutputParserWithRetries.from_llm(llm=model, base_parser=custom_output_parser)
     output_parser.output_fixing_parser.max_retries = 3
     agent = LLMSingleActionAgent(
         llm_chain=llm_chain,
