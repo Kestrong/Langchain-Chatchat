@@ -94,7 +94,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
             from server.chat.agent_chat import get_available_tools
             available_tools = get_available_tools(tool_names=['text2sql'], api_names=[],
                                                   tool_config=model_container.TOOL_CONFIG)
-            callback = AgentExecutorAsyncIteratorCallbackHandler()
+            callback = AgentExecutorAsyncIteratorCallbackHandler(model_name=model_name,)
             conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                                 message_id=message_id, chat_type=chat_type,
                                                                 query=query, agent=True)

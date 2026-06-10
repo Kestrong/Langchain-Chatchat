@@ -41,14 +41,16 @@ class ConversationBufferWindowMemory(BaseChatMemory):
         max_token_limit = int(get_max_token_limit(self.model_name) * 0.85)
         messages = []
         length = self.prompt_length
-        for m in self.chat_memory.messages:
+        if length >= max_token_limit:
+            return messages
+        for m in reversed(self.chat_memory.messages):
             if len(messages) >= self.history_length:
                 break
             length += calculate_token_len(m.type, m.content)
-            if length > max_token_limit:
+            if length >= max_token_limit:
                 break
             messages.append(m)
-        return messages
+        return messages[::-1]
 
     @property
     def memory_variables(self) -> List[str]:
