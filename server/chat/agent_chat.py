@@ -11,9 +11,11 @@ from configs import LLM_MODELS, TEMPERATURE, HISTORY_LEN, logger, TOP_P
 from server.agent import create_model_container
 from server.agent.callbacks import AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
 from server.agent.tools.http_request import _http_request
+from server.agent.tools.mcp import mcp_sync, MCPInput
 from server.agent.tools_select import get_all_tools, get_tool, create_dynamic_tool
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.callback_handler.token_callback_handler import TokenCallbackHandler
 from server.chat.chat import process_extra
 from server.chat.chat_type import ChatType
 from server.chat.customize_agent.customize_agent_type import customize_agent_types
@@ -32,10 +34,13 @@ def get_available_tools(tool_names: List[str], api_names: List[str], tool_config
         available_tools = []
         for tool_name in tool_names:
             if tool_name == 'http_request':
-                apis = tool_config.get("http_request", get_tool_config().TOOL_CONFIG.get("http_request", {})).get(
-                    "apis", [])
+                apis = tool_config.get(tool_name, get_tool_config().TOOL_CONFIG.get(tool_name, {})).get("apis", [])
                 available_tools.extend([create_dynamic_tool(api, _http_request) for api in apis if
                                         not api_names or api.get("name") in api_names])
+            elif tool_name == 'mcp':
+                mcps = [{"name": k, **v} for k, v in
+                        tool_config.get(tool_name, get_tool_config().TOOL_CONFIG.get(tool_name, {})).items()]
+                available_tools.extend([create_dynamic_tool(mcp, mcp_sync, schema=MCPInput) for mcp in mcps])
             else:
                 t = get_tool(tool_name)
                 if t:
@@ -108,7 +113,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
             prompt_name: str = prompt_name,
     ) -> AsyncIterable[str]:
         nonlocal max_tokens
-        callback = AgentExecutorAsyncIteratorCallbackHandler(model_name=model_name,)
+        callback = AgentExecutorAsyncIteratorCallbackHandler(model_name=model_name, )
         if isinstance(max_tokens, int) and max_tokens <= 0:
             max_tokens = None
 
@@ -120,7 +125,9 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                             message_id=message_id, chat_type=chat_type,
                                                             query=query, agent=True, stream=stream)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id, agent=True)
-        callbacks.extend([conversation_callback, task_callback])
+        token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id, agent=True)
+        callbacks.extend([conversation_callback, task_callback, token_callback])
+        model_container.CALLBACK_HANDLERS.append(token_callback)
         # Enable langchain-chatchat to support langfuse
         import os
         langfuse_secret_key = os.environ.get('LANGFUSE_SECRET_KEY')
@@ -176,7 +183,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                 pass
         task_manager.put(message_id, task)
 
-        d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
+        d = {"event": "agent_message", "message_id": message_id, "conversation_id": conversation_id, "answer": ""}
         yield json.dumps(d, ensure_ascii=False)
         if not extra.get('backend'):
             if stream:
@@ -191,8 +198,9 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                         thought = Message_I18N.API_AGENT_TOOL_ERROR_INFO.value.format(
                             tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
                             error=data["error"])
-                        yield json.dumps({"thought": thought, "message_id": message_id, "conversation_id": conversation_id},
-                                         ensure_ascii=False)
+                        yield json.dumps(
+                            {"event": "agent_thought", "thought": thought, "message_id": message_id,
+                             "conversation_id": conversation_id}, ensure_ascii=False)
                     elif data["status"] == AgentStatus.tool_end:
                         use_tool_name = data["tool_name"]
                         use_tool = [a for a in available_tools if a.name == use_tool_name]
@@ -200,16 +208,21 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                             tool_name=f"{use_tool[0].title}({use_tool[0].name})" if use_tool else use_tool_name,
                             input_str=str(data.get("input_str")),
                             output_str=str(data.get("output_str")))
-                        yield json.dumps({"thought": thought, "message_id": message_id, "conversation_id": conversation_id},
-                                         ensure_ascii=False)
+                        yield json.dumps(
+                            {"event": "agent_thought", "thought": thought, "message_id": message_id,
+                             "conversation_id": conversation_id},
+                            ensure_ascii=False)
                     elif data["status"] == AgentStatus.agent_finish:
                         final_answer = data["final_answer"]
-                        yield json.dumps({"answer": final_answer, "message_id": message_id,
+                        yield json.dumps({"event": "agent_message", "answer": final_answer, "message_id": message_id,
                                           "conversation_id": conversation_id}, ensure_ascii=False)
                     else:
                         yield json.dumps(
-                            {"thought": data["llm_token"], "message_id": message_id, "conversation_id": conversation_id},
+                            {"event": "agent_thought", "thought": data["llm_token"], "message_id": message_id,
+                             "conversation_id": conversation_id},
                             ensure_ascii=False)
+                yield json.dumps({"event": "message_end", "message_id": message_id, "conversation_id": conversation_id,
+                                  "total_tokens": token_callback.total_tokens}, ensure_ascii=False)
             else:
                 answer = ""
                 thought = ""
@@ -235,8 +248,10 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                     else:
                         thought += data["llm_token"]
 
-                yield json.dumps({"thought": thought, "answer": answer, "message_id": message_id,
-                                  "conversation_id": conversation_id}, ensure_ascii=False)
+                yield json.dumps(
+                    {"event": "agent_message", "thought": thought, "answer": answer, "message_id": message_id,
+                     "conversation_id": conversation_id, "total_tokens": token_callback.total_tokens},
+                    ensure_ascii=False)
         await task
 
     return await choose_response(stream, agent_chat_iterator(query=query,
@@ -310,8 +325,9 @@ async def tool_chat(query: str = Body(..., description="用户输入", examples=
         message_id = add_message_to_db(chat_type=ChatType.AGENT_CHAT.value, query=query if query else f"{extra}",
                                        metadata=extra if query else None, conversation_id=conversation_id,
                                        store=store_message, assistant_id=assistant_id, tag=tag, )
-        yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": ""},
-                         ensure_ascii=False)
+        yield json.dumps(
+            {"event": "message", "message_id": message_id, "conversation_id": conversation_id, "answer": ""},
+            ensure_ascii=False)
         result = None
         try:
             extra["knowledge_id"] = knowledge_id
@@ -323,8 +339,9 @@ async def tool_chat(query: str = Body(..., description="用户输入", examples=
                                               extra=extra)
             walk_results.reverse()
             logger.debug(f"walk_results:{walk_results}")
-            yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": result},
-                             ensure_ascii=False)
+            yield json.dumps(
+                {"event": "message", "message_id": message_id, "conversation_id": conversation_id, "answer": result},
+                ensure_ascii=False)
         finally:
             if result:
                 update_message(message_id=message_id, response=result, response_time=datetime.datetime.now(), )

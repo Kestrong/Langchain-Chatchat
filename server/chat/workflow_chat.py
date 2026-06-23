@@ -129,6 +129,7 @@ async def do_workflow_chat(query: str,
 
         context = {"GLOBAL": {"inputs": {"current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}}}
         db_message_response: Dict[str, Any] = {}
+        total_tokens = 0
         response_all_nodes = []
         queue = asyncio.Queue()
         event = asyncio.Event()
@@ -164,11 +165,14 @@ async def do_workflow_chat(query: str,
                 async for a in iter_node_result(queue, event):
                     response_all_nodes.append(a)
                     db_message_response = a.get("outputs")
-                    yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "answer": a},
-                                     ensure_ascii=False)
+                    total_tokens += db_message_response.get("total_tokens") or 0
+                    yield json.dumps(
+                        {"event": "node_finished", "message_id": message_id, "conversation_id": conversation_id,
+                         "answer": a}, ensure_ascii=False)
             else:
                 async for a in iter_node_result(queue, event):
                     response_all_nodes.append(a)
+                    total_tokens += a.get("outputs", {}).get("total_tokens") or 0
                 if response_all_nodes:
                     db_message_response = response_all_nodes[-1].get("outputs")
                 yield json.dumps(
@@ -194,6 +198,7 @@ async def do_workflow_chat(query: str,
             task_manager.remove(message_id)
             if store_message:
                 update_message(message_id=message_id, response=json.dumps(db_message_response),
-                               metadata={"trace": response_all_nodes}, response_time=datetime.now())
+                               total_tokens=total_tokens, metadata={"trace": response_all_nodes},
+                               response_time=datetime.now())
 
     return await choose_response(stream, chat_iterator(), request)

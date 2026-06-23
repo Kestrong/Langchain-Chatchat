@@ -229,11 +229,13 @@ async def wrap_event_response(event_response: AsyncIterable[str]) -> AsyncIterab
     except MaxInputTokenException as e:
         d["answer"] = f"{e}"
         d["error"] = True
+        d["event"] = "error"
         if d.get("message_id"):
             update_message(message_id=d.get("message_id"), response=d["answer"], response_time=datetime.datetime.now())
         yield json.dumps(d, ensure_ascii=False)
     except BaseException as e:
         d["error"] = True
+        d["event"] = "error"
         if isinstance(e, WorkerBusinessException):
             d["answer"] = str(e)
             e = e.__cause__

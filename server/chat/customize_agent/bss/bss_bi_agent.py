@@ -14,6 +14,7 @@ from configs import TEMPERATURE, LLM_MODELS, HISTORY_LEN, TOP_P
 from server.agent import create_model_container, text2sql, AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.callback_handler.token_callback_handler import TokenCallbackHandler
 from server.chat.chat import process_extra
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
@@ -67,7 +68,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
         message_id = add_message_to_db(chat_type=chat_type, query=query, conversation_id=conversation_id, tag=tag,
                                        store=store_message, assistant_id=assistant_id)
         waiting_tips = extra.get("waiting_tips", "正在查询相关信息，请耐心等待，我们将尽快为您提供答案...")
-        yield json.dumps(obj={"thought": waiting_tips, "message_id": message_id,
+        yield json.dumps(obj={"event": "agent_thought", "thought": waiting_tips, "message_id": message_id,
                               "conversation_id": conversation_id}, ensure_ascii=False)
         if extra and extra.get("sql_cmd"):
 
@@ -88,18 +89,20 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                 result = sql_result
             update_message(message_id=message_id, response=result, metadata=metadata,
                            response_time=datetime.datetime.now(), )
-            yield json.dumps({"answer": result, "message_id": message_id,
+            yield json.dumps({"event": "agent_message", "answer": result, "message_id": message_id,
                               "conversation_id": conversation_id}, ensure_ascii=False)
         else:
             from server.chat.agent_chat import get_available_tools
             available_tools = get_available_tools(tool_names=['text2sql'], api_names=[],
                                                   tool_config=model_container.TOOL_CONFIG)
-            callback = AgentExecutorAsyncIteratorCallbackHandler(model_name=model_name,)
+            callback = AgentExecutorAsyncIteratorCallbackHandler(model_name=model_name, )
             conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                                 message_id=message_id, chat_type=chat_type,
                                                                 query=query, agent=True)
             task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id, agent=True)
-            callbacks = [callback, conversation_callback, task_callback]
+            token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id, agent=True)
+            model_container.CALLBACK_HANDLERS.append(token_callback)
+            callbacks = [callback, conversation_callback, task_callback, token_callback]
             process_extra(stream=stream, model_name=model_name, extra=extra, conversation_id=conversation_id,
                           request=request)
             model = get_ChatOpenAI(
@@ -189,7 +192,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                                      '查询某人上月的调度单处理及时性统计']
                 question1 = random.choice(question_alarm)
                 question2 = random.choice(question_schedule)
-                d = {"message_id": message_id, "conversation_id": conversation_id,
+                d = {"event": "agent_message", "message_id": message_id, "conversation_id": conversation_id,
                      "answer": f"请确保您的提问跟数据库的查询与分析有关，您可以提问有关告警或者调度单查询方面的问题。请确保您提供了以下查询条件之一：时间范围、员工姓名、省份区域。您也可以尝试提问以下内容：\n1. {question1}；\n2. {question2}。\n\n💡**小提示**：有时候是我没理解您的意思，重新提问一次也许会得到更好的结果。"}
                 update_message(message_id=message_id, response=d.get("answer"), metadata=None,
                                response_time=datetime.datetime.now())
@@ -216,8 +219,12 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                             continue
                         elif data["status"] == AgentStatus.agent_finish:
                             final_answer = data["final_answer"]
-                            yield json.dumps({"answer": final_answer, "message_id": message_id,
-                                              "conversation_id": conversation_id}, ensure_ascii=False)
+                            yield json.dumps(
+                                {"event": "agent_message", "answer": final_answer, "message_id": message_id,
+                                 "conversation_id": conversation_id}, ensure_ascii=False)
+                    yield json.dumps(
+                        {"event": "message_end", "message_id": message_id, "conversation_id": conversation_id,
+                         "total_tokens": token_callback.total_tokens}, ensure_ascii=False)
                 else:
                     answer = ""
                     async for chunk in callback.aiter():
@@ -227,8 +234,9 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                         elif data["status"] == AgentStatus.agent_finish:
                             answer += data["final_answer"]
 
-                    yield json.dumps({"answer": answer, "message_id": message_id,
-                                      "conversation_id": conversation_id}, ensure_ascii=False)
+                    yield json.dumps({"event": "agent_message", "answer": answer, "message_id": message_id,
+                                      "conversation_id": conversation_id, "total_tokens": token_callback.total_tokens},
+                                     ensure_ascii=False)
                 await task
 
     return await choose_response(stream, agent_chat_iterator(), request)

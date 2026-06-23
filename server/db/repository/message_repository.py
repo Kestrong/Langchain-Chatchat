@@ -36,7 +36,7 @@ def add_message_to_db(session, conversation_id: str, chat_type, query, response=
 
 @with_session
 def update_message(session, message_id, response: str = None, metadata: Dict = None, append: bool = False,
-                   response_time: datetime.datetime = None):
+                   response_time: datetime.datetime = None, total_tokens: int = None):
     """
     更新已有的聊天记录
     """
@@ -49,7 +49,8 @@ def update_message(session, message_id, response: str = None, metadata: Dict = N
                 m.response += response
             else:
                 m.response = response
-            m.tokens = len(m.response) + (len(m.query) if m.query else 0)
+        if total_tokens:
+            m.tokens = total_tokens
         if isinstance(metadata, dict):
             if m.meta_data is None:
                 m.meta_data = metadata

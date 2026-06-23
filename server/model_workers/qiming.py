@@ -58,11 +58,11 @@ class QimingWorker(ApiModelWorker):
                                            xappid=xappid, xappkey=xappkey)
 
     def upload_files(self, url, app_id, user, contentObj, file_type, extra_headers):
-        result, attachments = [], []
+        result = []
         chat_files = contentObj.get('chat_files')
         if not chat_files:
             logger.debug("chat_files为空，不需要上传")
-            return result, attachments
+            return result
         headers = {}
         if 'X-APP-ID' in extra_headers:
             headers['X-APP-ID'] = extra_headers['X-APP-ID']
@@ -74,7 +74,6 @@ class QimingWorker(ApiModelWorker):
         logger.debug(f"上传内部和第三方文件到dify, url={upload_url}, chat_files={chat_files}")
         for a in chat_files:
             logger.debug(f"upload file: {a}")
-            attachments.append(a)
             with default_oss().get_object(bucket_name=a.get('knowledge_base_name'),
                                           object_name=f"{a.get('path')}/{a.get('filename')}") as o:
                 file_prop = analyze_file(a.get('filename'))
@@ -92,7 +91,7 @@ class QimingWorker(ApiModelWorker):
                         "upload_file_id": response.json().get('id')
                     }
                     result.append(file)
-        return result, attachments
+        return result
 
     def do_chat_common(self, uri: str, params: ApiChatParams, model_config: dict, contentObj: dict, xappid: str,
                        xappkey: str):
@@ -203,7 +202,7 @@ class QimingWorker(ApiModelWorker):
         events = model_config.get('events', params.role_meta.get('events', []))
         node_types = model_config.get('node_types', params.role_meta.get('node_types', []))
         stream = False if is_workflow else True
-        files, attachments = self.upload_files(uri, app_id or business_type, user, contentObj, file_type, headers)
+        files = self.upload_files(uri, app_id or business_type, user, contentObj, file_type, headers)
         task_id = model_config.get('task_id') or params.role_meta.get('task_id')
         # 构建apiData
         if task_id:
@@ -277,13 +276,11 @@ class QimingWorker(ApiModelWorker):
                             elif len(outputs) > 1:
                                 answer = json.dumps(outputs, ensure_ascii=False)
                         if not answer and response_data.get('error'):
-                            text = response_data.get('error')
-                            yield {"error_code": 0, "text": text}
+                            answer = response_data.get('error')
                         else:
-                            text = answer if answer is not None else ''
-                            if not isinstance(text, str):
-                                text = json.dumps(answer, ensure_ascii=False)
-                            yield {"error_code": 0, "text": text}
+                            answer = answer if answer is not None else ''
+                        inner_json_obj = {"answer": answer, "total_tokens": response_data.get('total_tokens')}
+                        yield {"error_code": 0, "text": mark + json.dumps(inner_json_obj) + mark}
                 else:
                     if stream:
                         # 处理流式响应
@@ -297,8 +294,13 @@ class QimingWorker(ApiModelWorker):
                                     json_data = json.loads(json_str)
                                     event = json_data.get('event')
                                     # 根据事件类型处理响应
+                                    if event == "error":
+                                        text += mark + json_data.get('message', '') + mark
+                                        yield {"error_code": 0, "text": text}
                                     if event == "workflow_finished":
-                                        break
+                                        inner_json = {"final_total_tokens": event_data.get('total_tokens')}
+                                        text += mark + json.dumps(inner_json) + mark
+                                        yield {"error_code": 0, "text": text}
                                     if events and event not in events:
                                         continue
                                     event_data = json_data.get('data', {})
@@ -334,11 +336,15 @@ class QimingWorker(ApiModelWorker):
                                         # 结束消息
                                         conversation_id = json_data.get('conversation_id')
                                         message_id = json_data.get('message_id')
+                                        inner_json = {"conversation_id": conversation_id, "message_id": message_id}
                                         metadata = json_data.get('metadata') or {}
+                                        usage = metadata.get('usage') or {}
+                                        if usage:
+                                            inner_json['total_tokens'] = usage.get('total_tokens')
                                         retriever_resources = metadata.get('retriever_resources') or []
                                         if retriever_resources:
                                             grouped_docs = {}
-                                            docs = [a for a in attachments]
+                                            docs = []
                                             for r in retriever_resources:
                                                 key = f"{r.get('dataset_name')}:{r.get('document_name')}"
                                                 if key not in grouped_docs:
@@ -350,22 +356,11 @@ class QimingWorker(ApiModelWorker):
                                                     docs.append(grouped_docs[key])
                                                 grouped_docs[key]["page_content"].append(
                                                     truncate_text(r.get('content')))
-                                            inner_json = json.dumps(
-                                                {"conversation_id": conversation_id, "message_id": message_id,
-                                                 "docs": docs})
-                                            text += mark + inner_json + mark
-                                            yield {"error_code": 0, "text": text}
-                                        elif attachments:
-                                            inner_json = json.dumps(
-                                                {"conversation_id": conversation_id, "message_id": message_id,
-                                                 "docs": attachments})
-                                            text += mark + inner_json + mark
-                                            yield {"error_code": 0, "text": text}
+                                            inner_json["docs"] = docs
+                                        text += mark + json.dumps(inner_json) + mark
+                                        yield {"error_code": 0, "text": text}
                                     elif event == "tts_message":
                                         text += mark + json_data.get('audio', '') + mark
-                                        yield {"error_code": 0, "text": text}
-                                    elif event == "error":
-                                        text += mark + json_data.get('message', '') + mark
                                         yield {"error_code": 0, "text": text}
                                 except json.JSONDecodeError as e:
                                     logger.error(f"JSON解析错误: {e}")

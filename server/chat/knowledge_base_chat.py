@@ -18,6 +18,7 @@ from configs import (LLM_MODELS,
                      TOP_P, HISTORY_LEN)
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.callback_handler.token_callback_handler import TokenCallbackHandler
 from server.chat.chat import process_extra
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
@@ -107,10 +108,11 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                                                             message_id=message_id, query=query, stream=stream,
                                                             chat_type=chat_type)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
+        token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id)
         if isinstance(max_tokens, int) and max_tokens <= 0:
             max_tokens = None
 
-        callbacks = [conversation_callback, task_callback]
+        callbacks = [conversation_callback, task_callback, token_callback]
         # Enable langchain-chatchat to support langfuse
         import os
         langfuse_secret_key = os.environ.get('LANGFUSE_SECRET_KEY')
@@ -220,7 +222,7 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
 
         task_manager.put(message_id, task)
 
-        d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
+        d = {"event": "message", "message_id": message_id, "conversation_id": conversation_id, "answer": ""}
         yield json.dumps(d, ensure_ascii=False)
         if not extra.get('backend'):
             if stream:
@@ -228,15 +230,16 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
                     # Use server-sent-events to stream the response
                     d.update(parse_llm_token_inner_json(model_name, token))
                     yield json.dumps(d, ensure_ascii=False)
-                yield json.dumps(
-                    {"message_id": message_id, "conversation_id": conversation_id, "docs": source_documents},
-                    ensure_ascii=False)
+                yield json.dumps({"event": "message_end", "message_id": message_id, "conversation_id": conversation_id,
+                                  "docs": source_documents, "total_tokens": token_callback.total_tokens},
+                                 ensure_ascii=False)
             else:
                 answer = ""
                 async for token in callback.aiter():
                     answer += str(token)
                 d.update(parse_llm_token_inner_json(model_name, answer))
                 d["docs"] = source_documents
+                d["total_tokens"] = token_callback.total_tokens
                 yield json.dumps(d, ensure_ascii=False)
         await task
 

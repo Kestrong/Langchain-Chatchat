@@ -48,7 +48,7 @@ def get_tools_info() -> BaseResponse:
     return BaseResponse(code=200, data=toos_info)
 
 
-def create_dynamic_tool(api: dict, func: Callable):
+def create_dynamic_tool(api: dict, func: Callable, schema=None):
     def create_field(name, field_schema: dict):
         if field_schema.get("parameters", {}):
             return create_dynamic_model(name, field_schema["parameters"])
@@ -64,7 +64,7 @@ def create_dynamic_tool(api: dict, func: Callable):
     def func_wrapper(**kwargs: Any):
         return func(api_info=api, args=kwargs)
 
-    args_schema = create_dynamic_model(api.get("name"), api)
+    args_schema = schema or create_dynamic_model(api.get("name"), api)
     t = StructuredTool.from_function(func=func_wrapper, name=api.get("name"),
                                      description=api.get("description"), return_direct=api.get("return_direct", True),
                                      args_schema=args_schema, infer_schema=False)

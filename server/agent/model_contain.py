@@ -7,6 +7,7 @@ class ModelContainer:
         self.TOOL_RERUN: bool = False
         self.TOOL_CONFIG: dict = {}
         self.TOOL_ARGS: dict = {}
+        self.CALLBACK_HANDLERS = []
 
 
 # 创建一个线程本地变量

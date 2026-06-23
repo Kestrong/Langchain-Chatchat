@@ -90,26 +90,20 @@ class DifyWorker(ApiModelWorker):
     def get_inputs(self, role_meta: dict, model_config: dict):
         return model_config.get('inputs') or role_meta.get("inputs", {})
 
-    def get_chunk_response(self, json_data, is_workflow, mark, user, api_key, events, node_types, attachments):
+    def get_chunk_response(self, json_data, is_workflow, mark, user, api_key, events, node_types):
         event = json_data.get('event')
         if is_workflow:
-            if event == "workflow_finished":
-                return mark + '[BREAK]' + mark
-            elif event == "tts_message":
-                return json_data.get('audio', '')
-            elif event == "node_finished":
-                obj = {"answer": json_data.get('data', {}).get('outputs')}
-                if attachments:
-                    obj["docs"] = attachments
-                return mark + json.dumps(obj) + mark
-            else:
-                return None
+            # workflow never be stream chunk
+            return mark + '[BREAK]' + mark
         else:
+            event_data = json_data.get('data', {})
+            if event == "error":
+                return json_data.get('message', '')
             if event == "workflow_finished":
-                return mark + '[BREAK]' + mark
+                total_tokens = event_data.get('total_tokens')
+                return mark + json.dumps({"final_total_tokens": total_tokens}) + mark
             if events and event not in events:
                 return None
-            event_data = json_data.get('data', {})
             if event == "node_finished" and event_data.get('node_type') in node_types:
                 conversation_id = json_data.get('conversation_id')
                 message_id = json_data.get('message_id')
@@ -136,11 +130,16 @@ class DifyWorker(ApiModelWorker):
             elif event == "message_end":
                 conversation_id = json_data.get('conversation_id')
                 message_id = json_data.get('message_id')
+                inner_json = {"conversation_id": conversation_id, "message_id": message_id, "user": user,
+                              "api_key": api_key}
                 metadata = json_data.get('metadata') or {}
+                usage = metadata.get('usage') or {}
+                if usage:
+                    inner_json['total_tokens'] = usage.get('total_tokens')
                 retriever_resources = metadata.get('retriever_resources') or []
                 if retriever_resources:
                     grouped_docs = {}
-                    docs = [a for a in attachments]
+                    docs = []
                     for r in retriever_resources:
                         key = f"{r.get('dataset_name')}:{r.get('document_name')}"
                         if key not in grouped_docs:
@@ -151,29 +150,19 @@ class DifyWorker(ApiModelWorker):
                             }
                             docs.append(grouped_docs[key])
                         grouped_docs[key]["page_content"].append(truncate_text(r.get('content')))
-                    inner_json = json.dumps(
-                        {"conversation_id": conversation_id, "message_id": message_id,
-                         "user": user, "api_key": api_key, "docs": docs})
-                    return mark + inner_json + mark
-                elif attachments:
-                    inner_json = json.dumps(
-                        {"conversation_id": conversation_id, "message_id": message_id,
-                         "user": user, "api_key": api_key, "docs": attachments})
-                    return mark + inner_json + mark
-                return None
+                    inner_json["docs"] = docs
+                return mark + json.dumps(inner_json) + mark
             elif event == "tts_message":
                 return json_data.get('audio', '')
-            elif event == "error":
-                return json_data.get('message', '')
             else:
                 return None
 
     def upload_files(self, url, api_key, user, contentObj, file_type, extra_headers):
-        result, attachments = [], []
+        result = []
         chat_files = contentObj.get('chat_files')
         if not chat_files:
             logger.debug("chat_files为空，不需要上传")
-            return result, attachments
+            return result
         headers = {'Authorization': f'Bearer {api_key}'}
         if 'X-APP-ID' in extra_headers:
             headers['X-APP-ID'] = extra_headers['X-APP-ID']
@@ -185,7 +174,6 @@ class DifyWorker(ApiModelWorker):
         logger.debug(f"上传内部和第三方文件到dify, url={upload_url}, chat_files={chat_files}")
         for a in chat_files:
             logger.debug(f"upload file: {a}")
-            attachments.append(a)
             with default_oss().get_object(bucket_name=a.get('knowledge_base_name'),
                                           object_name=f"{a.get('path')}/{a.get('filename')}") as o:
                 file_prop = analyze_file(a.get('filename'))
@@ -202,7 +190,7 @@ class DifyWorker(ApiModelWorker):
                         "upload_file_id": response.json().get('id')
                     }
                     result.append(file)
-        return result, attachments
+        return result
 
     def do_chat(self, params: ApiChatParams) -> Dict:
         params = params.load_config(self.model_names[0])
@@ -219,8 +207,8 @@ class DifyWorker(ApiModelWorker):
             model_config = assistant.get('model_config') or {}
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key') or contentObj.get('api_key') or params.api_key
-        response_mode = model_config.get('stream', contentObj.get('stream', True))
         is_workflow = model_config.get('is_workflow') or role_meta.get('is_workflow', False)
+        response_mode = False if is_workflow else model_config.get('stream', contentObj.get('stream', True))
         events = model_config.get('events', role_meta.get('events', []))
         node_types = model_config.get('node_types', role_meta.get('node_types', []))
         user = model_config.get('user') or role_meta.get("user")
@@ -243,7 +231,7 @@ class DifyWorker(ApiModelWorker):
         text = ""
         mark = f'###[{self.model_names[0]}]###'
         try:
-            files, attachments = self.upload_files(url, api_key, user, contentObj, file_type, extra_headers)
+            files = self.upload_files(url, api_key, user, contentObj, file_type, extra_headers)
             data['files'] = files
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"请求dify接口参数：{filter_sensitive_data(data)}")
@@ -255,14 +243,15 @@ class DifyWorker(ApiModelWorker):
                 response.raise_for_status()
                 if response_mode:
                     for chunk in response.iter_lines():
+                        logger.debug(f"接收到流式响应: {chunk}")
                         if chunk is None or len(chunk) == 0:
                             continue
                         if chunk.startswith(b'data:'):
                             json_str = chunk.decode('utf-8')[6:]
                             try:
                                 json_data = json.loads(json_str)
-                                result = self.get_chunk_response(json_data, is_workflow, mark, data.get('user'),
-                                                                 api_key, events, node_types, attachments)
+                                result = self.get_chunk_response(json_data, is_workflow, mark, user, api_key, events,
+                                                                 node_types)
                                 if not result:
                                     continue
                                 if result == mark + '[BREAK]' + mark:
@@ -273,23 +262,38 @@ class DifyWorker(ApiModelWorker):
                                 pass
                 else:
                     json_data = response.json()
+                    logger.debug(f"dify接口返回数据: {json_data}")
                     if is_workflow:
-                        inner_json_obj = {"answer": json_data.get('data', {}).get('outputs')}
-                        if attachments:
-                            inner_json_obj['docs'] = attachments
-                        inner_json = json.dumps(inner_json_obj)
-                        yield {"error_code": 0, "text": mark + inner_json + mark}
+                        answer_key = model_config.get('output_key') or params.role_meta.get("output_key")
+                        response_data = json_data.get('data', {})
+                        outputs = response_data.get('outputs') or {}
+                        answer = ''
+                        if answer_key and answer_key in outputs:
+                            answer = outputs.get(answer_key, '')
+                        else:
+                            if len(outputs) == 1:
+                                answer = list(outputs.values())[0]
+                            elif len(outputs) > 1:
+                                answer = json.dumps(outputs, ensure_ascii=False)
+                        if not answer and response_data.get('error'):
+                            answer = response_data.get('error')
+                        else:
+                            answer = answer if answer is not None else ''
+                        inner_json_obj = {"answer": answer, "total_tokens": response_data.get('total_tokens')}
+                        yield {"error_code": 0, "text": mark + json.dumps(inner_json_obj) + mark}
                     else:
                         conversation_id = json_data.get('conversation_id')
                         message_id = json_data.get('message_id')
                         inner_json_obj = {"conversation_id": conversation_id, "message_id": message_id,
-                                          "user": data.get('user'), "api_key": api_key,
-                                          "answer": json_data.get('answer', '')}
+                                          "user": user, "api_key": api_key, "answer": json_data.get('answer', '')}
                         metadata = json_data.get('metadata') or {}
+                        usage = metadata.get('usage') or {}
+                        if usage:
+                            inner_json_obj['total_tokens'] = usage.get('total_tokens')
                         retriever_resources = metadata.get('retriever_resources') or []
                         if retriever_resources:
                             grouped_docs = {}
-                            docs = [a for a in attachments]
+                            docs = []
                             for r in retriever_resources:
                                 key = f"{r.get('dataset_name')}:{r.get('document_name')}"
                                 if key not in grouped_docs:
@@ -301,10 +305,7 @@ class DifyWorker(ApiModelWorker):
                                     docs.append(grouped_docs[key])
                                 grouped_docs[key]["page_content"].append(truncate_text(r.get('content')))
                             inner_json_obj['docs'] = docs
-                        elif attachments:
-                            inner_json_obj['docs'] = attachments
-                        inner_json = json.dumps(inner_json_obj)
-                        yield {"error_code": 0, "text": mark + inner_json + mark}
+                        yield {"error_code": 0, "text": mark + json.dumps(inner_json_obj) + mark}
         except Exception as e:
             logger.error(f"{e}")
             if text == '':
