@@ -12,6 +12,7 @@ from starlette.requests import Request
 from configs import LLM_MODELS, TEMPERATURE, TOP_P
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.callback_handler.token_callback_handler import TokenCallbackHandler
 from server.chat.chat import process_extra
 from server.chat.chat_type import ChatType
 from server.chat.utils import parse_llm_token_inner_json, \
@@ -55,7 +56,8 @@ async def completion(query: str = Body(..., description="用户输入", examples
                                                             message_id=message_id, chat_type=chat_type, query=query,
                                                             stream=stream)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
-        callbacks = [conversation_callback, task_callback]
+        token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id)
+        callbacks = [conversation_callback, task_callback, token_callback]
         process_extra(stream=stream, model_name=model_name, extra=extra, conversation_id=None, request=request)
 
         model = get_ChatOpenAI(
@@ -76,17 +78,22 @@ async def completion(query: str = Body(..., description="用户输入", examples
             chain.acall({"input": query}, callbacks=callbacks),
             callback.done),
         )
+        d = {"event": "message", "message_id": message_id, "conversation_id": conversation_id, "answer": ""}
+        yield json.dumps(d, ensure_ascii=False)
         if not extra.get('backend'):
             if stream:
                 async for token in callback.aiter():
                     # Use server-sent-events to stream the response
-                    yield json.dumps(parse_llm_token_inner_json(model_name, token), ensure_ascii=False)
+                    d.update(parse_llm_token_inner_json(model_name, token))
+                    yield json.dumps(d, ensure_ascii=False)
+                yield json.dumps({"event": "message_end", "message_id": message_id, "conversation_id": conversation_id,
+                                  "total_tokens": token_callback.total_tokens}, ensure_ascii=False)
             else:
                 answer = ""
                 async for token in callback.aiter():
                     answer += str(token)
-                yield json.dumps(parse_llm_token_inner_json(model_name, answer), ensure_ascii=False)
-
+                d.update(parse_llm_token_inner_json(model_name, answer), total_tokens=token_callback.total_tokens)
+                yield json.dumps(d, ensure_ascii=False)
         await task
 
     return await choose_response(stream, completion_iterator(query=query,

@@ -744,6 +744,7 @@ class Text2SqlInput(BaseModel):
 def text2sql(natural_language_question: str):
     model_container = get_model_container() or ModelContainer()
     model_container.TOOL_RERUN = False
+    callbacks = model_container.CALLBACK_HANDLERS
     query = natural_language_question
     origin_query = query
 
@@ -773,6 +774,7 @@ def text2sql(natural_language_question: str):
             temperature=0,
             streaming=True,
             verbose=True,
+            callbacks=callbacks,
         )
         sql_cmd = model_container.TOOL_ARGS.get("sql_cmd")
         if not sql_cmd:

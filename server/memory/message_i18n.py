@@ -498,6 +498,10 @@ workflow = {
         "zh": "思考过程",
         "en": "Thought"
     },
+    "WORKFLOW_OUTPUT_DISPLAYNAME_TOTAL_TOKENS": {
+        "zh": "总token数量",
+        "en": "Total tokens"
+    },
     "WORKFLOW_OUTPUT_DISPLAYNAME_RESULT": {
         "zh": "结果",
         "en": "Result"

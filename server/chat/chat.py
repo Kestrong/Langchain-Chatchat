@@ -14,6 +14,7 @@ from starlette.requests import Request
 from configs import LLM_MODELS, TEMPERATURE, TOP_P, HISTORY_LEN, logger
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.callback_handler.token_callback_handler import TokenCallbackHandler
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, parse_llm_token_inner_json, \
@@ -93,7 +94,8 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                                                             query=query, realtime_token_save=realtime_token_save,
                                                             stream=stream)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
-        callbacks.extend([conversation_callback, task_callback])
+        token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id)
+        callbacks.extend([conversation_callback, task_callback, token_callback])
         # message_id = uuid.uuid4().hex
 
         # Enable langchain-chatchat to support langfuse
@@ -166,7 +168,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
 
         task_manager.put(message_id, task)
 
-        d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
+        d = {"event": "message", "message_id": message_id, "conversation_id": conversation_id, "answer": ""}
         yield json.dumps(d, ensure_ascii=False)
         if not extra.get('backend'):
             if stream:
@@ -174,11 +176,13 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
                     # Use server-sent-events to stream the response
                     d.update(parse_llm_token_inner_json(model_name, token))
                     yield json.dumps(d, ensure_ascii=False)
+                yield json.dumps({"event": "message_end", "message_id": message_id, "conversation_id": conversation_id,
+                                  "total_tokens": token_callback.total_tokens}, ensure_ascii=False)
             else:
                 answer = ""
                 async for token in callback.aiter():
                     answer += str(token)
-                d.update(parse_llm_token_inner_json(model_name, answer))
+                d.update(parse_llm_token_inner_json(model_name, answer), total_tokens=token_callback.total_tokens)
                 yield json.dumps(d, ensure_ascii=False)
 
             await task

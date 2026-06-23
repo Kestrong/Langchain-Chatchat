@@ -114,6 +114,15 @@ TOOL_CONFIG = {
                 }
             }
         ]
-    }
+    },
+    "mcp": {
+        "math_mcp": {
+            "server_url": "http://127.0.0.1:8000",
+            "timeout": 30,
+            "title": "数学计算MCP",
+            "description": "先使用MCP工具的tools/list方法获取可以使用的数学工具，然后再根据工具的定义使用tools/call进行调用。",
+            "return_direct": False,
+        }
+    },
 }
 

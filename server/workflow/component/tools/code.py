@@ -5,7 +5,7 @@ from typing import Dict, Any, Union
 from configs import PYTHON_REPL_TIMEOUT
 from server.workflow.component.base.component import Component
 from server.workflow.utils.inputs import TextInput, DictInput
-from server.workflow.utils.outputs import DictOutput
+from server.workflow.utils.outputs import DictOutput, TextOutput
 
 
 async def exec_python_async(python_code: str, args: Dict[str, Any], _globals: Dict[str, Any],
@@ -54,6 +54,10 @@ class PythonREPLComponent(Component):
         DictOutput(
             name='result',
             display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_RESULT}",
+        ),
+        TextOutput(
+            display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_TOTAL_TOKENS}",
+            name="total_tokens",
         )
     ]
 
@@ -78,5 +82,7 @@ class PythonREPLComponent(Component):
             result = f"Error: Execution timed out after {PYTHON_REPL_TIMEOUT} seconds"
         except Exception as e:
             result = f"Error: {type(e).__name__}: {str(e)}"
-
-        return {"result": result}
+        total_tokens = None
+        if isinstance(result, dict) and "total_tokens" in result:
+            total_tokens = result.pop("total_tokens")
+        return {"result": result, "total_tokens": total_tokens}

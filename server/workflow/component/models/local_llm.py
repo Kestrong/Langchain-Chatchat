@@ -102,6 +102,10 @@ class LocalLLMComponent(Component):
         TextOutput(
             display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_THOUGHT}",
             name="thought",
+        ),
+        TextOutput(
+            display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_TOTAL_TOKENS}",
+            name="total_tokens",
         )
     ]
 
@@ -159,13 +163,16 @@ class LocalLLMComponent(Component):
                     raise err
                 if "answer" in event:
                     answer += event["answer"]
-                elif "msg" in event:
+                if "msg" in event:
                     answer += event["msg"]
-                elif "docs" in event:
+                if "docs" in event:
                     result['docs'] = event["docs"]
-                elif "thought" in event:
+                if "thought" in event:
                     result['thought'] = event["thought"]
+                if "total_tokens" in event:
+                    result['total_tokens'] = event["total_tokens"]
         result.setdefault("docs", [])
         result.setdefault("thought", None)
+        result.setdefault("total_tokens", None)
         result['answer'] = answer
         return result
