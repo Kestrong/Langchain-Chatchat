@@ -100,7 +100,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                                                                 message_id=message_id, chat_type=chat_type,
                                                                 query=query, agent=True)
             task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id, agent=True)
-            token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id, agent=True)
+            token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id)
             model_container.CALLBACK_HANDLERS.append(token_callback)
             callbacks = [callback, conversation_callback, task_callback, token_callback]
             process_extra(stream=stream, model_name=model_name, extra=extra, conversation_id=conversation_id,

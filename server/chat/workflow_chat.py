@@ -162,22 +162,33 @@ async def do_workflow_chat(query: str,
             task.add_done_callback(partial(execute_node_callback, event=event, queue=queue))
             task_manager.put(message_id, task)
             if stream:
+                yield json.dumps(
+                    {"event": "workflow_started", "message_id": message_id, "conversation_id": conversation_id},
+                    ensure_ascii=False)
                 async for a in iter_node_result(queue, event):
                     response_all_nodes.append(a)
                     db_message_response = a.get("outputs")
-                    total_tokens += db_message_response.get("total_tokens") or 0
-                    yield json.dumps(
-                        {"event": "node_finished", "message_id": message_id, "conversation_id": conversation_id,
-                         "answer": a}, ensure_ascii=False)
+                    node_tokens = db_message_response.pop("total_tokens", 0)
+                    total_tokens += node_tokens
+                    node_result = {"event": "node_finished", "message_id": message_id,
+                                   "conversation_id": conversation_id, "answer": a}
+                    if node_tokens > 0:
+                        node_result["total_tokens"] = node_tokens
+                    yield json.dumps(node_result, ensure_ascii=False)
+                yield json.dumps(
+                    {"event": "workflow_finished", "message_id": message_id, "conversation_id": conversation_id,
+                     "total_tokens": total_tokens}, ensure_ascii=False)
             else:
+                yield json.dumps({"event": "message", "message_id": message_id, "conversation_id": conversation_id},
+                                 ensure_ascii=False)
                 async for a in iter_node_result(queue, event):
                     response_all_nodes.append(a)
-                    total_tokens += a.get("outputs", {}).get("total_tokens") or 0
+                    total_tokens += a.get("outputs", {}).pop("total_tokens", 0)
                 if response_all_nodes:
                     db_message_response = response_all_nodes[-1].get("outputs")
                 yield json.dumps(
-                    {"message_id": message_id, "conversation_id": conversation_id, "answer": response_all_nodes},
-                    ensure_ascii=False)
+                    {"event": "message", "message_id": message_id, "conversation_id": conversation_id,
+                     "answer": response_all_nodes, "total_tokens": total_tokens}, ensure_ascii=False)
             await task
         except BaseException as ex:
             msg = Message_I18N.WORKER_CHAT_CANCELLED.value if isinstance(ex, CancelledError) else f"{ex}"
