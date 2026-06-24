@@ -320,18 +320,16 @@ class QimingWorker(ApiModelWorker):
                                     elif event == "text_chunk":
                                         text += mark + json_data.get('text', '') + mark
                                         yield {"error_code": 0, "text": text}
-                                    elif event == "agent_message" or event == "message":
+                                    elif event == "agent_message" or event == "message" or event == "agent_thought":
                                         answer = json_data.get('answer', '')
+                                        thought = json_data.get('thought', '')
                                         conversation_id = json_data.get('conversation_id')
                                         message_id = json_data.get('message_id')
                                         inner_json = json.dumps(
                                             {"conversation_id": conversation_id, "message_id": message_id,
-                                             "user": user, "answer": answer})
+                                             "user": user, "answer": answer, 'thought': thought})
                                         text += mark + inner_json + mark
                                         yield {"error_code": 0, "text": text}
-                                    elif event == "agent_thought":
-                                        # 暂时不处理
-                                        thought = json_data.get('thought', '')
                                     elif event == "message_end":
                                         # 结束消息
                                         conversation_id = json_data.get('conversation_id')
