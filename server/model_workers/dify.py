@@ -119,13 +119,14 @@ class DifyWorker(ApiModelWorker):
             elif event == "text_chunk":
                 msg = event_data.get('text', '')
                 return msg
-            elif event == "message" or event == "agent_message":
+            elif event == "message" or event == "agent_message" or event == "agent_thought":
                 conversation_id = json_data.get('conversation_id')
                 message_id = json_data.get('message_id')
                 msg = json_data.get('answer', '')
+                thought = json_data.get('thought', '')
                 inner_json = json.dumps(
                     {"conversation_id": conversation_id, "message_id": message_id,
-                     "user": user, "api_key": api_key, "answer": msg})
+                     "user": user, "api_key": api_key, "answer": msg, 'thought': thought})
                 return mark + inner_json + mark
             elif event == "message_end":
                 conversation_id = json_data.get('conversation_id')
