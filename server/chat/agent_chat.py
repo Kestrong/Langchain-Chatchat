@@ -125,7 +125,7 @@ async def agent_chat(query: str = Body(..., description="用户输入", examples
                                                             message_id=message_id, chat_type=chat_type,
                                                             query=query, agent=True, stream=stream)
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id, agent=True)
-        token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id, agent=True)
+        token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id)
         callbacks.extend([conversation_callback, task_callback, token_callback])
         model_container.CALLBACK_HANDLERS.append(token_callback)
         # Enable langchain-chatchat to support langfuse
