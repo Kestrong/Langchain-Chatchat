@@ -325,7 +325,7 @@ def get_hot_query(assistant_id: int = Query(None, description="助手id"),
         cache_key = f"hot_query_{'self' if is_self is True else 'all'}_{assistant_id}"
         if cache_key in hot_query_cache:
             return BaseResponse(code=200, data=hot_query_cache[cache_key])
-        with hot_query_locks.setdefault(cache_key, threading.Lock()):
+        with hot_query_locks.setdefault(cache_key, threading.RLock()):
             if cache_key in hot_query_cache:
                 return BaseResponse(code=200, data=hot_query_cache[cache_key])
             limit = int(os.environ.get("HOT_QUERY_LIMIT", 100))

@@ -67,7 +67,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
     if chat_type == ChatType.WORKFLOW_CHAT.value or (workflow_config is not None and len(workflow_config) > 0):
         return await do_workflow_chat(query=query, stream=stream, assistant_id=assistant_id, knowledge_id=knowledge_id,
                                       conversation_id=conversation_id, extra=extra, store_message=store_message,
-                                      workflow_config=workflow_config, tag=tag)
+                                      workflow_config=workflow_config, tag=tag, request=request)
     return await do_chat_router(query=query, chat_type=chat_type, extra=extra, conversation_id=conversation_id,
                                 assistant_id=assistant_id, assistant=assistant, knowledge_id=knowledge_id,
                                 knowledge_base_names=knowledge_base_names, search_engine_name=search_engine_name,

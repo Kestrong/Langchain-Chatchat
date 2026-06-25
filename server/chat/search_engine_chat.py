@@ -185,12 +185,14 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
             max_tokens = None
 
         callbacks = []
+        realtime_token_save = extra.get("realtime_token_save", False)
         message_id = add_message_to_db(chat_type=chat_type, query=query, tag=tag,
+                                       response='' if realtime_token_save else None,
                                        conversation_id=conversation_id, store=store_message, assistant_id=assistant_id,
                                        metadata={'chat_files': chat_files} if chat_files else {}, )
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
-                                                            message_id=message_id, query=query, stream=stream,
-                                                            chat_type=chat_type, )
+                                                            message_id=message_id, query=query, chat_type=chat_type,
+                                                            stream=stream, realtime_token_save=realtime_token_save, )
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id)
         callbacks.extend([conversation_callback, task_callback, token_callback])

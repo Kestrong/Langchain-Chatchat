@@ -101,12 +101,14 @@ async def knowledge_base_chat(query: str = Body(..., description="用户输入",
         nonlocal max_tokens
         callback = AsyncIteratorCallbackHandler()
         # 负责保存llm response到message db
+        realtime_token_save = extra.get("realtime_token_save", False)
         message_id = add_message_to_db(chat_type=chat_type, query=query, assistant_id=assistant_id, tag=tag,
+                                       response='' if realtime_token_save else None,
                                        metadata={'chat_files': chat_files} if chat_files else {},
                                        conversation_id=conversation_id, store=store_message)
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
-                                                            message_id=message_id, query=query, stream=stream,
-                                                            chat_type=chat_type)
+                                                            message_id=message_id, query=query, chat_type=chat_type,
+                                                            realtime_token_save=realtime_token_save, stream=stream, )
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id)
         if isinstance(max_tokens, int) and max_tokens <= 0:
