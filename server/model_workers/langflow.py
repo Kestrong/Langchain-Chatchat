@@ -59,7 +59,7 @@ class LangflowWorker(ApiModelWorker):
         cookie = contentObj.get('cookie')
         token_info = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
         tweaks = contentObj.get('tweaks', inputs.get('tweaks', {}))
-        parse_inputs_expr(tweaks, query, contentObj)
+        parse_inputs_expr(tweaks, query, contentObj, assistant)
 
         data = {
             "input_value": query,

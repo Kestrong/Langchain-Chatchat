@@ -24,7 +24,7 @@ class TokenCallbackHandler(BaseCallbackHandler):
         self.last_total_tokens = 0
         from server.chat.utils import un_format_online_llm_model
         self.unformat = un_format_online_llm_model(self.model_name)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def on_agent_finish(
             self,

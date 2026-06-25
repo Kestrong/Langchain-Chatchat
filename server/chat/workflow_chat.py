@@ -31,7 +31,7 @@ async def workflow_chat(query: str = Body(..., description="用户输入", examp
                         conversation_id: str = Body("", description="对话框ID"),
                         knowledge_id: str = Body("", description="临时知识库ID"),
                         store_message: bool = Body(True, description="是否保存消息到数据库"),
-                        request: Request = None
+                        request: Request = None,
                         ):
     assistant = None
     if assistant_id >= 0:
@@ -39,7 +39,7 @@ async def workflow_chat(query: str = Body(..., description="用户输入", examp
     workflow_config = assistant.get("workflow_config", {})
     return await do_workflow_chat(query=query, stream=stream, assistant_id=assistant_id, extra=extra,
                                   conversation_id=conversation_id, knowledge_id=knowledge_id, tag=tag,
-                                  store_message=store_message, workflow_config=workflow_config, request=request)
+                                  store_message=store_message, workflow_config=workflow_config, request=request, )
 
 
 def get_component_type(name: str):
@@ -59,7 +59,7 @@ async def do_workflow_chat(query: str,
                            conversation_id: str = None,
                            knowledge_id: str = "",
                            store_message: bool = True,
-                           request: Request = None
+                           request: Request = None,
                            ):
     if workflow_config is None or len(workflow_config) == 0:
         return BaseResponse(code=500, msg=Message_I18N.API_PARAM_NOT_PRESENT.value.format(
@@ -197,8 +197,8 @@ async def do_workflow_chat(query: str,
             logger.error(msg)
             db_message_response = {"error_info": msg}
             yield json.dumps(
-                {"message_id": message_id, "conversation_id": conversation_id, "answer": db_message_response},
-                ensure_ascii=False)
+                {"event": "error", "message_id": message_id, "conversation_id": conversation_id,
+                 "answer": db_message_response, "error": True}, ensure_ascii=False)
         finally:
             try:
                 if (task and not task.done()) or not event.is_set():
@@ -212,4 +212,16 @@ async def do_workflow_chat(query: str,
                                total_tokens=total_tokens, metadata={"trace": response_all_nodes},
                                response_time=datetime.now())
 
-    return await choose_response(stream, chat_iterator(), request)
+    async def chat_iterator_backend() -> AsyncIterable[str]:
+        async def consume_iterator(iterator: AsyncIterable[str]):
+            async for _ in iterator:
+                pass
+
+        _ = asyncio.create_task(consume_iterator(chat_iterator()))
+        yield json.dumps(
+            {"event": "message", "message_id": message_id, "conversation_id": conversation_id},
+            ensure_ascii=False)
+
+    if not extra.get('backend'):
+        return await choose_response(stream, chat_iterator(), request)
+    return await choose_response(stream, chat_iterator_backend(), request)

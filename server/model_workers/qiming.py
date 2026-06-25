@@ -52,7 +52,7 @@ class QimingWorker(ApiModelWorker):
         version = model_config.get('version', params.version)
         if version == "workflow":
             yield from self.do_chat_workflow(uri=uri, params=params, model_config=model_config, contentObj=contentObj,
-                                             xappid=xappid, xappkey=xappkey)
+                                             xappid=xappid, xappkey=xappkey, assistant=assistant)
         else:
             yield from self.do_chat_common(uri=uri, params=params, model_config=model_config, contentObj=contentObj,
                                            xappid=xappid, xappkey=xappkey)
@@ -186,7 +186,7 @@ class QimingWorker(ApiModelWorker):
                 pass
 
     def do_chat_workflow(self, uri: str, params: ApiChatParams, model_config: dict, contentObj: dict, xappid: str,
-                         xappkey: str):
+                         xappkey: str, assistant: dict = None):
         # 构建请求头
         headers = {
             "X-APP-ID": xappid,
@@ -218,7 +218,7 @@ class QimingWorker(ApiModelWorker):
         else:
             query = contentObj.get('question', '')
             inputs = model_config.get('inputs') or params.role_meta.get("inputs", {})
-            parse_inputs_expr(inputs, query, contentObj)
+            parse_inputs_expr(inputs, query, contentObj, assistant)
             inputs['cookie'] = contentObj.get('cookie')
             inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
             final_user = user or get_token_info(contentObj.get('token')).get('userId') or '1'

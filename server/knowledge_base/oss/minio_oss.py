@@ -7,16 +7,20 @@ from minio.deleteobjects import DeleteObject
 from configs.basic_config import logger
 from server.knowledge_base.oss import OssType
 from server.knowledge_base.oss.base import Base
+from server.utils import get_tool_config, aes_decrypt_placeholder
 
 
 class MinioOss(Base):
 
     def __init__(self):
         super().__init__()
+        key = get_tool_config().TOOL_CONFIG.get("aes", {}).get("key")
         self.config = self.oss_config.get("minio", {})
         self.bucket_name = self.config.get('default_bucket_name')
-        self.minio = Minio(endpoint=self.config.get("endpoint"), access_key=self.config.get("access_key"),
-                           secret_key=self.config.get("secret_key"), secure=self.config.get("secure", False),
+        self.minio = Minio(endpoint=self.config.get("endpoint"),
+                           access_key=aes_decrypt_placeholder(self.config.get("access_key", ""), key),
+                           secret_key=aes_decrypt_placeholder(self.config.get("secret_key", ""), key),
+                           secure=self.config.get("secure", False),
                            cert_check=self.config.get("cert_check", False))
         if self.bucket_name:
             try:

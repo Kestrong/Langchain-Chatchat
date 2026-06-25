@@ -1,6 +1,6 @@
 import threading
 from asyncio import Task
-from typing import Dict
+from typing import Optional, Dict
 
 from fastapi import Query
 
@@ -10,36 +10,30 @@ from server.utils import BaseResponse
 
 
 class TaskManager:
-    lock = threading.Lock()
 
     def __init__(self):
-        self.task_map: Dict[str, Task] = dict({})
-        self.count_down = 10000
-        self.count_up = 0
+        self.task_map: Dict[str, Task] = {}
+        self.lock = threading.RLock()
 
     def put(self, task_id: str, task: Task):
         if task is not None:
-            self.task_map[task_id] = task
-            self.count_up += 1
-            if self.count_up > self.count_down:
-                with self.lock:
-                    if self.count_up > self.count_down:
-                        keys = []
-                        for k, v in self.task_map.items():
-                            if v.done():
-                                keys.append(k)
-                        for key in keys:
-                            self.remove(key)
-                        self.count_up = 0
+            with self.lock:
+                self.task_map[task_id] = task
 
-    def get(self, task_id: str) -> [Task, None]:
-        if task_id in self.task_map:
-            return self.task_map[task_id]
-        return None
+    def get(self, task_id: str) -> Optional[Task]:
+        with self.lock:
+            return self.task_map.get(task_id)
 
     def remove(self, task_id: str):
-        if task_id in self.task_map:
-            del self.task_map[task_id]
+        with self.lock:
+            self.task_map.pop(task_id, None)
+            if len(self.task_map) > 1000:
+                keys = []
+                for k, v in self.task_map.items():
+                    if v.done():
+                        keys.append(k)
+                for key in keys:
+                    self.task_map.pop(key, None)
 
 
 task_manager = TaskManager()

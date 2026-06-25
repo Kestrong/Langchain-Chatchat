@@ -35,7 +35,7 @@ def analyze_file(filename):
     }
 
 
-def parse_inputs_expr(inputs, query, contentObj):
+def parse_inputs_expr(inputs, query, contentObj, assistant):
     for k, v in inputs.items():
         if k in ['cookie', 'token_info']:
             continue
@@ -57,6 +57,9 @@ def parse_inputs_expr(inputs, query, contentObj):
     for k in ['default_reply_text']:
         if k not in inputs and k in contentObj:
             inputs[k] = contentObj.get(k)
+
+    if assistant:
+        inputs['assistant_code'] = assistant.get('code')
 
 
 def filter_sensitive_data(data: dict, target: str = "inputs") -> dict:
@@ -219,7 +222,7 @@ class DifyWorker(ApiModelWorker):
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", **extra_headers}
         query = contentObj.get('question', '')
         inputs = self.get_inputs(role_meta, model_config)
-        parse_inputs_expr(inputs, query, contentObj)
+        parse_inputs_expr(inputs, query, contentObj, assistant)
         inputs['cookie'] = contentObj.get('cookie')
         inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
         data = {

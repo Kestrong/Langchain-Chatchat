@@ -111,7 +111,7 @@ class FuXiWorker(ApiModelWorker):
         headers = {"X-API-KEY": api_key, "Content-Type": "application/json", **extra_headers}
         query = contentObj.get('question', '')
         inputs = self.get_inputs(role_meta, model_config)
-        parse_inputs_expr(inputs, query, contentObj)
+        parse_inputs_expr(inputs, query, contentObj, assistant)
         inputs['cookie'] = contentObj.get('cookie')
         inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
         conversation_id = contentObj.get('conversation_id')
