@@ -17,7 +17,7 @@ class ChatAppModel(Base):
     expired_time = Column(DateTime, default=None, comment='过期时间，为空不过期')
 
     def __repr__(self):
-        return f"<assistant(id='{self.id}', name='{self.name}', name_en='{self.name_en}', api_key='{self.api_key}', secret_key='{self.secret_key}', create_time='{self.create_time}', expired_time='{self.expired_time}')>"
+        return f"<chat_app(id='{self.id}', name='{self.name}', name_en='{self.name_en}', api_key='{self.api_key}', secret_key='{self.secret_key}', create_time='{self.create_time}', expired_time='{self.expired_time}')>"
 
     def dict(self):
         return {

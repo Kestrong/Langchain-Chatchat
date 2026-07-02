@@ -38,9 +38,11 @@ def create_conversation(chat_type: str = Body(
 
 def update_conversation(id: str = Body(description="会话id"),
                         name: str = Body(description="会话名称"),
-                        tag: str = Body(default=None, description="会话标签，传null不更新")) -> BaseResponse:
+                        tag: str = Body(default=None, description="会话标签，传null不更新"),
+                        is_top: str = Body(default=None, description="会话置顶，0BT置顶0BF取消，传null不更新")
+                        ) -> BaseResponse:
     try:
-        conversation_id = update_conversation_to_db(conversation_id=id, name=name, tag=tag)
+        conversation_id = update_conversation_to_db(conversation_id=id, name=name, tag=tag, is_top=is_top)
     except Exception as e:
         msg = f"修改会话出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
