@@ -200,7 +200,7 @@ workflow = {
         "en": "Local LLM"
     },
     "WORKFLOW_DISPLAYNAME_CHATOUTPUT": {
-        "zh": "聊天输出",
+        "zh": "输出",
         "en": "Chat Output"
     },
     "WORKFLOW_DISPLAYNAME_PYTHONREPL": {
@@ -237,7 +237,7 @@ workflow = {
         "en": "Generate text using Local LLMs."
     },
     "WORKFLOW_DESCRIPTION_CHATOUTPUT": {
-        "zh": "获取聊天输出",
+        "zh": "获取输出内容",
         "en": "Get chat outputs from the Playground."
     },
     "WORKFLOW_DESCRIPTION_PYTHONREPL": {

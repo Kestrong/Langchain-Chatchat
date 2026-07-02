@@ -1,10 +1,11 @@
-from itertools import groupby
+from collections import defaultdict
 
 from server.workflow.component.base.component import Component
 from server.workflow.component.condition.condition import IfElseComponent
 from server.workflow.component.inputs.chat_input import ChatInputComponent
 from server.workflow.component.models.local_llm import LocalLLMComponent
 from server.workflow.component.outputs.chat_output import ChatOutputComponent
+from server.workflow.component.outputs.chat_structure_output import ChatStructureOutputComponent
 from server.workflow.component.tools.code import PythonREPLComponent
 from server.workflow.component.tools.document_extractor import DocumentExtractorComponent
 from server.workflow.component.tools.http_caller import HttpCallerComponent
@@ -13,23 +14,48 @@ from server.workflow.component.tools.knowledge_retrieval import KnowledgeRetriev
 from server.workflow.utils.inputs import *
 from server.workflow.utils.outputs import *
 
+ALL_COMPONENT_CLASSES: List[type] = [
+    IfElseComponent,
+    ChatInputComponent,
+    ChatOutputComponent,
+    ChatStructureOutputComponent,
+    LocalLLMComponent,
+    PythonREPLComponent,
+    HttpCallerComponent,
+    JsonFormatterComponent,
+    KnowledgeRetrievalComponent,
+    DocumentExtractorComponent,
+]
 
-def components() -> dict:
-    components = {key: list(group) for key, group in
-                  groupby([IfElseComponent(), ChatInputComponent(), ChatOutputComponent(), LocalLLMComponent(),
-                           PythonREPLComponent(), HttpCallerComponent(), JsonFormatterComponent(),
-                           KnowledgeRetrievalComponent(), DocumentExtractorComponent()], key=lambda x: x.tag)}
+ALL_COMPONENT_CLASSES_MAP = {cls.__name__: cls for cls in ALL_COMPONENT_CLASSES}
 
-    for cc in components.values():
-        for c in cc:
-            c.id = c.name
-            if c.inputs:
-                for i in c.inputs:
-                    i.id = i.name
-            if c.outputs:
-                for o in c.outputs:
-                    o.id = o.name
-    return components
+
+def _init_component(comp: Component) -> Component:
+    """
+    统一初始化组件及其输入/输出的 ID。
+    将嵌套循环抽离为独立函数，提升主逻辑可读性。
+    """
+    comp.id = comp.name
+    if comp.inputs:
+        for inp in comp.inputs:
+            inp.id = inp.name
+    if comp.outputs:
+        for out in comp.outputs:
+            out.id = out.name
+    return comp
+
+
+def components() -> Dict[str, List[Component]]:
+    """
+    获取按 tag 分组的组件映射。
+    """
+    component_map = defaultdict(list)
+
+    for comp_cls in ALL_COMPONENT_CLASSES:
+        comp = _init_component(comp_cls())
+        component_map[comp.tag].append(comp)
+
+    return dict(component_map)
 
 
 if __name__ == '__main__':

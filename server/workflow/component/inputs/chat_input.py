@@ -1,7 +1,7 @@
 from typing import Dict, Any, Union
 
 from server.workflow.component.base.component import Component
-from server.workflow.utils.inputs import TextInput, DictInput, BooleanInput, IntegerInput
+from server.workflow.utils.inputs import TextInput, DictInput, BooleanInput
 
 
 class ChatInputComponent(Component):
@@ -18,12 +18,6 @@ class ChatInputComponent(Component):
             required=True,
             info="${WORKFLOW_INPUT_INFO_QUERY}",
             value=''
-        ),
-        IntegerInput(
-            name='history_len',
-            display_name="${WORKFLOW_INPUT_DISPLAYNAME_HISTORY_LEN}",
-            info="${WORKFLOW_INPUT_INFO_HISTORY_LEN}",
-            value=-1
         ),
         TextInput(
             name='conversation_id',

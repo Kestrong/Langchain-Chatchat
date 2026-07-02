@@ -1,11 +1,9 @@
-import asyncio
 import inspect
 from typing import Dict, Any, Union
 
-from configs import PYTHON_REPL_TIMEOUT
 from server.workflow.component.base.component import Component
 from server.workflow.utils.inputs import TextInput, DictInput
-from server.workflow.utils.outputs import DictOutput, TextOutput
+from server.workflow.utils.outputs import DictOutput, IntOutput
 
 
 async def exec_python_async(python_code: str, args: Dict[str, Any], _globals: Dict[str, Any],
@@ -55,7 +53,7 @@ class PythonREPLComponent(Component):
             name='result',
             display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_RESULT}",
         ),
-        TextOutput(
+        IntOutput(
             display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_TOTAL_TOKENS}",
             name="total_tokens",
         )
@@ -70,18 +68,7 @@ class PythonREPLComponent(Component):
         _globals = {}
         _locals = {}
 
-        try:
-            if PYTHON_REPL_TIMEOUT and PYTHON_REPL_TIMEOUT > 0:
-                result = await asyncio.wait_for(
-                    exec_python_async(python_code, args, _globals, _locals),
-                    timeout=PYTHON_REPL_TIMEOUT
-                )
-            else:
-                result = await exec_python_async(python_code, args, _globals, _locals)
-        except asyncio.TimeoutError:
-            result = f"Error: Execution timed out after {PYTHON_REPL_TIMEOUT} seconds"
-        except Exception as e:
-            result = f"Error: {type(e).__name__}: {str(e)}"
+        result = await exec_python_async(python_code, args, _globals, _locals)
         total_tokens = None
         if isinstance(result, dict) and "total_tokens" in result:
             total_tokens = result.pop("total_tokens")
