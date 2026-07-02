@@ -39,11 +39,12 @@ class TaskManager:
 task_manager = TaskManager()
 
 
-def stop(task_id: str = Query(description="任务id")) -> BaseResponse:
+async def stop(task_id: str = Query(description="任务id")) -> BaseResponse:
     task = task_manager.get(task_id)
     if task is not None:
         try:
             task.cancel()
+            await task
         except Exception as e:
             logger.error(e)
         finally:

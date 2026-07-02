@@ -35,6 +35,11 @@ class TextOutput(Output):
     value: Union[str, None]
 
 
+class IntOutput(Output):
+    field_type: FieldTypes = FieldTypes.INTEGER
+    value: Union[int, None]
+
+
 class DictOutput(Output):
     field_type: FieldTypes = FieldTypes.DICT
     value: Union[Dict[str, Any], None] = {}
@@ -50,5 +55,5 @@ class BooleanOutput(Output):
     value: Union[bool, None]
 
 
-OutputTypes = [TextOutput, DictOutput, ListOutput, BooleanOutput]
+OutputTypes = [TextOutput, DictOutput, ListOutput, BooleanOutput, IntOutput]
 OutputTypesMap: Dict[str, Type] = {i.__name__: i for i in OutputTypes}
