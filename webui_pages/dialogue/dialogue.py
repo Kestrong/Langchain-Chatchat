@@ -283,23 +283,13 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                 se_top_k = st.number_input("匹配搜索结果条数：", 1, 20, SEARCH_ENGINE_TOP_K)
         elif dialogue_mode == "自定义Agent问答":
             with st.expander("Agent问答配置", True):
-                tool_name_map = {t.name: t.title for t in get_all_tools()}
+                tool_name_map = {t.name: t.title for t in get_all_tools()[0]}
                 tool_selected = st.multiselect(
                     label="请选择工具",
                     options=tool_name_map.keys(),
                     format_func=lambda x: tool_name_map[x],
                     placeholder="无"
                 )
-                api_selected = None
-                if 'http_request' in tool_selected:
-                    apis = get_tool_config().TOOL_CONFIG.get('http_request').get("apis", [])
-                    api_name_map = {api.get("name"): api.get("title") for api in apis}
-                    api_selected = st.multiselect(
-                        label="请选择接口",
-                        options=api_name_map.keys(),
-                        format_func=lambda x: api_name_map[x],
-                        placeholder="无"
-                    )
                 selected_customize_agent_type = st.selectbox(
                     "请选择自定义agent类型：",
                     [None] + list(customize_agent_types.keys()),
@@ -387,7 +377,6 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                                         prompt_name=prompt_template_name,
                                         temperature=temperature,
                                         tool_names=tool_selected,
-                                        api_names=api_selected
                                         ):
                     try:
                         d = json.loads(d)
@@ -399,7 +388,7 @@ def dialogue_page(api: ApiRequest, is_lite: bool = False):
                         text += chunk
                         chat_box.update_msg(text, element_index=1)
                     if chunk := d.get("answer"):
-                        ans += chunk
+                        ans += str(chunk)
                         chat_box.update_msg(ans, element_index=0)
                 chat_box.update_msg(ans, element_index=0, streaming=False)
                 chat_box.update_msg(text, element_index=1, streaming=False)

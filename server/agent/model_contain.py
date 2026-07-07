@@ -4,9 +4,7 @@ from contextvars import ContextVar
 class ModelContainer:
     def __init__(self):
         self.MODEL = None
-        self.TOOL_RERUN: bool = False
-        self.TOOL_CONFIG: dict = {}
-        self.TOOL_ARGS: dict = {}
+        self.EXTRA_ARGS: dict = {}
         self.CALLBACK_HANDLERS = []
 
 

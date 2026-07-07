@@ -136,20 +136,20 @@ class AgentExecutorAsyncIteratorCallbackHandler(AsyncIteratorCallbackHandler):
             tags: Optional[List[str]] = None,
             **kwargs: Any,
     ) -> None:
-        if "Thought:" in finish.return_values["output"]:
-            finish.return_values["output"] = finish.return_values["output"].replace(
-                "Thought:", ""
-            )
+        output = finish.return_values["output"]
+        if isinstance(output, str) and "Thought:" in output:
+            output = output.replace("Thought:", "")
         # 返回最终答案
-        final_answer = finish.return_values["output"]
-        if final_answer.startswith("{") and final_answer.endswith("}"):
+        final_answer = output
+        if isinstance(final_answer, str) and final_answer.startswith("{") and final_answer.endswith("}"):
             try:
                 f = json.loads(final_answer)
-                if 'metadata' in f:
-                    del f['metadata']
+                f.pop('metadata', None)
                 final_answer = dumps(f)
             except Exception:
                 pass
+        elif isinstance(final_answer, dict):
+            final_answer.pop('metadata', None)
         self.cur_tool.update(
             status=AgentStatus.agent_finish,
             final_answer=final_answer,

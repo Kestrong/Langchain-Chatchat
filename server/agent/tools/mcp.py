@@ -9,20 +9,9 @@ from server.agent.tools_select import register_tool
 from server.utils import get_httpx_client
 
 
-class MCPInput(BaseModel):
-    method: str = Field(description="MCP server method: tools/list or tools/call", default="tools/list")
-    params: Dict[str, Any] = Field(
-        description="the parameters for tools/call method, for example: {\"name\": \"tool_name\", \"arguments\":{}}, empty for tools/list method",
-        default_factory=dict)
-
-
-async def mcp_async(api_info: dict, args: dict):
-    logger.debug(f"mcp request:{args}")
-    params = args.get("params")
-    if params is None:
-        params = {}
-    method = args.get("method", "tools/list")
-    mcp_config = api_info
+async def mcp_async(tool_config: dict, method: str, params: dict):
+    logger.debug(f"mcp method:{method}, params:{params}")
+    mcp_config = tool_config
     server_url = mcp_config.get("server_url")
     timeout = mcp_config.get("timeout") or 30
     extra_headers = mcp_config.get("extra_headers", {})
@@ -110,28 +99,32 @@ async def mcp_async(api_info: dict, args: dict):
             return json.dumps(answer)
 
 
-def mcp_sync(api_info: dict, args: dict):
-    try:
-        return asyncio.run(mcp_async(api_info, args))
-    except Exception as e:
-        logger.error(f"MCP request exception: {str(e)}")
-        return f"MCP调用异常: {str(e)}"
+class MCPInput(BaseModel):
+    method: str = Field(description="MCP server method: tools/list or tools/call", default="tools/list")
+    params: Dict[str, Any] = Field(
+        description="the parameters for tools call, for example: {\"name\": \"tool_name\", \"arguments\":{}}",
+        default_factory=dict)
 
 
 @register_tool(title='MCP工具调用',
-               description="Use this tool to interact with external MCP (Model Context Protocol) services. Useful for accessing external data sources, APIs, or specialized capabilities through MCP servers.",
-               args_schema=MCPInput)
-def mcp(api_info: dict, args: dict):
-    return mcp_sync(api_info, args)
+               description="Use this tool to access external MCP(Model Context Protocol) services.",
+               args_schema=MCPInput, dynamic=True)
+async def mcp(tool_config: dict, **kwargs):
+    """
+    Interact with external MCP services via a mandatory two-step process:
+    1. Call tools/list method to discover available tools.
+    2. Execute specific tools via tools/call based on their definitions.
+    """
+    return await mcp_async(tool_config, method=kwargs.pop("method", "tools/list"), params=kwargs)
 
 
 if __name__ == "__main__":
     # 测试示例
     from server.utils import get_tool_config
 
-    mcp_config = get_tool_config().TOOL_CONFIG.get("mcp", {}).get('math_mcp')
-    result = mcp(api_info=mcp_config, args={"method": "tools/list", "params": {}})
+    mcp_config = get_tool_config().TOOL_CONFIG.get("mcp", {})
+    result = asyncio.run(mcp_async(tool_config=mcp_config, method="tools/list", params={}))
     print("MCP响应:", result)
-    result = mcp(api_info=mcp_config,
-                 args={"method": "tools/call", "params": {"name": "add", "arguments": {"a": 5, "b": 3}}})
+    result = asyncio.run(mcp_async(tool_config=mcp_config, method="tools/call",
+                                   params={"name": "add", "arguments": {"a": 5, "b": 3}}))
     print("MCP响应:", result)

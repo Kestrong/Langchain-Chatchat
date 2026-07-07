@@ -46,6 +46,9 @@ class QimingWorker(ApiModelWorker):
         model_config = {}
         if assistant:
             model_config = assistant.get('model_config') or {}
+            for k, v in (model_config.get('extra') or {}).items():
+                if k not in contentObj:
+                    contentObj[k] = v
         uri = model_config.get('api_proxy', params.api_proxy)
         xappid = model_config.get('api_key') or params.api_key
         xappkey = model_config.get('secret_key') or params.secret_key

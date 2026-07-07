@@ -40,6 +40,9 @@ class LangflowWorker(ApiModelWorker):
         model_config = {}
         if assistant:
             model_config = assistant.get('model_config', {})
+            for k, v in (model_config.get('extra') or {}).items():
+                if k not in contentObj:
+                    contentObj[k] = v
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key') or contentObj.get('api_key') or params.api_key
         stream = model_config.get('stream', contentObj.get('stream'))

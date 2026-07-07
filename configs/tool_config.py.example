@@ -39,6 +39,9 @@ TOOL_CONFIG = {
         "allow_command": [],
         "disallow_command": ["(.*|^)rm|dd|cp|mv|shutdown|reboot|poweroff|fdisk|mkfs|chmod|chown|curl|wget .*"]
     },
+    "search_knowledgebase_complex": {
+        "knowledgebase": ["sample"],
+    },
     "text2sql": {
         "model_name": LLM_MODELS[0],
         # 数据库是否只读，请谨慎改成False，否则可能会导致无法挽回的数据丢失
@@ -87,8 +90,6 @@ TOOL_CONFIG = {
         "vector_search_top_k": 1,
     },
     "http_request": {
-        "call_direct": False,
-        "selected": False,
         "apis": [
             {
                 "method": "GET",
@@ -96,33 +97,31 @@ TOOL_CONFIG = {
                 "headers": {},
                 "cookies": {},
                 "timeout": 5,
-                "selected": False,
-                "type": "button",  # button link
-                "position": "each_message",  # fix each_message
                 "name": "juejin",
                 "title": "掘金开发者网站搜索",
                 "request_template": None,
                 "response_template": "{{ data | map(attribute='content_highlight') | join('\n\n') }}",
                 "description": "你可以使用该接口对掘金开发者网站的内容进行关键词搜索",
                 "return_direct": True,
-                "parameters": {
-                    "query": {
-                        "title": "query",
-                        "description": "搜索关键词",
-                        "type": "string"
+                "inputSchema": {
+                    "properties": {
+                        "query": {
+                            "title": "query",
+                            "description": "搜索关键词",
+                            "type": "string"
+                        }
                     }
                 }
             }
         ]
     },
     "mcp": {
-        "math_mcp": {
-            "server_url": "http://127.0.0.1:8000",
-            "timeout": 30,
-            "title": "数学计算MCP",
-            "description": "先使用MCP工具的tools/list方法获取可以使用的数学工具，然后再根据工具的定义使用tools/call进行调用。",
-            "return_direct": False,
-        }
-    },
+        "server_url": "http://127.0.0.1:8000",
+        "timeout": 30,
+        "return_direct": False,
+        "disable_tools": [],
+        "enable_tools": [],
+        "extra_headers": {},
+    }
 }
 

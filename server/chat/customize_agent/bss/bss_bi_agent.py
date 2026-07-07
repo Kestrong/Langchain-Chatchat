@@ -11,7 +11,7 @@ from langchain_core.prompts import PromptTemplate
 from starlette.requests import Request
 
 from configs import TEMPERATURE, LLM_MODELS, HISTORY_LEN, TOP_P
-from server.agent import create_model_container, text2sql, AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
+from server.agent import create_model_container, AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
 from server.callback_handler.token_callback_handler import TokenCallbackHandler
@@ -50,7 +50,6 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                        prompt_name: str = Body("default",
                                                description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                        tool_names: List[str] = Body([], description="工具的名称"),
-                       api_names: List[str] = Body([], description="api的名称"),
                        store_message: bool = Body(True, description="是否保存消息到数据库"),
                        request: Request = None
                        ):
@@ -58,9 +57,6 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
         max_tokens = None
     history = [History.from_data(h) for h in history]
     model_container = create_model_container()
-    if extra:
-        model_container.TOOL_ARGS.update(extra)
-    model_container.TOOL_ARGS["query"] = query
     un_format = un_format_online_llm_model(model_name)
     chat_type = ChatType.AGENT_CHAT.value
 
@@ -70,10 +66,13 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
         waiting_tips = extra.get("waiting_tips", "正在查询相关信息，请耐心等待，我们将尽快为您提供答案...")
         yield json.dumps(obj={"event": "agent_thought", "thought": waiting_tips, "message_id": message_id,
                               "conversation_id": conversation_id}, ensure_ascii=False)
+        model_container.EXTRA_ARGS.update(extra)
+        from server.agent.tools_select import get_available_tools
+        available_tools, _ = await get_available_tools(tool_name_ens=['text2sql'])
         if extra and extra.get("sql_cmd"):
 
             async def co():
-                return text2sql(query)
+                return available_tools[0].func_or_co(query)
 
             task = asyncio.create_task(co())
             task_manager.put(message_id, task)
@@ -92,9 +91,6 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
             yield json.dumps({"event": "agent_message", "answer": result, "message_id": message_id,
                               "conversation_id": conversation_id}, ensure_ascii=False)
         else:
-            from server.chat.agent_chat import get_available_tools
-            available_tools = get_available_tools(tool_names=['text2sql'], api_names=[],
-                                                  tool_config=model_container.TOOL_CONFIG)
             callback = AgentExecutorAsyncIteratorCallbackHandler(model_name=model_name, )
             conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
                                                                 message_id=message_id, chat_type=chat_type,
@@ -105,6 +101,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
             callbacks = [callback, conversation_callback, task_callback, token_callback]
             process_extra(stream=stream, model_name=model_name, extra=extra, conversation_id=conversation_id,
                           request=request)
+            model_container.EXTRA_ARGS.update(extra)
             model = get_ChatOpenAI(
                 model_name=model_name,
                 temperature=temperature,

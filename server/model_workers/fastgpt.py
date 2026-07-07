@@ -42,6 +42,9 @@ class FastgptWorker(ApiModelWorker):
         model_config = {}
         if assistant:
             model_config = assistant.get('model_config') or {}
+            for k, v in (model_config.get('extra') or {}).items():
+                if k not in contentObj:
+                    contentObj[k] = v
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key', params.api_key)
         extra_headers = model_config.get("extra_headers") or role_meta.get("extra_headers", {})

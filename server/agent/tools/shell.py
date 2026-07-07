@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 
 from server.agent.tools_select import register_tool
 from server.memory.message_i18n import Message_I18N
-from server.utils import get_tool_config
 
 
 class ShellInput(BaseModel):
@@ -16,9 +15,8 @@ class ShellInput(BaseModel):
 @register_tool(title='命令行',
                description="Use Shell to execute Linux commands, such as curl/pwd/ping/find/ls and etc.",
                args_schema=ShellInput)
-def shell(query: str):
-    tool_config = get_tool_config().TOOL_CONFIG
-    shell_config: dict = tool_config.get("shell", {})
+def shell(tool_config: dict, query: str):
+    shell_config: dict = tool_config
     disallow_command = shell_config.get("disallow_command", [])
     allow_command = shell_config.get("allow_command", [])
     if disallow_command:

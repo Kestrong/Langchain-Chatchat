@@ -196,11 +196,18 @@ def mount_model_routes(app: FastAPI):
 
 def mount_tool_routes(app: FastAPI):
     from server.chat.agent_chat import call_tool
-    from server.agent.tools_select import get_tools_info
+    from server.agent.tools_select import built_in_tools, create_tool, update_tool, delete_tool, get_tools, \
+        get_tool_detail, child_tools
 
     tool_router = APIRouter(prefix="/tools", tags=["Toolkits"])
     # 工具相关
-    tool_router.post("/tools_info", summary="工具信息")(get_tools_info)
+    tool_router.post("/built_in", summary="内置工具信息")(built_in_tools)
+    tool_router.post("/create", summary="创建工具")(create_tool)
+    tool_router.put("/update", summary="更新工具")(update_tool)
+    tool_router.delete("/delete", summary="删除工具")(delete_tool)
+    tool_router.get("/list", summary="分页查询工具列表")(get_tools)
+    tool_router.get("/detail", summary="获取工具详情")(get_tool_detail)
+    tool_router.post("/child_tools", summary="子工具信息")(child_tools)
     tool_router.post("/call", summary="调用工具")(call_tool)
 
     app.include_router(tool_router)
