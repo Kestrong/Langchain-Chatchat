@@ -10,19 +10,19 @@ from server.utils import get_httpx_client
 
 
 class HttpRequestInput(BaseModel):
-    api_info: dict = Field(description="api info")
     args: dict = Field(description="request args")
 
 
 @register_tool(title='Http请求',
                description="Use this tool to send request to http server.",
-               args_schema=HttpRequestInput)
-def http_request(api_info: dict, args: dict):
-    return _http_request(api_info, args)
+               args_schema=HttpRequestInput, dynamic=True)
+def http_request(tool_config: dict, **kwargs):
+    return _http_request(tool_config, kwargs)
 
 
-def _http_request(api_info: dict, args: dict):
+def _http_request(tool_config: dict, args: dict):
     logger.debug(f"http request:{args}")
+    api_info = tool_config
     with get_httpx_client(follow_redirects=True, timeout=api_info.get("timeout", 5)) as client:
         method = api_info.get("method", "POST")
         url = api_info.get("url")

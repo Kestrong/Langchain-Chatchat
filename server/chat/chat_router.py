@@ -4,8 +4,7 @@ from fastapi import Body, BackgroundTasks
 from starlette.requests import Request
 
 from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD, HISTORY_LEN, TOP_P
-from server.agent import create_model_container
-from server.chat.agent_chat import agent_chat, tool_chat
+from server.chat.agent_chat import agent_chat
 from server.chat.chat import chat
 from server.chat.chat_type import ChatType
 from server.chat.completion import completion
@@ -55,7 +54,6 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                       split_result: bool = Body(False,
                                                 description="是否对搜索结果进行拆分（主要用于metaphor搜索引擎）"),
                       tool_names: List[str] = Body([], description="工具的名称"),
-                      api_names: List[str] = Body([], description="api的名称"),
                       request: Request = None,
                       background_tasks: BackgroundTasks = None,
                       ):
@@ -75,7 +73,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                 stream=stream, model_name=model_name, tag=tag, top_p=top_p,
                                 temperature=temperature, max_tokens=max_tokens, prompt_name=prompt_name,
                                 store_message=store_message, split_result=split_result, tool_names=tool_names,
-                                api_names=api_names, request=request, background_tasks=background_tasks)
+                                request=request, background_tasks=background_tasks)
 
 
 def check_file_type(knowledge_id: str = "", third_party_files: list = None, uploader: dict = None):
@@ -123,7 +121,6 @@ async def do_chat_router(query: str,
                          store_message: bool = True,
                          split_result: bool = False,
                          tool_names: List[str] = None,
-                         api_names: List[str] = None,
                          request: Request = None,
                          background_tasks: BackgroundTasks = None,
                          ):
@@ -160,10 +157,7 @@ async def do_chat_router(query: str,
                 score_threshold = assistant.get("score_threshold")
             tool_config_db = assistant.get("tool_config", {})
             if not tool_names and tool_config_db is not None and len(tool_config_db) > 0:
-                tool_names = [k for k, v in assistant.get("tool_config").items() if v.get("selected", False)]
-                api_names = [t.get("name") for t in assistant.get("tool_config").get("http_request", {}).get("apis", [])
-                             if
-                             t.get("selected", False)]
+                tool_names = tool_config_db.get("tool_names", [])
 
     if chat_type == ChatType.SEARCH_ENGINE_CHAT.value or (
             search_engine_name is not None and search_engine_name != ''):
@@ -176,22 +170,12 @@ async def do_chat_router(query: str,
                                         knowledge_id=knowledge_id)
 
     elif chat_type == ChatType.AGENT_CHAT.value or tool_names:
-        if assistant:
-            tool_config = assistant.get("tool_config")
-            if tool_config and len(tool_config) > 0:
-                model_container = create_model_container()
-                model_container.TOOL_CONFIG.update(tool_config)
-                if len(tool_names) == 1 and tool_config.get(tool_names[0], {}).get("call_direct", False):
-                    return await tool_chat(query=query, knowledge_id=knowledge_id, conversation_id=conversation_id,
-                                           extra=extra, tool_names=tool_names, api_names=api_names, stream=stream,
-                                           store_message=store_message, assistant_id=assistant_id, tag=tag,
-                                           request=request, )
 
         return await agent_chat(query=query, history_len=history_len, history=history, stream=stream,
                                 model_name=model_name, temperature=temperature, tool_names=tool_names,
                                 conversation_id=conversation_id, extra=extra, top_p=top_p, knowledge_id=knowledge_id,
                                 store_message=store_message, max_tokens=max_tokens, prompt_name=prompt_name,
-                                api_names=api_names, assistant_id=assistant_id, tag=tag, request=request, )
+                                assistant_id=assistant_id, tag=tag, request=request, )
 
     elif chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or knowledge_base_names:
 

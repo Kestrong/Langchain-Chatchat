@@ -52,7 +52,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             **kwargs: Any,
     ) -> Any:
         if self.agent and not self.updated:
-            final_answer = finish.return_values["output"]
+            final_answer = str(finish.return_values["output"])
             metadata = None
             if final_answer.startswith("{") and final_answer.endswith("}"):
                 try:

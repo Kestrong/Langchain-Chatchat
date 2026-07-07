@@ -3,8 +3,7 @@ from typing import Dict, Any, Union, ClassVar
 
 from common.exceptions import ChatBusinessException
 from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD
-from server.agent.tools_select import get_all_tools
-from server.db.repository import list_kbs_from_db, get_assistant_simple_by_code_from_db
+from server.db.repository import get_assistant_simple_by_code_from_db
 from server.utils import api_address, get_httpx_client
 from server.workflow.component.base.component import Component
 from server.workflow.utils.event_manager import AsyncPubSub, SSEEvent, SSEEventType
@@ -83,13 +82,13 @@ class LocalLLMComponent(Component):
             name='knowledge_base_names',
             display_name="${WORKFLOW_INPUT_DISPLAYNAME_KNOWLEDGE_BASE_NAMES}",
             info="${WORKFLOW_INPUT_INFO_KNOWLEDGE_BASE_NAMES}",
-            options=[k["kb_name"] for k in list_kbs_from_db(all_kbs=True)[0]]
+            options=[]
         ),
         ListInput(
             name='tool_names',
             display_name="${WORKFLOW_INPUT_DISPLAYNAME_TOOL_NAMES}",
             info="${WORKFLOW_INPUT_INFO_TOOL_NAMES}",
-            options=[t.name for t in get_all_tools()]
+            options=[]
         ),
         ListInput(
             name='api_names',
