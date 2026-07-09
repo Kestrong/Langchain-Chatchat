@@ -55,6 +55,21 @@ def check_app_code(app_code):
     return app
 
 
+def is_internal_request(request: Request) -> bool:
+    # 优先从 X-Forwarded-For 获取真实 IP（兼容 Nginx 等反向代理）
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+    else:
+        client_ip = request.client.host
+
+    # 校验 IP 是否在白名单中
+    if client_ip in ("127.0.0.1", "::1"):
+        return True
+
+    return False
+
+
 class LocaleVariableMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         app_code = request.headers.get('X-App-Code')
@@ -89,6 +104,11 @@ class LocaleVariableMiddleware(BaseHTTPMiddleware):
                 {'token_type': 'sign',
                  'token': json.dumps({'appCode': app_code, 'userId': user_id, 'tenantId': None})})
             logger.info(f"Operator by sign user: {user_id}, app code: {app_code}")
+        elif is_internal_request(request):
+            set_token_context(
+                {'token_type': 'sign',
+                 'token': json.dumps({'appCode': 'flm-chat', 'userId': f"INTERNAL", 'tenantId': None})})
+            logger.info(f"Operator by flm-chat self internal")
         else:
             token = request.headers.get("Authorization")
             if token is None or token.strip() == '':
