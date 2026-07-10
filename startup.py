@@ -1,18 +1,23 @@
-import asyncio
-import multiprocessing as mp
 import os
-import sys
-from argparse import Namespace, ArgumentParser
-from multiprocessing import Process
-from datetime import datetime
-from pprint import pprint
-from langchain_core._api import deprecated
+
+NLTK_DATA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "nltk_data"))
+os.environ["NLTK_DATA"] = NLTK_DATA_PATH
+os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(NLTK_DATA_PATH, "tokenizers", "cl100k_base")
 
 try:
     n_cores = os.cpu_count() or 1
     os.environ["NUMEXPR_MAX_THREADS"] = str(n_cores)
 except:
     pass
+
+import asyncio
+import multiprocessing as mp
+import sys
+import argparse
+from multiprocessing import Process
+from datetime import datetime
+from pprint import pprint
+from langchain_core._api import deprecated
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from configs import (
@@ -27,18 +32,13 @@ from configs import (
     FSCHAT_MODEL_WORKERS,
     API_SERVER,
     WEBUI_SERVER,
-    HTTPX_DEFAULT_TIMEOUT, MAX_TOKENS_INPUT, NLTK_DATA_PATH
+    HTTPX_DEFAULT_TIMEOUT, MAX_TOKENS_INPUT, VERSION
 )
-
-os.environ["NLTK_DATA"] = NLTK_DATA_PATH
-os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(NLTK_DATA_PATH, "tokenizers", "cl100k_base")
 from server.utils import (fschat_controller_address, fschat_model_worker_address,
-                          fschat_openai_api_address, get_httpx_client, get_model_worker_config,
+                          fschat_openai_api_address, get_model_worker_config,
                           MakeFastAPIOffline, FastAPI, llm_device, embedding_device)
 from server.knowledge_base.migrate import create_tables
-import argparse
 from typing import List, Dict, Tuple
-from configs import VERSION
 
 
 @deprecated(
@@ -298,11 +298,10 @@ def _set_app_event(app: FastAPI, started_event: mp.Event = None):
 
 def run_controller(log_level: str = "INFO", started_event: mp.Event = None):
     import uvicorn
-    import httpx
     from fastapi import Body
     import time
     import sys
-    from server.utils import set_httpx_config
+    from server.utils import set_httpx_config, get_httpx_client
     set_httpx_config()
 
     app = create_controller_app(
@@ -496,7 +495,7 @@ def run_webui(log_level: str = "INFO", started_event: mp.Event = None, run_mode:
         logger.error(f"WebUI 启动失败: {e}")
 
 
-def parse_args() -> Tuple[Namespace, ArgumentParser]:
+def parse_args() -> Tuple[argparse.Namespace, argparse.ArgumentParser]:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-a",
