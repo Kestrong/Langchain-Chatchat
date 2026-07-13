@@ -155,6 +155,7 @@ class LocalLLMComponent(Component):
                         api_names=api_names)
             result = {}
             answer = ''
+            thought = ''
             async with get_httpx_client(use_async=True) as client:
                 async with client.stream("POST", url=f"{api_base_url}/chat/chat", json=data) as response:
                     response.raise_for_status()
@@ -178,13 +179,13 @@ class LocalLLMComponent(Component):
                         if "docs" in event:
                             result['docs'] = event["docs"]
                         if "thought" in event:
-                            result['thought'] = event["thought"]
+                            thought += event["thought"]
                         if "total_tokens" in event:
                             result['total_tokens'] = event["total_tokens"]
             result.setdefault("docs", [])
-            result.setdefault("thought", None)
             result.setdefault("total_tokens", 0)
             result['answer'] = answer
+            result['thought'] = thought
             return result
         finally:
             if pubsub:
