@@ -1,3 +1,4 @@
+import json
 import re
 from copy import deepcopy
 from typing import Dict, Any, Union, AsyncIterable
@@ -78,7 +79,12 @@ class Component(BaseModel):
                 if var_val is not None:
                     original_placeholder = f'{{{{{var_path}}}}}'
                     # 使用字符串替换
-                    value = value.replace(original_placeholder, str(var_val))
+                    if value == original_placeholder:
+                        value = var_val
+                    else:
+                        value = value.replace(original_placeholder,
+                                              json.dumps(var_val, ensure_ascii=False) if isinstance(var_val, (
+                                                  dict, list, tuple)) else str(var_val))
             except Exception:
                 continue
 
