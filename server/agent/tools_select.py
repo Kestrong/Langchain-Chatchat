@@ -41,7 +41,8 @@ def parse_tool_info(tool_config_template, tools):
     description_format = lambda description: description.split(" - ")[
         1].strip() if description and " - " in description else description
     toos_info = [{"tool_name": t.title, "tool_name_en": t.name, "tool_description": description_format(t.description),
-                  "function_name": t.func_or_co.__name__, "function_properties": t.args_schema.schema_json(),
+                  "function_name": t.func_or_co.__name__,
+                  "function_properties": t.args_schema.schema_json(ensure_ascii=False),
                   "tool_config": tool_config_template.get(t.func_or_co.__name__, {})}
                  for t in tools]
     return toos_info
