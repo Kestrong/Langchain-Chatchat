@@ -60,6 +60,8 @@ def parse_inputs_expr(inputs, query, contentObj, assistant):
 
     if assistant:
         inputs['assistant_code'] = assistant.get('code')
+        inputs['region_id'] = assistant.get('region_id')
+        inputs['system_id'] = assistant.get('system_id')
 
 
 def filter_sensitive_data(data: dict, target: str = "inputs") -> dict:
