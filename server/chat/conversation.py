@@ -77,11 +77,8 @@ def filter_message(id: str = Query(description="会话id"),
     for m in messages:
         metadata = m.get('meta_data')
         if metadata:
-            if 'user' in metadata:
-                del metadata['user']
-            if 'api_key' in metadata:
-                del metadata['api_key']
-            m['meta_data'] = metadata
+            for key in ['api_key', 'api_secret', 'appId', 'user']:
+                metadata.pop(key, None)
     return BaseResponse(code=200, data={'messages': messages, 'total': total})
 
 
