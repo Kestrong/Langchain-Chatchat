@@ -14,12 +14,11 @@ from configs import logger
 from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
 from server.knowledge_base.oss import default_oss
 from server.memory.token_info_memory import get_token_info
-from server.model_workers import ApiModelWorker, ApiChatParams
-from server.model_workers.dify import analyze_file, parse_inputs_expr, filter_sensitive_data
-from server.utils import truncate_text
+from server.model_workers import ApiChatParams
+from server.model_workers.dify import analyze_file, parse_inputs_expr, filter_sensitive_data, DifyWorker
 
 
-class QimingWorker(ApiModelWorker):
+class QimingWorker(DifyWorker):
 
     def __init__(
             self,
@@ -202,41 +201,29 @@ class QimingWorker(ApiModelWorker):
         business_type = model_config.get("business_type") or params.role_meta.get('business_type', '')
         app_id = model_config.get("app_id") or params.role_meta.get('app_id', '')
         is_workflow = model_config.get('is_workflow') or params.role_meta.get('is_workflow', False)
+        answer_key = model_config.get('output_key') or params.role_meta.get("output_key")
         events = model_config.get('events', params.role_meta.get('events', []))
         node_types = model_config.get('node_types', params.role_meta.get('node_types', []))
-        stream = False if is_workflow else True
+        stream = model_config.get('stream', contentObj.get('stream', True))
         files = self.upload_files(uri, app_id or business_type, user, contentObj, file_type, headers)
-        task_id = model_config.get('task_id') or params.role_meta.get('task_id')
-        # 构建apiData
-        if task_id:
-            api_data = {
-                "content": contentObj.get('question', ''),
-                "frequency_penalty": 0,
-                "max_tokens": params.max_tokens,
-                "presence_penalty": 0,
-                "taskId": task_id,
-                "temperature": params.temperature,
-                "top_p": params.top_p
-            }
-        else:
-            query = contentObj.get('question', '')
-            inputs = model_config.get('inputs') or params.role_meta.get("inputs", {})
-            parse_inputs_expr(inputs, query, contentObj, assistant)
-            inputs['cookie'] = contentObj.get('cookie')
-            inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
-            final_user = user or get_token_info(contentObj.get('token')).get('userId') or '1'
-            api_data = {
-                "files": files,
-                "response_mode": "streaming" if stream else "blocking",  # Agent只能使用流式输出
-                "user": str(final_user),
-                "conversation_id": contentObj.get('conversation_id', ''),
-                "opening_statement": model_config.get('opening_statement') or params.role_meta.get("opening_statement",
-                                                                                                   {}),
-                "suggested_questions": model_config.get('suggested_questions') or params.role_meta.get(
-                    "suggested_questions", {}),
-                "query": query,
-                "inputs": inputs
-            }
+        query = contentObj.get('question', '')
+        inputs = model_config.get('inputs') or params.role_meta.get("inputs", {})
+        parse_inputs_expr(inputs, query, contentObj, assistant)
+        inputs['cookie'] = contentObj.get('cookie')
+        inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
+        final_user = user or get_token_info(contentObj.get('token')).get('userId') or '1'
+        api_data = {
+            "files": files,
+            "response_mode": "streaming" if stream else "blocking",  # Agent只能使用流式输出
+            "user": str(final_user),
+            "conversation_id": contentObj.get('conversation_id', ''),
+            "opening_statement": model_config.get('opening_statement') or params.role_meta.get("opening_statement",
+                                                                                               {}),
+            "suggested_questions": model_config.get('suggested_questions') or params.role_meta.get(
+                "suggested_questions", {}),
+            "query": query,
+            "inputs": inputs
+        }
         # 构建完整请求数据
         data = {
             "businessType": business_type,
@@ -256,115 +243,36 @@ class QimingWorker(ApiModelWorker):
                 if response.status_code != 200:
                     logger.error(f"请求失败，状态码: {response.status_code}, 响应: {response.text}")
                     response.raise_for_status()
-                if task_id:
-                    choices = response.json().get('choices', [])
-                    if choices:
-                        text = choices[0].get('message', {}).get('content')
-                        yield {"error_code": 0, "text": text}
-                elif is_workflow:
-                    if stream:
-                        pass
-                    else:
-                        answer_key = model_config.get('output_key') or params.role_meta.get("output_key")
-                        response_json = response.json()
-                        logger.debug(f"qiming-v2接口返回数据: {response_json}")
-                        response_data = response_json.get('data', {})
-                        outputs = response_data.get('outputs') or {}
-                        answer = ''
-                        if answer_key and answer_key in outputs:
-                            answer = outputs.get(answer_key, '')
-                        else:
-                            if len(outputs) == 1:
-                                answer = list(outputs.values())[0]
-                            elif len(outputs) > 1:
-                                answer = json.dumps(outputs, ensure_ascii=False)
-                        if not answer and response_data.get('error'):
-                            answer = response_data.get('error')
-                        else:
-                            answer = answer if answer is not None else ''
-                        inner_json_obj = {"answer": answer, "total_tokens": response_data.get('total_tokens')}
-                        yield {"error_code": 0, "text": mark + json.dumps(inner_json_obj) + mark}
+                if stream:
+                    # 处理流式响应
+                    for chunk in response.iter_lines():
+                        logger.debug(f"接收到流式响应: {chunk}")
+                        if chunk is None or len(chunk) == 0:
+                            continue
+                        if chunk.startswith(b'data:'):
+                            json_str = chunk.decode('utf-8')[6:]
+                            try:
+                                json_data = json.loads(json_str)
+                                result = self.get_chunk_response(json_data, is_workflow, answer_key, mark, final_user,
+                                                                 xappid, events, node_types)
+                                if not result:
+                                    continue
+                                text += result
+                                yield {"error_code": 0, "text": text}
+                            except json.JSONDecodeError:
+                                pass
                 else:
-                    if stream:
-                        # 处理流式响应
-                        for chunk in response.iter_lines():
-                            logger.debug(f"接收到流式响应: {chunk}")
-                            if chunk is None or len(chunk) == 0:
-                                continue
-                            if chunk.startswith(b'data:'):
-                                json_str = chunk.decode('utf-8')[6:]
-                                try:
-                                    json_data = json.loads(json_str)
-                                    event = json_data.get('event')
-                                    # 根据事件类型处理响应
-                                    if event == "error":
-                                        text += mark + json_data.get('message', '') + mark
-                                        yield {"error_code": 0, "text": text}
-                                    if event == "workflow_finished":
-                                        inner_json = {"final_total_tokens": event_data.get('total_tokens')}
-                                        text += mark + json.dumps(inner_json) + mark
-                                        yield {"error_code": 0, "text": text}
-                                    if events and event not in events:
-                                        continue
-                                    event_data = json_data.get('data', {})
-                                    if event == "node_finished" and event_data.get('node_type') in node_types:
-                                        conversation_id = json_data.get('conversation_id')
-                                        message_id = json_data.get('message_id')
-                                        outputs = event_data.get('outputs', {})
-                                        if 'answer' in outputs:
-                                            msg = outputs.get('answer', '')
-                                        else:
-                                            msg = outputs.get('text', '')
-                                        inner_json = json.dumps(
-                                            {"conversation_id": conversation_id, "message_id": message_id,
-                                             "user": user, "answer": msg})
-                                        text += mark + inner_json + mark
-                                        yield {"error_code": 0, "text": text}
-                                    elif event == "text_chunk":
-                                        text += mark + json_data.get('text', '') + mark
-                                        yield {"error_code": 0, "text": text}
-                                    elif event == "agent_message" or event == "message" or event == "agent_thought":
-                                        answer = json_data.get('answer', '')
-                                        thought = json_data.get('thought', '')
-                                        conversation_id = json_data.get('conversation_id')
-                                        message_id = json_data.get('message_id')
-                                        inner_json = json.dumps(
-                                            {"conversation_id": conversation_id, "message_id": message_id,
-                                             "user": user, "answer": answer, 'thought': thought})
-                                        text += mark + inner_json + mark
-                                        yield {"error_code": 0, "text": text}
-                                    elif event == "message_end":
-                                        # 结束消息
-                                        conversation_id = json_data.get('conversation_id')
-                                        message_id = json_data.get('message_id')
-                                        inner_json = {"conversation_id": conversation_id, "message_id": message_id}
-                                        metadata = json_data.get('metadata') or {}
-                                        usage = metadata.get('usage') or {}
-                                        if usage:
-                                            inner_json['total_tokens'] = usage.get('total_tokens')
-                                        retriever_resources = metadata.get('retriever_resources') or []
-                                        if retriever_resources:
-                                            grouped_docs = {}
-                                            docs = []
-                                            for r in retriever_resources:
-                                                key = f"{r.get('dataset_name')}:{r.get('document_name')}"
-                                                if key not in grouped_docs:
-                                                    grouped_docs[key] = {
-                                                        "filename": r.get('document_name'),
-                                                        "knowledge_base_name": r.get('dataset_name'),
-                                                        "page_content": []
-                                                    }
-                                                    docs.append(grouped_docs[key])
-                                                grouped_docs[key]["page_content"].append(
-                                                    truncate_text(r.get('content')))
-                                            inner_json["docs"] = docs
-                                        text += mark + json.dumps(inner_json) + mark
-                                        yield {"error_code": 0, "text": text}
-                                    elif event == "tts_message":
-                                        text += mark + json_data.get('audio', '') + mark
-                                        yield {"error_code": 0, "text": text}
-                                except json.JSONDecodeError as e:
-                                    logger.error(f"JSON解析错误: {e}")
+                    json_data = response.json()
+                    logger.debug(f"qiming-v2接口返回数据: {json_data}")
+                    if is_workflow:
+                        response_data = json_data.get('data', {})
+                        answer = self.get_workflow_output(response_data=response_data, answer_key=answer_key)
+                        inner_json_obj = {"user": final_user, "api_key": xappid, "answer": answer,
+                                          "total_tokens": response_data.get('total_tokens')}
+                        yield {"error_code": 0, "text": mark + json.dumps(inner_json_obj) + mark}
+                    else:
+                        inner_json_obj = self.get_block_response(json_data, final_user, xappid)
+                        yield {"error_code": 0, "text": mark + json.dumps(inner_json_obj) + mark}
         except Exception as e:
             logger.error(f"调用启明V2接口异常: {e}")
             if text == '':

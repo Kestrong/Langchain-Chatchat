@@ -157,9 +157,6 @@ FSCHAT_MODEL_WORKERS = {
     "qiming-api": {
         "port": 21012,
     },
-    "iotqwen-api": {
-        "port": 21013,
-    },
     "lingxi-fault-api": {
         "port": 21014,
     },

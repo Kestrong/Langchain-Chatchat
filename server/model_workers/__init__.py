@@ -17,7 +17,7 @@ from .tiangong import TianGongWorker
 from .gemini import GeminiWorker
 from .claude import ClaudeWorker
 from .qiming import QimingWorker
-from .dify import DifyWorker, IotQwenWorker
+from .dify import DifyWorker
 from .lingxi_fault import LingxiFaultWorker
 from .lingxi_cutover import LingxiCutOverWorker
 from .fastgpt import FastgptWorker

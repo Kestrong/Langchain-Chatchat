@@ -149,20 +149,6 @@ ONLINE_LLM_MODEL = {
         "model_name":"claude-3-opus-20240229", 
         "provider": "ClaudeWorker",
     },
-    "iotqwen-api": {
-        "version": "iotqwen-v1",
-        "api_proxy": "http://ip:port/v1/chat-messages",
-        "api_key": "app-xxxx",
-        "feedbackUrl": "http://ip:port/v1/messages/{message_id}/feedbacks",
-        "provider": "IotQwenWorker",
-        "role_meta": {
-            "user_id": "xxx",
-            "user": "xxx",
-            "kb_name": "IT",
-            "topk": 5,
-            "score_threshold": "0.5"
-        }
-    },
     "qiming-api": {
         "api_proxy": "ws://ip:port/serviceAgent/rest/ws/qiming_scene_v2",
         "version": "MaaS-Ws-v2",

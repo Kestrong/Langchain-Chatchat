@@ -95,21 +95,66 @@ class DifyWorker(ApiModelWorker):
     def get_inputs(self, role_meta: dict, model_config: dict):
         return model_config.get('inputs') or role_meta.get("inputs", {})
 
-    def get_chunk_response(self, json_data, is_workflow, mark, user, api_key, events, node_types):
-        event = json_data.get('event')
-        if is_workflow:
-            # workflow never be stream chunk
-            return mark + '[BREAK]' + mark
+    def get_workflow_output(self, response_data: dict, answer_key: str = None):
+        answer = ''
+        outputs = response_data.get('outputs') or {}
+        if answer_key and answer_key in outputs:
+            answer = outputs.get(answer_key, '')
         else:
-            event_data = json_data.get('data', {})
-            if event == "error":
-                return json_data.get('message', '')
-            if event == "workflow_finished":
-                total_tokens = event_data.get('total_tokens')
-                return mark + json.dumps({"final_total_tokens": total_tokens}) + mark
-            if events and event not in events:
-                return None
-            if event == "node_finished" and event_data.get('node_type') in node_types:
+            if len(outputs) == 1:
+                answer = list(outputs.values())[0]
+            elif len(outputs) > 1:
+                answer = json.dumps(outputs, ensure_ascii=False)
+        if not answer and response_data.get('error'):
+            answer = response_data.get('error')
+        else:
+            answer = answer if answer is not None else ''
+        return answer
+
+    def get_block_response(self, json_data, user, api_key):
+        conversation_id = json_data.get('conversation_id')
+        message_id = json_data.get('message_id')
+        inner_json_obj = {"conversation_id": conversation_id, "message_id": message_id,
+                          "user": user, "api_key": api_key, "answer": json_data.get('answer', '')}
+        metadata = json_data.get('metadata') or {}
+        usage = metadata.get('usage') or {}
+        if usage:
+            inner_json_obj['total_tokens'] = usage.get('total_tokens')
+        retriever_resources = metadata.get('retriever_resources') or []
+        if retriever_resources:
+            grouped_docs = {}
+            docs = []
+            for r in retriever_resources:
+                key = f"{r.get('dataset_name')}:{r.get('document_name')}"
+                if key not in grouped_docs:
+                    grouped_docs[key] = {
+                        "filename": r.get('document_name'),
+                        "knowledge_base_name": r.get('dataset_name'),
+                        "page_content": []
+                    }
+                    docs.append(grouped_docs[key])
+                grouped_docs[key]["page_content"].append(truncate_text(r.get('content')))
+            inner_json_obj['docs'] = docs
+        return inner_json_obj
+
+    def get_chunk_response(self, json_data, is_workflow, answer_key, mark, user, api_key, events, node_types):
+        event = json_data.get('event')
+        event_data = json_data.get('data', {})
+        inner_json = {"user": user, "api_key": api_key}
+        if event == "error":
+            inner_json["answer"] = json_data.get('message', '')
+            return mark + json.dumps(inner_json) + mark
+        if event == "workflow_finished":
+            inner_json["final_total_tokens"] = event_data.get('total_tokens')
+            return mark + json.dumps(inner_json) + mark
+        if events and event not in events:
+            return None
+        if event == "node_finished" and event_data.get('node_type') in node_types:
+            execution_metadata = event_data.get('execution_metadata', {})
+            if is_workflow:
+                msg = self.get_workflow_output(event_data, answer_key)
+                inner_json["answer"] = msg
+            else:
                 conversation_id = json_data.get('conversation_id')
                 message_id = json_data.get('message_id')
                 outputs = event_data.get('outputs', {})
@@ -117,51 +162,50 @@ class DifyWorker(ApiModelWorker):
                     msg = outputs.get('answer', '')
                 else:
                     msg = outputs.get('text', '')
-                inner_json = json.dumps(
-                    {"conversation_id": conversation_id, "message_id": message_id,
-                     "user": user, "api_key": api_key, "answer": msg})
-                return mark + inner_json + mark
-            elif event == "text_chunk":
-                msg = event_data.get('text', '')
-                return msg
-            elif event == "message" or event == "agent_message" or event == "agent_thought":
-                conversation_id = json_data.get('conversation_id')
-                message_id = json_data.get('message_id')
-                msg = json_data.get('answer', '')
-                thought = json_data.get('thought', '')
-                inner_json = json.dumps(
-                    {"conversation_id": conversation_id, "message_id": message_id,
-                     "user": user, "api_key": api_key, "answer": msg, 'thought': thought})
-                return mark + inner_json + mark
-            elif event == "message_end":
-                conversation_id = json_data.get('conversation_id')
-                message_id = json_data.get('message_id')
-                inner_json = {"conversation_id": conversation_id, "message_id": message_id, "user": user,
-                              "api_key": api_key}
-                metadata = json_data.get('metadata') or {}
-                usage = metadata.get('usage') or {}
-                if usage:
-                    inner_json['total_tokens'] = usage.get('total_tokens')
-                retriever_resources = metadata.get('retriever_resources') or []
-                if retriever_resources:
-                    grouped_docs = {}
-                    docs = []
-                    for r in retriever_resources:
-                        key = f"{r.get('dataset_name')}:{r.get('document_name')}"
-                        if key not in grouped_docs:
-                            grouped_docs[key] = {
-                                "filename": r.get('document_name'),
-                                "knowledge_base_name": r.get('dataset_name'),
-                                "page_content": []
-                            }
-                            docs.append(grouped_docs[key])
-                        grouped_docs[key]["page_content"].append(truncate_text(r.get('content')))
-                    inner_json["docs"] = docs
-                return mark + json.dumps(inner_json) + mark
-            elif event == "tts_message":
-                return json_data.get('audio', '')
-            else:
-                return None
+                inner_json.update({"answer": msg, 'conversation_id': conversation_id, 'message_id': message_id})
+            if execution_metadata:
+                inner_json['total_tokens'] = execution_metadata.get('total_tokens')
+            return mark + json.dumps(inner_json) + mark
+        elif event == "text_chunk":
+            inner_json["answer"] = event_data.get('text', '')
+            return mark + json.dumps(inner_json) + mark
+        elif event == "message" or event == "agent_message" or event == "agent_thought":
+            conversation_id = json_data.get('conversation_id')
+            message_id = json_data.get('message_id')
+            msg = json_data.get('answer', '')
+            thought = json_data.get('thought', '')
+            inner_json.update({"conversation_id": conversation_id, "message_id": message_id,
+                               "answer": msg, 'thought': thought})
+            return mark + json.dumps(inner_json) + mark
+        elif event == "message_end":
+            conversation_id = json_data.get('conversation_id')
+            message_id = json_data.get('message_id')
+            inner_json.update({"conversation_id": conversation_id, "message_id": message_id, })
+            metadata = json_data.get('metadata') or {}
+            usage = metadata.get('usage') or {}
+            if usage:
+                inner_json['final_total_tokens'] = usage.get('total_tokens')
+            retriever_resources = metadata.get('retriever_resources') or []
+            if retriever_resources:
+                grouped_docs = {}
+                docs = []
+                for r in retriever_resources:
+                    key = f"{r.get('dataset_name')}:{r.get('document_name')}"
+                    if key not in grouped_docs:
+                        grouped_docs[key] = {
+                            "filename": r.get('document_name'),
+                            "knowledge_base_name": r.get('dataset_name'),
+                            "page_content": []
+                        }
+                        docs.append(grouped_docs[key])
+                    grouped_docs[key]["page_content"].append(truncate_text(r.get('content')))
+                inner_json["docs"] = docs
+            return mark + json.dumps(inner_json) + mark
+        elif event == "tts_message":
+            inner_json["answer"] = json_data.get('audio', '')
+            return mark + json.dumps(inner_json) + mark
+        else:
+            return None
 
     def upload_files(self, url, api_key, user, contentObj, file_type, extra_headers):
         result = []
@@ -217,7 +261,8 @@ class DifyWorker(ApiModelWorker):
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key') or contentObj.get('api_key') or params.api_key
         is_workflow = model_config.get('is_workflow') or role_meta.get('is_workflow', False)
-        response_mode = False if is_workflow else model_config.get('stream', contentObj.get('stream', True))
+        answer_key = model_config.get('output_key') or params.role_meta.get("output_key")
+        response_mode = model_config.get('stream', contentObj.get('stream', True))
         events = model_config.get('events', role_meta.get('events', []))
         node_types = model_config.get('node_types', role_meta.get('node_types', []))
         user = model_config.get('user') or role_meta.get("user")
@@ -230,11 +275,12 @@ class DifyWorker(ApiModelWorker):
         parse_inputs_expr(inputs, query, contentObj, assistant)
         inputs['cookie'] = contentObj.get('cookie')
         inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
+        final_user = user or get_token_info(contentObj.get('token')).get('userId') or '1'
         data = {
             "inputs": inputs,
             "query": query,
             "response_mode": "streaming" if response_mode else "blocking",
-            "user": user,
+            "user": str(final_user),
             "conversation_id": contentObj.get('conversation_id'),
         }
         text = ""
@@ -259,12 +305,10 @@ class DifyWorker(ApiModelWorker):
                             json_str = chunk.decode('utf-8')[6:]
                             try:
                                 json_data = json.loads(json_str)
-                                result = self.get_chunk_response(json_data, is_workflow, mark, user, api_key, events,
-                                                                 node_types)
+                                result = self.get_chunk_response(json_data, is_workflow, answer_key, mark, final_user,
+                                                                 api_key, events, node_types)
                                 if not result:
                                     continue
-                                if result == mark + '[BREAK]' + mark:
-                                    break
                                 text += result
                                 yield {"error_code": 0, "text": text}
                             except json.JSONDecodeError:
@@ -273,47 +317,13 @@ class DifyWorker(ApiModelWorker):
                     json_data = response.json()
                     logger.debug(f"dify接口返回数据: {json_data}")
                     if is_workflow:
-                        answer_key = model_config.get('output_key') or params.role_meta.get("output_key")
                         response_data = json_data.get('data', {})
-                        outputs = response_data.get('outputs') or {}
-                        answer = ''
-                        if answer_key and answer_key in outputs:
-                            answer = outputs.get(answer_key, '')
-                        else:
-                            if len(outputs) == 1:
-                                answer = list(outputs.values())[0]
-                            elif len(outputs) > 1:
-                                answer = json.dumps(outputs, ensure_ascii=False)
-                        if not answer and response_data.get('error'):
-                            answer = response_data.get('error')
-                        else:
-                            answer = answer if answer is not None else ''
-                        inner_json_obj = {"answer": answer, "total_tokens": response_data.get('total_tokens')}
+                        answer = self.get_workflow_output(response_data=response_data, answer_key=answer_key)
+                        inner_json_obj = {"user": final_user, "api_key": api_key, "answer": answer,
+                                          "total_tokens": response_data.get('total_tokens')}
                         yield {"error_code": 0, "text": mark + json.dumps(inner_json_obj) + mark}
                     else:
-                        conversation_id = json_data.get('conversation_id')
-                        message_id = json_data.get('message_id')
-                        inner_json_obj = {"conversation_id": conversation_id, "message_id": message_id,
-                                          "user": user, "api_key": api_key, "answer": json_data.get('answer', '')}
-                        metadata = json_data.get('metadata') or {}
-                        usage = metadata.get('usage') or {}
-                        if usage:
-                            inner_json_obj['total_tokens'] = usage.get('total_tokens')
-                        retriever_resources = metadata.get('retriever_resources') or []
-                        if retriever_resources:
-                            grouped_docs = {}
-                            docs = []
-                            for r in retriever_resources:
-                                key = f"{r.get('dataset_name')}:{r.get('document_name')}"
-                                if key not in grouped_docs:
-                                    grouped_docs[key] = {
-                                        "filename": r.get('document_name'),
-                                        "knowledge_base_name": r.get('dataset_name'),
-                                        "page_content": []
-                                    }
-                                    docs.append(grouped_docs[key])
-                                grouped_docs[key]["page_content"].append(truncate_text(r.get('content')))
-                            inner_json_obj['docs'] = docs
+                        inner_json_obj = self.get_block_response(json_data, final_user, api_key)
                         yield {"error_code": 0, "text": mark + json.dumps(inner_json_obj) + mark}
         except Exception as e:
             logger.error(f"{e}")
@@ -338,13 +348,3 @@ class DifyWorker(ApiModelWorker):
 
     def format_online_llm(self):
         return False
-
-
-class IotQwenWorker(DifyWorker):
-    def get_inputs(self, role_meta: dict, model_config: dict):
-        user_id = model_config.get('user_id') or role_meta.get('user_id')
-        kb_name = model_config.get('kb_name') or role_meta.get('kb_name')
-        topk = model_config.get('topk') or role_meta.get('topk')
-        score_threshold = model_config.get('score_threshold') or role_meta.get('score_threshold')
-        return {"userId": user_id, "kb_name": kb_name,
-                "topk": topk, "score_threshold": score_threshold}
