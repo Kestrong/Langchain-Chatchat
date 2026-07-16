@@ -354,25 +354,25 @@ async def get_available_tools(tool_name_ens: List[str]):
             enable_tools = mcp_config.get('enable_tools')
             try:
                 mcp_list_result = await mcp_async(tool_config=mcp_config, method="tools/list", params={})
-                mcp_list_result_obj = json.loads(mcp_list_result) or []
-                for m_result in mcp_list_result_obj:
-                    for mcp_tool in m_result.get("tools", []):
-                        if enable_tools and mcp_tool.get("name") not in enable_tools:
-                            continue
-                        if disable_tools and mcp_tool.get("name") in disable_tools:
-                            continue
-                        mcp_tool_name = mcp_tool.get("name")
-                        kwargs_collector = lambda x, name=mcp_tool_name: {"method": "tools/call", "name": name,
-                                                                          "arguments": x}
-                        structured_tool = create_dynamic_tool(tool_config=mcp_config,
-                                                              tool_name=mcp_tool.get("title"),
-                                                              tool_name_en=mcp_tool_name,
-                                                              description=mcp_tool.get("tool_description"),
-                                                              func_name=tool.func_or_co.__name__,
-                                                              function_source='',
-                                                              func_properties=mcp_tool.get("inputSchema", {}) or {},
-                                                              kwargs_collector=kwargs_collector)
-                        available_tools.append(structured_tool)
+                m_result = json.loads(mcp_list_result) or {}
+                for mcp_tool in m_result.get("tools", []):
+                    if enable_tools and mcp_tool.get("name") not in enable_tools:
+                        continue
+                    if disable_tools and mcp_tool.get("name") in disable_tools:
+                        continue
+                    mcp_tool_name = mcp_tool.get("name")
+                    kwargs_collector = lambda x, name=mcp_tool_name: {"method": "tools/call",
+                                                                      "params": {"name": name,
+                                                                                 "arguments": x}}
+                    structured_tool = create_dynamic_tool(tool_config=mcp_config,
+                                                          tool_name=mcp_tool.get("title"),
+                                                          tool_name_en=mcp_tool_name,
+                                                          description=mcp_tool.get("tool_description"),
+                                                          func_name=tool.func_or_co.__name__,
+                                                          function_source='',
+                                                          func_properties=mcp_tool.get("inputSchema", {}) or {},
+                                                          kwargs_collector=kwargs_collector)
+                    available_tools.append(structured_tool)
             except Exception as e:
                 logger.error(f"Failed to create dynamic tool for {tool.name}: {e}")
 
