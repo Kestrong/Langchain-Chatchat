@@ -116,7 +116,8 @@ TOOL_CONFIG = {
         ]
     },
     "mcp": {
-        "server_url": "http://127.0.0.1:8000",
+        "transport": "streamable_http",  # sse or streamable_http
+        "server_url": "http://127.0.0.1:8000/mcp",
         "timeout": 30,
         "return_direct": False,
         "disable_tools": [],
