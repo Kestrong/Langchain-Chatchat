@@ -3,7 +3,7 @@ import json
 import uuid
 from datetime import datetime
 from functools import partial
-from typing import Any, AsyncIterable, AsyncIterator, List
+from typing import Any, AsyncIterable, AsyncIterator, List, Dict, Optional
 
 from fastapi import Body
 from starlette.requests import Request
@@ -15,6 +15,20 @@ from server.db.repository import get_assistant_detail_from_db, add_message_to_db
 from server.memory.message_i18n import Message_I18N
 from server.utils import BaseResponse
 from server.workflow.workflow_engine import WorkflowEngine
+
+
+def get_safe_forward_headers(request: Optional[Request]) -> Dict[str, str]:
+    """提取可安全透传给下游服务的请求头"""
+    if not request:
+        return {}
+
+    _FORWARD_HEADERS = {"authorization", "cookie", "accept-language", "user-agent"}
+
+    safe_headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower().startswith("x-") or k.lower() in _FORWARD_HEADERS
+    }
+    return safe_headers
 
 
 async def workflow_chat(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
@@ -75,7 +89,8 @@ async def do_workflow_chat(query: str,
 
     async def chat_iterator() -> AsyncIterable[str]:
 
-        context = {"GLOBAL": {"inputs": {"current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}}}
+        context = {"GLOBAL": {"inputs": {"current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                         "headers": get_safe_forward_headers(request)}}}
         db_message_response: List[Any] = []
         total_tokens = 0
         response_all_nodes = []
