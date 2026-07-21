@@ -156,8 +156,10 @@ class LocalLLMComponent(Component):
             result = {}
             answer = ''
             thought = ''
+            headers = self.get_context().get('GLOBAL', {}).get('inputs', {}).get('headers')
             async with get_httpx_client(use_async=True) as client:
-                async with client.stream("POST", url=f"{api_base_url}/chat/chat", json=data) as response:
+                async with client.stream("POST", url=f"{api_base_url}/chat/chat", json=data,
+                                         headers=headers) as response:
                     response.raise_for_status()
                     async for line in response.aiter_lines():
                         if not line or not line.startswith("data:"):
