@@ -36,6 +36,7 @@ def analyze_file(filename):
 
 
 def parse_inputs_expr(inputs, query, contentObj, assistant):
+    template_var = {'assistant': assistant, **contentObj}
     for k, v in inputs.items():
         if k in ['cookie', 'token_info']:
             continue
@@ -47,7 +48,7 @@ def parse_inputs_expr(inputs, query, contentObj, assistant):
                     v = v.replace(placeholder, query)
                 else:
                     try:
-                        var_val = DEFAULT_FORMATTER_MAPPING["jinja2"](placeholder, **contentObj)
+                        var_val = DEFAULT_FORMATTER_MAPPING["jinja2"](placeholder, **template_var)
                         if var_val:
                             v = v.replace(placeholder, var_val)
                     except:
@@ -272,10 +273,11 @@ class DifyWorker(ApiModelWorker):
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", **extra_headers}
         query = contentObj.get('question', '')
         inputs = self.get_inputs(role_meta, model_config)
+        token_info = contentObj.get('token_info')
         parse_inputs_expr(inputs, query, contentObj, assistant)
         inputs['cookie'] = contentObj.get('cookie')
-        inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
-        final_user = user or get_token_info(contentObj.get('token')).get('userId') or '1'
+        inputs['token_info'] = json.dumps(token_info, ensure_ascii=False)
+        final_user = user or token_info.get('userId') or '1'
         data = {
             "inputs": inputs,
             "query": query,

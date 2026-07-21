@@ -22,7 +22,7 @@ from server.chat.utils import History, parse_llm_token_inner_json, \
 from server.db.repository import add_message_to_db, filter_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
 from server.memory.conversation_window_buffer_memory import ConversationBufferWindowMemory
-from server.memory.token_info_memory import get_token
+from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelParams
 from server.utils import get_prompt_template, BaseResponse, parse_json_md
 from server.utils import wrap_done, get_ChatOpenAI
@@ -31,7 +31,7 @@ from server.utils import wrap_done, get_ChatOpenAI
 def process_extra(stream: bool, model_name: str, conversation_id: Union[str, None], extra: dict,
                   request: Request, ):
     if un_format_online_llm_model(model_name):
-        extra["token"] = get_token()
+        extra["token_info"] = get_token_info()
         extra['stream'] = stream
         extra["cookie"] = request.headers.get('cookie') if request else None
         if conversation_id:

@@ -8,7 +8,7 @@ except ImportError:
     CIAM_ADMIN_HOST = ""
     CIAM_ADMIN_ENABLED = "False"
 from configs import logger
-from server.memory.token_info_memory import get_token
+from server.memory.token_info_memory import get_token_headers
 from server.utils import get_httpx_client
 
 
@@ -18,7 +18,7 @@ def list_resources(resource_code: str) -> list:
             return []
 
     url = f"{CIAM_ADMIN_HOST}/iam/token/listResources"
-    headers = {"Authorization": get_token()}
+    headers = get_token_headers()
     params = {"resourceTypes": "2", "namespaceCode": "flm-chat"}
 
     with get_httpx_client(timeout=int(os.environ.get("CLIENT_TIMEOUT", 15))) as client:
