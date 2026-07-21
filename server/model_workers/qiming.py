@@ -208,10 +208,11 @@ class QimingWorker(DifyWorker):
         files = self.upload_files(uri, app_id or business_type, user, contentObj, file_type, headers)
         query = contentObj.get('question', '')
         inputs = model_config.get('inputs') or params.role_meta.get("inputs", {})
+        token_info = contentObj.get('token_info')
         parse_inputs_expr(inputs, query, contentObj, assistant)
         inputs['cookie'] = contentObj.get('cookie')
-        inputs['token_info'] = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
-        final_user = user or get_token_info(contentObj.get('token')).get('userId') or '1'
+        inputs['token_info'] = json.dumps(token_info, ensure_ascii=False)
+        final_user = user or token_info.get('userId') or '1'
         api_data = {
             "files": files,
             "response_mode": "streaming" if stream else "blocking",  # Agent只能使用流式输出

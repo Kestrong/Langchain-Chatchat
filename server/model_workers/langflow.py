@@ -60,7 +60,7 @@ class LangflowWorker(ApiModelWorker):
         query = contentObj.get('question', '')
         inputs = model_config.get('inputs') or role_meta.get("inputs", {})
         cookie = contentObj.get('cookie')
-        token_info = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
+        token_info = contentObj.get('token_info')
         tweaks = contentObj.get('tweaks', inputs.get('tweaks', {}))
         parse_inputs_expr(tweaks, query, contentObj, assistant)
 
@@ -85,7 +85,7 @@ class LangflowWorker(ApiModelWorker):
                     if 'cookie' in value and value.get('cookie') == "{cookie}":
                         value['cookie'] = cookie
                     if 'token_info' in value and value.get('token_info') == "{token_info}":
-                        value['token_info'] = token_info
+                        value['token_info'] = json.dumps(token_info, ensure_ascii=False)
 
             with requests.post(langflow_url, headers=headers, params=query_params, json=data, stream=stream,
                                verify=False, timeout=timeout) as response:

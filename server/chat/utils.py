@@ -20,7 +20,7 @@ from common.exceptions import ChatBusinessException, WorkerBusinessException
 from configs import logger, log_verbose, MAX_TOKENS_INPUT
 from server.db.repository import update_message
 from server.memory.message_i18n import Message_I18N
-from server.memory.token_info_memory import get_token
+from server.memory.token_info_memory import get_token_headers
 from server.utils import get_model_worker_config, BaseResponse, run_in_thread_pool, get_mime_type, get_file_category, \
     get_chat_file_kb
 
@@ -340,7 +340,7 @@ def unify_chat_files(third_party_files: List[dict], knowledge_id: str = None, re
     if third_party_files:
         if not knowledge_id:
             knowledge_id = str(uuid.uuid4())
-        headers = {"Authorization": get_token()}
+        headers = get_token_headers()
         for f in third_party_files:
             response = requests.get(f.get('url'), headers=headers, cookies=request.cookies if request else None,
                                     stream=True, verify=False)

@@ -37,7 +37,8 @@ class LingxiCutOverWorker(ApiModelWorker):
         if assistant:
             model_config = assistant.get('model_config', {})
         url = model_config.get('api_proxy', params.api_proxy)
-        headers = {"x-access-token": contentObj.get('token')}
+        token_info = contentObj.get('token_info')
+        headers = {"x-access-token": token_info.get('token')}
         data = {
             "attachmentUrl": "string",
             "endTime": 0,
