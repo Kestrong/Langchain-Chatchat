@@ -246,6 +246,7 @@ class QimingWorker(DifyWorker):
                     response.raise_for_status()
                 if stream:
                     # 处理流式响应
+                    token_events = []
                     for chunk in response.iter_lines():
                         logger.debug(f"接收到流式响应: {chunk}")
                         if chunk is None or len(chunk) == 0:
@@ -253,12 +254,14 @@ class QimingWorker(DifyWorker):
                         if chunk.startswith(b'data:'):
                             json_str = chunk.decode('utf-8')[6:]
                             try:
+                                if json_str == '[DONE]':
+                                    continue
                                 json_data = json.loads(json_str)
-                                result = self.get_chunk_response(json_data, is_workflow, answer_key, mark, final_user,
-                                                                 xappid, events, node_types)
+                                result = self.get_chunk_response(json_data, is_workflow, answer_key, token_events,
+                                                                 final_user, xappid, events, node_types)
                                 if not result:
                                     continue
-                                text += result
+                                text += mark + json.dumps(result) + mark
                                 yield {"error_code": 0, "text": text}
                             except json.JSONDecodeError:
                                 pass

@@ -12,7 +12,6 @@ from langchain_core.prompts.string import DEFAULT_FORMATTER_MAPPING
 from configs import logger
 from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
 from server.knowledge_base.oss import default_oss
-from server.memory.token_info_memory import get_token_info
 from server.model_workers import ApiModelWorker, ApiChatParams
 from server.utils import truncate_text, get_mime_type, get_file_category
 
@@ -138,16 +137,42 @@ class DifyWorker(ApiModelWorker):
             inner_json_obj['docs'] = docs
         return inner_json_obj
 
-    def get_chunk_response(self, json_data, is_workflow, answer_key, mark, user, api_key, events, node_types):
+    def get_chunk_response(self, json_data, is_workflow, answer_key, token_event, user, api_key, events, node_types):
         event = json_data.get('event')
         event_data = json_data.get('data', {})
         inner_json = {"user": user, "api_key": api_key}
         if event == "error":
             inner_json["answer"] = json_data.get('message', '')
-            return mark + json.dumps(inner_json) + mark
-        if event == "workflow_finished":
+            return inner_json
+        if event == "message_end":
+            conversation_id = json_data.get('conversation_id')
+            message_id = json_data.get('message_id')
+            inner_json.update({"conversation_id": conversation_id, "message_id": message_id, })
+            metadata = json_data.get('metadata') or {}
+            usage = metadata.get('usage') or {}
+            if usage and "workflow_finished" not in token_event:
+                token_event.append(event)
+                inner_json['final_total_tokens'] = usage.get('total_tokens')
+            retriever_resources = metadata.get('retriever_resources') or []
+            if retriever_resources:
+                grouped_docs = {}
+                docs = []
+                for r in retriever_resources:
+                    key = f"{r.get('dataset_name')}:{r.get('document_name')}"
+                    if key not in grouped_docs:
+                        grouped_docs[key] = {
+                            "filename": r.get('document_name'),
+                            "knowledge_base_name": r.get('dataset_name'),
+                            "page_content": []
+                        }
+                        docs.append(grouped_docs[key])
+                    grouped_docs[key]["page_content"].append(truncate_text(r.get('content')))
+                inner_json["docs"] = docs
+            return inner_json
+        if event == "workflow_finished" and "message_end" not in token_event:
+            token_event.append(event)
             inner_json["final_total_tokens"] = event_data.get('total_tokens')
-            return mark + json.dumps(inner_json) + mark
+            return inner_json
         if events and event not in events:
             return None
         if event == "node_finished" and event_data.get('node_type') in node_types:
@@ -166,10 +191,10 @@ class DifyWorker(ApiModelWorker):
                 inner_json.update({"answer": msg, 'conversation_id': conversation_id, 'message_id': message_id})
             if execution_metadata:
                 inner_json['total_tokens'] = execution_metadata.get('total_tokens')
-            return mark + json.dumps(inner_json) + mark
+            return inner_json
         elif event == "text_chunk":
             inner_json["answer"] = event_data.get('text', '')
-            return mark + json.dumps(inner_json) + mark
+            return inner_json
         elif event == "message" or event == "agent_message" or event == "agent_thought":
             conversation_id = json_data.get('conversation_id')
             message_id = json_data.get('message_id')
@@ -177,34 +202,10 @@ class DifyWorker(ApiModelWorker):
             thought = json_data.get('thought', '')
             inner_json.update({"conversation_id": conversation_id, "message_id": message_id,
                                "answer": msg, 'thought': thought})
-            return mark + json.dumps(inner_json) + mark
-        elif event == "message_end":
-            conversation_id = json_data.get('conversation_id')
-            message_id = json_data.get('message_id')
-            inner_json.update({"conversation_id": conversation_id, "message_id": message_id, })
-            metadata = json_data.get('metadata') or {}
-            usage = metadata.get('usage') or {}
-            if usage:
-                inner_json['final_total_tokens'] = usage.get('total_tokens')
-            retriever_resources = metadata.get('retriever_resources') or []
-            if retriever_resources:
-                grouped_docs = {}
-                docs = []
-                for r in retriever_resources:
-                    key = f"{r.get('dataset_name')}:{r.get('document_name')}"
-                    if key not in grouped_docs:
-                        grouped_docs[key] = {
-                            "filename": r.get('document_name'),
-                            "knowledge_base_name": r.get('dataset_name'),
-                            "page_content": []
-                        }
-                        docs.append(grouped_docs[key])
-                    grouped_docs[key]["page_content"].append(truncate_text(r.get('content')))
-                inner_json["docs"] = docs
-            return mark + json.dumps(inner_json) + mark
+            return inner_json
         elif event == "tts_message":
             inner_json["answer"] = json_data.get('audio', '')
-            return mark + json.dumps(inner_json) + mark
+            return inner_json
         else:
             return None
 
@@ -299,6 +300,7 @@ class DifyWorker(ApiModelWorker):
                     logger.error(response.text)
                 response.raise_for_status()
                 if response_mode:
+                    token_events = []
                     for chunk in response.iter_lines():
                         logger.debug(f"接收到流式响应: {chunk}")
                         if chunk is None or len(chunk) == 0:
@@ -306,12 +308,14 @@ class DifyWorker(ApiModelWorker):
                         if chunk.startswith(b'data:'):
                             json_str = chunk.decode('utf-8')[6:]
                             try:
+                                if json_str == '[DONE]':
+                                    continue
                                 json_data = json.loads(json_str)
-                                result = self.get_chunk_response(json_data, is_workflow, answer_key, mark, final_user,
-                                                                 api_key, events, node_types)
+                                result = self.get_chunk_response(json_data, is_workflow, answer_key, token_events,
+                                                                 final_user, api_key, events, node_types)
                                 if not result:
                                     continue
-                                text += result
+                                text += mark + json.dumps(result) + mark
                                 yield {"error_code": 0, "text": text}
                             except json.JSONDecodeError:
                                 pass
