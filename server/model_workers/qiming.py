@@ -248,11 +248,12 @@ class QimingWorker(DifyWorker):
                     # 处理流式响应
                     token_events = []
                     for chunk in response.iter_lines():
-                        logger.debug(f"接收到流式响应: {chunk}")
                         if chunk is None or len(chunk) == 0:
                             continue
-                        if chunk.startswith(b'data:'):
-                            json_str = chunk.decode('utf-8')[6:]
+                        chunk = chunk.decode('utf-8')
+                        logger.debug(f"接收到流式响应: {chunk}")
+                        if chunk.startswith('data:'):
+                            json_str = chunk[6:].strip()
                             try:
                                 if json_str == '[DONE]':
                                     continue
