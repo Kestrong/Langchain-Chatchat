@@ -111,7 +111,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
 
     def parse_token(self, token: str, metadata: dict = None, error: str = None):
         mark = f'###[{self.model_name}]###'
-        answer = ''
+        answer,thought = '',''
         if metadata is None:
             metadata = {}
         if mark in token:
@@ -124,6 +124,8 @@ class ConversationCallbackHandler(BaseCallbackHandler):
                         json_obj = json.loads(part)
                         if 'answer' in json_obj:
                             answer += json_obj.get('answer')
+                        if 'thought' in json_obj:
+                            thought += json_obj.get('thought')
                         for key, value in extra_key_map.items():
                             if key in json_obj:
                                 metadata[value] = json_obj.get(key)
@@ -132,6 +134,8 @@ class ConversationCallbackHandler(BaseCallbackHandler):
         else:
             if token:
                 answer = token
+        if thought:
+            metadata["thought"] = thought
         if error:
             metadata["error_info"] = error
         else:
