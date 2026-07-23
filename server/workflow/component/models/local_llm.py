@@ -91,9 +91,9 @@ class LocalLLMComponent(Component):
             options=[]
         ),
         ListInput(
-            name='api_names',
-            display_name="${WORKFLOW_INPUT_DISPLAYNAME_API_NAMES}",
-            info="${WORKFLOW_INPUT_INFO_API_NAMES}",
+            name='enable_thinking',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_ENABLE_THINKING}",
+            info="${WORKFLOW_INPUT_INFO_ENABLE_THINKING}",
         ),
     ]
 
@@ -122,6 +122,8 @@ class LocalLLMComponent(Component):
             inputs = self.get_context()[self.id]["inputs"]
             query = inputs.get("query") or state.get("query")
             extra = inputs.get("extra") or state.get("extra", {})
+            if inputs.get("enable_thinking") is not None:
+                extra['enable_thinking'] = inputs.get("enable_thinking")
             conversation_id = state.get("conversation_id")
             knowledge_id = inputs.get("knowledge_id")
             assistant_code = inputs.get("assistant_code")

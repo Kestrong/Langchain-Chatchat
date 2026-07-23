@@ -2,7 +2,7 @@ import fastchat.constants
 from fastchat.conversation import Conversation
 
 from configs import LOG_PATH, TEMPERATURE, MAX_TOKENS_INPUT
-from server.chat.utils import un_format_online_llm_model, calculate_token_len, get_tiktoken_num
+from server.chat.utils import calculate_token_len, get_tiktoken_num
 
 fastchat.constants.LOGDIR = LOG_PATH
 from fastchat.serve.base_model_worker import BaseModelWorker
@@ -79,7 +79,7 @@ class ApiChatParams(ApiModelParams):
     messages: List[Dict[str, Union[str, List]]]
     system_message: Optional[str] = None  # for minimax
     role_meta: Dict = {}  # for minimax
-    extra: Optional[Dict[str, Any]] = None # for extra input
+    extra: Optional[Dict[str, Any]] = None  # for extra input
 
 
 class ApiChatWithFeedbackParams(ApiChatParams):
@@ -95,6 +95,60 @@ class ApiEmbeddingsParams(ApiConfigParams):
     embed_model: Optional[str] = None
     to_query: bool = False  # for minimax
     role_meta: Dict = {}  # for minimax
+
+
+class ThinkStreamParser:
+    def __init__(self, enable_thinking: bool, truncate_mark: str):
+        self.enable_thinking = enable_thinking
+        self.open_tag = ""
+        self.close_tag = ""
+        self.in_think = False
+        self.finished = False
+
+        tags = truncate_mark.split(",") if truncate_mark else []
+        if len(tags) != 2:
+            self.enable_thinking = False
+        else:
+            self.open_tag, self.close_tag = tags[0], tags[1]
+
+    def feed(self, chunk: str) -> dict:
+        result = {"answer": "", "thought": ""}
+
+        if not self.enable_thinking or self.finished:
+            result["answer"] = chunk
+            return result
+
+        if self.in_think:
+            idx = chunk.find(self.close_tag)
+            if idx != -1:
+                result["thought"] = chunk[:idx]
+                self.in_think = False
+                self.finished = True
+                remaining = chunk[idx + len(self.close_tag):]
+                if remaining:
+                    sub = self.feed(remaining.lstrip('\n'))
+                    result["answer"] += sub["answer"]
+                    result["thought"] += sub["thought"]
+            else:
+                result["thought"] = chunk
+        else:
+            idx = chunk.find(self.open_tag)
+            if idx != -1:
+                result["answer"] = chunk[:idx]
+                self.in_think = True
+                remaining = chunk[idx + len(self.open_tag):]
+                if remaining:
+                    sub = self.feed(remaining.lstrip('\n'))
+                    result["answer"] += sub["answer"]
+                    result["thought"] += sub["thought"]
+            else:
+                result["answer"] = chunk
+
+        return result
+
+    def reset(self):
+        self.in_think = False
+        self.finished = False
 
 
 class ApiModelWorker(BaseModelWorker):

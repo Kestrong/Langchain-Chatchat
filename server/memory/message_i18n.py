@@ -321,9 +321,9 @@ workflow = {
         "zh": "工具名称",
         "en": "Tool Names"
     },
-    "WORKFLOW_INPUT_DISPLAYNAME_API_NAMES": {
-        "zh": "API名称",
-        "en": "API Names"
+    "WORKFLOW_INPUT_DISPLAYNAME_ENABLE_THINKING": {
+        "zh": "思考模式",
+        "en": "Enable Thinking"
     },
     "WORKFLOW_INPUT_DISPLAYNAME_ARGS": {
         "zh": "参数",
@@ -433,9 +433,9 @@ workflow = {
         "zh": "可用于LLM的工具名称",
         "en": "Available tool names to use for LLM."
     },
-    "WORKFLOW_INPUT_INFO_API_NAMES": {
-        "zh": "可用于LLM的API名称",
-        "en": "Available api names to use for LLM."
+    "WORKFLOW_INPUT_INFO_ENABLE_THINKING": {
+        "zh": "是否开启思考过程",
+        "en": "Enable thinking."
     },
     "WORKFLOW_INPUT_INFO_ARGS": {
         "zh": "Python函数的参数",

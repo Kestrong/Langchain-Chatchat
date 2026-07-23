@@ -2,7 +2,7 @@ import copy
 import json
 import logging
 import re
-from typing import List, Dict, Literal
+from typing import List, Dict, Literal, Union
 
 import requests
 from fastchat import conversation as conv
@@ -12,6 +12,7 @@ from langchain_core.prompts.string import DEFAULT_FORMATTER_MAPPING
 from configs import logger
 from server.db.repository import get_assistant_simple_from_db, get_model_metadata_from_db
 from server.knowledge_base.oss import default_oss
+from server.memory.message_i18n import Message_I18N
 from server.model_workers import ApiModelWorker, ApiChatParams
 from server.utils import truncate_text, get_mime_type, get_file_category
 
@@ -137,7 +138,8 @@ class DifyWorker(ApiModelWorker):
             inner_json_obj['docs'] = docs
         return inner_json_obj
 
-    def get_chunk_response(self, json_data, is_workflow, answer_key, token_event, user, api_key, events, node_types):
+    def get_chunk_response(self, json_data: dict, is_workflow: bool, answer_key: str,
+                           token_event: list, user: Union[str, int], api_key: str, events: list, node_types: list):
         event = json_data.get('event')
         event_data = json_data.get('data', {})
         inner_json = {"user": user, "api_key": api_key}
@@ -196,12 +198,22 @@ class DifyWorker(ApiModelWorker):
             inner_json["answer"] = event_data.get('text', '')
             return inner_json
         elif event == "message" or event == "agent_message" or event == "agent_thought":
-            conversation_id = json_data.get('conversation_id')
-            message_id = json_data.get('message_id')
-            msg = json_data.get('answer', '')
-            thought = json_data.get('thought', '')
-            inner_json.update({"conversation_id": conversation_id, "message_id": message_id,
-                               "answer": msg, 'thought': thought})
+            inner_json["conversation_id"] = json_data.get('conversation_id')
+            inner_json["message_id"] = json_data.get('message_id')
+            if event == "agent_thought":
+                thought = json_data.get('thought', '')
+                observation = json_data.get('observation', '')
+                if observation:
+                    tool = json_data.get("tool")
+                    tool_input = json_data.get("tool_input")
+                    inner_json["thought"] = Message_I18N.API_AGENT_TOOL_SUCCESS_INFO.value.format(
+                        tool_name=tool, input_str=tool_input, output_str=observation)
+                else:
+                    inner_json["thought"] = thought
+                inner_json["answer"] = ""
+            else:
+                msg = json_data.get('answer', '')
+                inner_json['answer'] = msg
             return inner_json
         elif event == "tts_message":
             inner_json["answer"] = json_data.get('audio', '')

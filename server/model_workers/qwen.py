@@ -11,7 +11,7 @@ from openai import OpenAI
 
 from configs import logger, log_verbose
 from server.model_workers.base import *
-from server.model_workers.base import ApiEmbeddingsParams
+from server.model_workers.base import ApiEmbeddingsParams, ThinkStreamParser
 
 
 class QwenWorker(ApiModelWorker):
@@ -40,6 +40,7 @@ class QwenWorker(ApiModelWorker):
         params.load_config(self.model_names[0])
         if log_verbose:
             logger.info(f'{self.__class__.__name__}:params: {params}')
+        extra = params.extra or {}
         extra_body = params.role_meta.get("extra_body", {})
         enable_thinking = params.enable_thinking
         self.parse_thinking(extra_body, enable_thinking)
@@ -61,7 +62,7 @@ class QwenWorker(ApiModelWorker):
         ) as client:
             try:
                 with client.chat.completions.create(
-                        model=params.version,
+                        model=extra.get('version') or params.version,
                         temperature=params.temperature,
                         messages=params.messages,
                         stream=True,
@@ -71,10 +72,9 @@ class QwenWorker(ApiModelWorker):
                         extra_headers=params.role_meta.get("extra_headers", {}),
                 ) as responses:
                     text = ''
-                    temp = ''
-                    flag = True
                     mark = f'###[{self.model_names[0]}]###'
                     truncate_mark = params.role_meta.get('truncate_mark')
+                    parser = ThinkStreamParser(enable_thinking=enable_thinking, truncate_mark=truncate_mark)
                     for resp in responses:
                         if resp.choices and resp.choices[0].delta:
                             try:
@@ -86,23 +86,9 @@ class QwenWorker(ApiModelWorker):
                                 yield {"error_code": 0, "text": text}
                             content = resp.choices[0].delta.content
                             if content:
-                                if flag and truncate_mark and enable_thinking:
-                                    temp += content
-                                    if truncate_mark not in temp:
-                                        text += mark + json.dumps({'thought': content}) + mark
-                                    else:
-                                        truncate_index = content.find(truncate_mark)
-                                        answer = text[truncate_index + len(truncate_mark):]
-                                        thinking_content = text[:truncate_index + len(truncate_mark)]
-                                        text += mark + json.dumps({'thought': thinking_content}) + mark + answer
-                                        temp = ''
-                                        flag = False
-                                else:
-                                    text += content
-                                yield {
-                                    "error_code": 0,
-                                    "text": text,
-                                }
+                                result = parser.feed(content)
+                                text += mark + json.dumps(result) + mark
+                                yield {"error_code": 0, "text": text, }
             except Exception as e:
                 data = {
                     "error_code": 0,
