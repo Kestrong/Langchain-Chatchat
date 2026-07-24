@@ -117,8 +117,12 @@ async def do_workflow_chat(query: str,
                 yield json.dumps(
                     {"event": "workflow_started", "message_id": message_id, "conversation_id": conversation_id},
                     ensure_ascii=False)
+                thought = ''
                 async for a in iter_node_result(queue, event):
                     if "node_id" not in a and "event" in a:
+                        n_thought = a.get('thought')
+                        if n_thought:
+                            thought += n_thought
                         yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, **a},
                                          ensure_ascii=False)
                         continue
@@ -127,8 +131,14 @@ async def do_workflow_chat(query: str,
                     node_tokens = node_outputs.pop("total_tokens", 0) or 0
                     total_tokens += node_tokens
                     if a.get("node_name") == "chat_output":
+                        if thought:
+                            db_message_response.append(f'<think>\n{thought}\n</think>')
+                            thought = ''
                         db_message_response.append(node_outputs.get("answer"))
                     elif a.get("node_name") == "chat_structure_output":
+                        if thought:
+                            db_message_response.append(f'<think>\n{thought}\n</think>')
+                            thought = ''
                         s_answer = node_outputs.get("answer")
                         s_event = {"event": "message", "message_id": message_id, "conversation_id": conversation_id,
                                    "answer": s_answer}

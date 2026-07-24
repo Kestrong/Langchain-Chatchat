@@ -33,6 +33,7 @@ class WorkflowEngine:
         self.node_lock = asyncio.Lock()
         self.pubsub = AsyncPubSub() if stream else None
         self.state.setdefault("pubsub", self.pubsub)
+        self.execution_semaphore = asyncio.Semaphore(1)
 
         for n in nodes:
             n = n.get("node") if "node" in n else n
@@ -158,40 +159,41 @@ class WorkflowEngine:
     async def _stream_process(self, component: Component):
         if not self.pubsub:
             return
-        async for chunk in component.chunk_answer():
-            if not chunk:
-                continue
-            if chunk.startswith("{{") and chunk.endswith("}}"):
-                streamable = False
-                variable = chunk[2:-2]
-                v_node_id = variable.split(".")[0].strip()
-                if v_node_id in self.nodes:
-                    v_node = self.nodes.get(v_node_id)
-                    v_type = get_component_type(v_node.get("type"))
-                    if hasattr(v_type, "streamable") and v_type.streamable:
-                        streamable = True
+        async with self.execution_semaphore:
+            async for chunk in component.chunk_answer():
+                if not chunk:
+                    continue
+                if chunk.startswith("{{") and chunk.endswith("}}"):
+                    streamable = False
+                    variable = chunk[2:-2]
+                    v_node_id = variable.split(".")[0].strip()
+                    if v_node_id in self.nodes:
+                        v_node = self.nodes.get(v_node_id)
+                        v_type = get_component_type(v_node.get("type"))
+                        if hasattr(v_type, "streamable") and v_type.streamable:
+                            streamable = True
 
-                already_streamable = False
-                if streamable:
-                    sub = await self.pubsub.subscribe(v_node_id)
-                    if sub:
-                        async for event in sub.stream():
-                            if event.event_type == SSEEventType.DONE:
-                                break
-                            if event.event_type == SSEEventType.HEARTBEAT:
-                                if not already_streamable and self.node_done_events[v_node_id].is_set():
+                    already_streamable = False
+                    if streamable:
+                        sub = await self.pubsub.subscribe(v_node_id)
+                        if sub:
+                            async for event in sub.stream():
+                                if event.event_type == SSEEventType.DONE:
                                     break
-                                continue
-                            already_streamable = True
-                            self.queue.put_nowait(event.data)
+                                if event.event_type == SSEEventType.HEARTBEAT:
+                                    if not already_streamable and self.node_done_events[v_node_id].is_set():
+                                        break
+                                    continue
+                                already_streamable = True
+                                self.queue.put_nowait(event.data)
 
-                if not already_streamable:
-                    if v_node_id in self.node_done_events:
-                        await self.node_done_events[v_node_id].wait()
-                    value = component.get_nested_value(self.context, variable)
-                    self.queue.put_nowait({"event": "message", "answer": value or ""})
-            else:
-                self.queue.put_nowait({"event": "message", "answer": chunk})
+                    if not already_streamable:
+                        if v_node_id in self.node_done_events:
+                            await self.node_done_events[v_node_id].wait()
+                        value = component.get_nested_value(self.context, variable)
+                        self.queue.put_nowait({"event": "message", "answer": value or ""})
+                else:
+                    self.queue.put_nowait({"event": "message", "answer": chunk})
 
     async def _execute_node(self, node):
 
@@ -203,7 +205,7 @@ class WorkflowEngine:
             if self.canceled_event.is_set():
                 return
 
-            if node_type == "ChatOutputComponent":
+            if node_type in ["ChatOutputComponent", "ChatStructureOutputComponent"]:
                 output_component = ChatOutputComponent(**node)
                 await self._stream_process(output_component)
 
@@ -349,7 +351,7 @@ class WorkflowEngine:
             for edge in self.successors[node_id]:
                 target = edge.get("target")
                 node = self.nodes.get(target)
-                if node.get("type") == "ChatOutputComponent":
+                if node.get("type") in ["ChatOutputComponent", "ChatStructureOutputComponent"]:
                     await self._create_task(node_id=target)
 
     async def cancel(self):

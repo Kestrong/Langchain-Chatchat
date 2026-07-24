@@ -126,9 +126,11 @@ class ThinkStreamParser:
                 self.finished = True
                 remaining = chunk[idx + len(self.close_tag):]
                 if remaining:
-                    sub = self.feed(remaining.lstrip('\n'))
-                    result["answer"] += sub["answer"]
-                    result["thought"] += sub["thought"]
+                    clean_remain = remaining.lstrip('\n')
+                    if clean_remain:
+                        sub = self.feed(clean_remain)
+                        result["answer"] += sub["answer"]
+                        result["thought"] += sub["thought"]
             else:
                 result["thought"] = chunk
         else:
@@ -138,9 +140,11 @@ class ThinkStreamParser:
                 self.in_think = True
                 remaining = chunk[idx + len(self.open_tag):]
                 if remaining:
-                    sub = self.feed(remaining.lstrip('\n'))
-                    result["answer"] += sub["answer"]
-                    result["thought"] += sub["thought"]
+                    clean_remain = remaining.lstrip('\n')
+                    if clean_remain:
+                        sub = self.feed(clean_remain)
+                        result["answer"] += sub["answer"]
+                        result["thought"] += sub["thought"]
             else:
                 result["answer"] = chunk
 
