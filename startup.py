@@ -1,6 +1,5 @@
 import os
-
-NLTK_DATA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "nltk_data"))
+from configs import NLTK_DATA_PATH
 os.environ["NLTK_DATA"] = NLTK_DATA_PATH
 os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(NLTK_DATA_PATH, "tokenizers", "cl100k_base")
 

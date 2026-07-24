@@ -5,7 +5,6 @@ from typing import (
     Tuple, Dict, List
 )
 
-import tiktoken
 from langchain.chains import LLMChain
 from langchain_community.chat_models import ChatOpenAI
 from langchain_community.utils.openai import is_openai_v1

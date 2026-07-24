@@ -93,7 +93,12 @@ class ConversationCallbackHandler(BaseCallbackHandler):
             if realtime_token_save and os.environ.get("REALTIME_TOKEN_SAVE", "True") == "True":
                 answer, metadata = self.parse_token(token)
                 self.extra['answer'] = self.extra.get('answer', '') + answer
-                self.extra['metadata'].update(metadata)
+                for k, v in metadata.items():
+                    if k == 'thought' and v:
+                        self.extra.setdefault('thought', '')
+                        self.extra['thought'] += v
+                    elif v is not None and v != '':
+                        self.extra[k] = v
                 if len(self.extra['answer']) >= self.token_save_interval:
                     update_message(message_id=self.message_id, response=self.extra['answer'],
                                    metadata=self.extra['metadata'], append=True,
@@ -111,7 +116,7 @@ class ConversationCallbackHandler(BaseCallbackHandler):
 
     def parse_token(self, token: str, metadata: dict = None, error: str = None):
         mark = f'###[{self.model_name}]###'
-        answer,thought = '',''
+        answer, thought = '', ''
         if metadata is None:
             metadata = {}
         if mark in token:
@@ -127,8 +132,9 @@ class ConversationCallbackHandler(BaseCallbackHandler):
                         if 'thought' in json_obj:
                             thought += json_obj.get('thought')
                         for key, value in extra_key_map.items():
-                            if key in json_obj:
-                                metadata[value] = json_obj.get(key)
+                            target = json_obj.get(key)
+                            if target:
+                                metadata[value] = target
                     else:
                         answer += part
         else:

@@ -263,9 +263,6 @@ async def wrap_event_response(event_response: AsyncIterable[str]) -> AsyncIterab
 
 
 async def choose_response(stream: bool, chat_iterator: AsyncIterable[str], request: Request = None):
-    openapi = True if request and "/openapi/" in request.url.path else False
-    if not openapi:
-        return EventSourceResponse(wrap_event_response(chat_iterator))
     if stream:
         return EventSourceResponse(wrap_event_response(chat_iterator))
     else:
