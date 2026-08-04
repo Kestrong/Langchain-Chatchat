@@ -11,6 +11,10 @@ from server.utils import BaseResponse, get_httpx_client
 
 
 def post_feedback_to_dify(message_id: str, model_name: str, score: int, reason: str):
+    """
+    向 Dify 平台提交用户反馈（点赞/点踩）。
+    通过 message_id 关联第三方消息，从 message 直接获取 assistant_id 以读取对应的模型配置。
+    """
     params = ApiChatWithFeedbackParams(messages=[]).load_config(worker_name=model_name)
     if 'DifyWorker' == params.provider:
         feedback_url = params.feedbackUrl
@@ -33,9 +37,8 @@ def post_feedback_to_dify(message_id: str, model_name: str, score: int, reason: 
             logger.error('没有关联第三方消息id，无法点赞')
             return None
         extra_headers = params.role_meta.get("extra_headers") or {}
-        conv = get_conversation_by_id(conversation_id=message.get('conversation_id'))
-        if conv:
-            assistant = get_assistant_simple_from_db(assistant_id=conv.get('assistant_id'))
+        if message:
+            assistant = get_assistant_simple_from_db(assistant_id=message.get('assistant_id'))
             if assistant:
                 model_config = assistant.get('model_config', {})
                 if not api_key:
@@ -61,6 +64,10 @@ def post_feedback_to_dify(message_id: str, model_name: str, score: int, reason: 
 
 
 def post_feedback_to_fastgpt(message_id: str, model_name: str, score: int, reason: str):
+    """
+    向 FastGPT 平台提交用户反馈（点赞/点踩）。
+    通过 message_id 关联第三方消息，从 message 直接获取 assistant_id 以读取对应的模型配置。
+    """
     params = ApiChatWithFeedbackParams(messages=[]).load_config(worker_name=model_name)
     if 'FastgptWorker' == params.provider:
         feedback_url = params.feedbackUrl
@@ -77,10 +84,9 @@ def post_feedback_to_fastgpt(message_id: str, model_name: str, score: int, reaso
             meta_data = message.get('meta_data', {})
             if 'appId' in meta_data:
                 appId = meta_data.get('appId')
-        conv = get_conversation_by_id(conversation_id=message.get('conversation_id'))
         extra_headers = params.role_meta.get("extra_headers") or {}
-        if conv:
-            assistant = get_assistant_simple_from_db(assistant_id=conv.get('assistant_id'))
+        if message:
+            assistant = get_assistant_simple_from_db(assistant_id=message.get('assistant_id'))
             if assistant:
                 model_config = assistant.get('model_config', {})
                 api_key = model_config.get("api_key") or api_key

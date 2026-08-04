@@ -28,8 +28,13 @@ from server.utils import get_prompt_template, BaseResponse, parse_json_md
 from server.utils import wrap_done, get_ChatOpenAI
 
 
-def process_extra(stream: bool, model_name: str, conversation_id: Union[str, None], extra: dict,
+def process_extra(stream: bool, model_name: str, conversation_id: Union[str, None], assistant_id: int, extra: dict,
                   request: Request, ):
+    """
+    处理并填充 extra 字典，用于传递给 LLM 的额外参数。
+    包括 assistant_id、token 信息、cookie，以及针对第三方平台的会话关联处理。
+    """
+    extra['assistant_id'] = assistant_id
     if un_format_online_llm_model(model_name):
         extra["token_info"] = get_token_info()
         extra['stream'] = stream
@@ -38,8 +43,8 @@ def process_extra(stream: bool, model_name: str, conversation_id: Union[str, Non
             apiModelParams = ApiModelParams(messages=[]).load_config(worker_name=model_name)
             if apiModelParams.provider in ['DifyWorker', 'FuXiWorker', 'QimingWorker']:
                 if not extra.get("conversation_id"):
-                    m = filter_message(conversation_id=conversation_id, limit=1, not_response=False, reverse=True,
-                                       meta_data_key_exists=['third_conversation_id'])
+                    m = filter_message(conversation_id=conversation_id, assistant_id=assistant_id, limit=1,
+                                       not_response=False, reverse=True, meta_data_key_exists=['third_conversation_id'])
                     if m:
                         extra['conversation_id'] = m[0].get('meta_data', {}).get('third_conversation_id')
                     else:
@@ -112,7 +117,7 @@ async def chat(query: str = Body(..., description="用户输入", examples=["恼
             max_tokens = None
 
         process_extra(stream=stream, model_name=model_name, extra=extra, conversation_id=conversation_id,
-                      request=request)
+                     assistant_id=assistant_id, request=request)
 
         model = get_ChatOpenAI(
             model_name=model_name,

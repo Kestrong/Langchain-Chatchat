@@ -7,7 +7,6 @@ from dateutil import parser
 from sqlalchemy import func, String, cast
 
 from server.db.models.assistant_model import AssistantModel
-from server.db.models.conversation_model import ConversationModel
 from server.db.models.message_model import MessageModel
 from server.db.repository import add_conversation_to_db
 from server.db.session import with_session
@@ -26,7 +25,7 @@ def add_message_to_db(session, conversation_id: str, chat_type, query, response=
         return message_id
     conversation_id = add_conversation_to_db(chat_type=chat_type, conversation_id=conversation_id, name=query,
                                              tag=tag, assistant_id=assistant_id)
-    m = MessageModel(id=message_id, chat_type=chat_type, query=query, response=response,
+    m = MessageModel(id=message_id, assistant_id=assistant_id, chat_type=chat_type, query=query, response=response,
                      conversation_id=conversation_id, create_by=get_token_info().get("userId"),
                      tokens=len(response) if response else 0, meta_data=metadata)
     session.add(m)
@@ -86,10 +85,15 @@ def feedback_message_to_db(session, message_id, feedback_score, feedback_reason)
 
 
 @with_session
-def filter_message(session, conversation_id: str, limit: int = 10, not_response: bool = True, reverse: bool = False,
-                   meta_data_key_exists: list = None):
+def filter_message(session, conversation_id: str, assistant_id=None, limit: int = 10, not_response: bool = True,
+                   reverse: bool = False, meta_data_key_exists: list = None):
+    """
+    按条件过滤消息记录，支持按会话ID、助手ID、是否有回复、meta_data字段等筛选。
+    """
     # 用户最新的query 也会插入到db，忽略这个message record
     filters = [MessageModel.conversation_id == conversation_id]
+    if assistant_id:
+        filters.append(MessageModel.assistant_id == assistant_id)
     if not_response:
         filters.append(MessageModel.response.isnot(None))
     if meta_data_key_exists:
@@ -135,6 +139,10 @@ def delete_message_from_db(session, message_id):
 def list_user_feedback_messages(session, query_keyword: str = None, response_keyword: str = None,
                                 assistant_name_keyword: str = None, start_time: str = None, end_time: str = None,
                                 page: int = 1, limit: int = 10, count: bool = True):
+    """
+    分页查询用户反馈消息列表，支持按关键词、助手名称和时间范围过滤。
+    通过 MessageModel.assistant_id 直接关联 AssistantModel 获取助手信息。
+    """
     query = session.query(
         MessageModel.id,
         MessageModel.query,
@@ -145,9 +153,7 @@ def list_user_feedback_messages(session, query_keyword: str = None, response_key
         AssistantModel.name,
         AssistantModel.name_en
     ).join(
-        ConversationModel, ConversationModel.id == MessageModel.conversation_id
-    ).join(
-        AssistantModel, AssistantModel.id == ConversationModel.assistant_id
+        AssistantModel, AssistantModel.id == MessageModel.assistant_id
     )
 
     query = query.filter(MessageModel.feedback_score.isnot(None))
@@ -198,6 +204,10 @@ def list_user_feedback_messages(session, query_keyword: str = None, response_key
 
 @with_session
 def get_query_by_assistant_id(session, assistant_id: int = None, limit: int = 100, is_self: bool = False):
+    """
+    获取指定助手近期的热门问题列表，通过 MessageModel.assistant_id 直接过滤。
+    可选仅返回当前用户的问题。
+    """
     message_query = session.query(MessageModel.id, MessageModel.query)
 
     filters = [MessageModel.query.isnot(None),
@@ -206,11 +216,7 @@ def get_query_by_assistant_id(session, assistant_id: int = None, limit: int = 10
     if is_self is True:
         filters.append(MessageModel.create_by == get_token_info().get("userId"))
     if assistant_id and assistant_id > 0:
-        filters.append(ConversationModel.assistant_id == assistant_id)
-        filters.append(ConversationModel.id == MessageModel.conversation_id)
-        message_query.join(
-            ConversationModel, ConversationModel.id == MessageModel.conversation_id
-        )
+        filters.append(MessageModel.assistant_id == assistant_id)
 
     recent_messages = message_query.filter(*filters).order_by(MessageModel.create_time.desc()).limit(limit).all()
 
