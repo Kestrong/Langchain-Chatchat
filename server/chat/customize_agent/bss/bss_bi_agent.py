@@ -100,7 +100,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
             model_container.CALLBACK_HANDLERS.append(token_callback)
             callbacks = [callback, conversation_callback, task_callback, token_callback]
             process_extra(stream=stream, model_name=model_name, extra=extra, conversation_id=conversation_id,
-                          request=request)
+                          assistant_id=assistant_id, request=request)
             model_container.EXTRA_ARGS.update(extra)
             model = get_ChatOpenAI(
                 model_name=model_name,

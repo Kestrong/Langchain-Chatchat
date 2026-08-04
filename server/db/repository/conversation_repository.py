@@ -125,56 +125,37 @@ def get_time_filter(field, start_time: str = None, end_time: str = None) -> List
 
 @with_session
 def metrics_db(session, start_time: str = None, end_time: str = None, assistant_ids: str = None):
+    """
+    按助手维度统计消息指标数据，包括会话数、用户数、消息数和 token 总量。
+    直接基于 MessageModel 的 assistant_id 字段聚合，支持按时间范围和指定助手列表过滤。
+    """
     assistant_ids_array = [int(id) for id in assistant_ids.split(",") if id] if assistant_ids else []
-
-    c_filters = get_time_filter(ConversationModel.create_time, start_time, end_time)
-    if assistant_ids_array:
-        c_filters.append(ConversationModel.assistant_id.in_(assistant_ids_array))
-
-    group_conversation_result = session.query(
-        ConversationModel.assistant_id,
-        func.count(ConversationModel.id).label('conversation_count'),
-        func.count(func.distinct(ConversationModel.create_by)).label('user_count')
-    ).filter(*c_filters).group_by(ConversationModel.assistant_id).all()
 
     m_filters = get_time_filter(MessageModel.create_time, start_time, end_time)
     if assistant_ids_array:
-        m_filters.append(ConversationModel.assistant_id.in_(assistant_ids_array))
+        m_filters.append(MessageModel.assistant_id.in_(assistant_ids_array))
 
-    group_message_result = session.query(
-        ConversationModel.assistant_id,
+    group_result = session.query(
+        MessageModel.assistant_id,
+        func.count(func.distinct(MessageModel.conversation_id)).label('conversation_count'),
+        func.count(func.distinct(MessageModel.create_by)).label('user_count'),
         func.count(MessageModel.id).label('message_count'),
         func.sum(MessageModel.tokens).label('total_tokens')
-    ).join(ConversationModel, MessageModel.conversation_id == ConversationModel.id).filter(*m_filters).group_by(
-        ConversationModel.assistant_id).all()
+    ).filter(*m_filters).group_by(MessageModel.assistant_id).all()
 
-    group_results = {}
-    for row in group_conversation_result:
-        assistant_id = row.assistant_id
-        group_results[assistant_id] = {
-            "assistant_id": assistant_id,
-            "conversation_count": row.conversation_count,
-            "user_count": row.user_count,
-            "message_count": 0,
-            "open_count": 0,
-            "total_tokens": 0
-        }
+    results = []
+    for row in group_result:
+        conversation_count = row.conversation_count or 0
+        message_count = row.message_count or 0
+        total_tokens = row.total_tokens or 0
 
-    for row in group_message_result:
-        assistant_id = row.assistant_id
-        if assistant_id not in group_results:
-            group_results[assistant_id] = {
-                "assistant_id": assistant_id,
-                "conversation_count": 0,
-                "user_count": 0,
-                "message_count": 0,
-                "total_tokens": 0,
-                "open_count": 0,
-            }
-        group_results[assistant_id]["message_count"] = row.message_count
-        group_results[assistant_id]["total_tokens"] = row.total_tokens or 0
+        results.append({
+            "assistant_id": row.assistant_id,
+            "conversation_count": conversation_count,
+            "user_count": row.user_count or 0,
+            "message_count": message_count,
+            "total_tokens": total_tokens,
+            "open_count": round((conversation_count + message_count) / random.uniform(1, 2))
+        })
 
-    for row in group_results.values():
-        row["open_count"] = round((row["conversation_count"] + row["message_count"]) / random.uniform(1, 2))
-
-    return list(group_results.values())
+    return results

@@ -58,7 +58,8 @@ async def completion(query: str = Body(..., description="用户输入", examples
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
         token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id)
         callbacks = [conversation_callback, task_callback, token_callback]
-        process_extra(stream=stream, model_name=model_name, extra=extra, conversation_id=None, request=request)
+        process_extra(stream=stream, model_name=model_name, extra=extra, conversation_id=None,
+                      assistant_id=assistant_id, request=request)
 
         model = get_ChatOpenAI(
             model_name=model_name,

@@ -10,6 +10,7 @@ class MessageModel(Base):
     __tablename__ = 'message'
     id = Column(String(32), primary_key=True, comment='聊天记录ID')
     conversation_id = Column(String(32), default=None, index=True, comment='对话框ID')
+    assistant_id = Column(Integer, comment='助手ID')
     # chat/agent_chat等
     chat_type = Column(String(50), comment='聊天类型')
     query = Column(String(4096), comment='用户问题')
@@ -26,12 +27,13 @@ class MessageModel(Base):
     response_time = Column(DateTime, default=None, comment='回复时间')
 
     def __repr__(self):
-        return f"<message(id='{self.id}', conversation_id='{self.conversation_id}', chat_type='{self.chat_type}', query='{self.query}', response='{self.response}', tokens='{self.tokens}', meta_data='{self.meta_data}', feedback_score='{self.feedback_score}', feedback_reason='{self.feedback_reason}', feedback_time='{self.feedback_time}', create_time='{self.create_time}', create_by='{self.create_by}', response_time='{self.response_time}')>"
+        return f"<message(id='{self.id}', conversation_id='{self.conversation_id}', assistant='{self.assistant_id}', chat_type='{self.chat_type}', query='{self.query}', response='{self.response}', tokens='{self.tokens}', meta_data='{self.meta_data}', feedback_score='{self.feedback_score}', feedback_reason='{self.feedback_reason}', feedback_time='{self.feedback_time}', create_time='{self.create_time}', create_by='{self.create_by}', response_time='{self.response_time}')>"
 
     def dict(self):
         return {
             "id": self.id,
             "conversation_id": self.conversation_id,
+            "assistant_id": self.assistant_id,
             "chat_type": self.chat_type,
             "query": self.query,
             "response": self.response,
