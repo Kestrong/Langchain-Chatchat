@@ -85,7 +85,7 @@ def mount_chat_routes(app: FastAPI):
     from server.chat.feedback import chat_feedback
     from server.chat.conversation import create_conversation, delete_conversation, update_conversation, filter_message, \
         filter_conversation, delete_message, delete_user_conversation, get_conversation_detail, list_feedback, \
-        export_feedback_to_excel, metrics, get_hot_query, delete_performance_metrics
+        export_feedback_to_excel, metrics, get_hot_query, delete_performance_metrics, create_message
     from server.chat.task_manager import stop
     from server.chat.assistant import create_assistant, update_assistant, delete_assistant, get_assistants, \
         get_assistant_detail, get_dicts_by_type
@@ -110,6 +110,7 @@ def mount_chat_routes(app: FastAPI):
     chat_router.delete("/conversation", summary="删除会话", )(delete_conversation)
     chat_router.delete("/user/conversations", summary="删除用户的所有会话", )(delete_user_conversation)
     chat_router.get("/messages", summary="获取消息", )(filter_message)
+    chat_router.post("/message", summary="创建消息", )(create_message)
     chat_router.delete("/message", summary="删除消息", )(delete_message)
     chat_router.get("/list_feedbacks", summary="获取会话详情", )(list_feedback)
     chat_router.get("/export_feedbacks", summary="获取会话详情", )(export_feedback_to_excel)

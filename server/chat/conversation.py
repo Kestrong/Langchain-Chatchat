@@ -15,7 +15,7 @@ from server.db.repository.conversation_repository import add_conversation_to_db,
     delete_conversation_from_db, get_conversation_from_db, delete_user_conversation_from_db, get_conversation_by_id, \
     metrics_db
 from server.db.repository.message_repository import delete_message_from_db, \
-    filter_message_page, list_user_feedback_messages, get_query_by_assistant_id
+    filter_message_page, list_user_feedback_messages, get_query_by_assistant_id, add_message_to_db
 from server.db.repository.model_metadata_repository import delete_performance_metrics_by_time
 from server.memory.message_i18n import Message_I18N
 from server.memory.token_info_memory import is_english
@@ -97,6 +97,41 @@ def filter_conversation(assistant_id: int = Query(-1, description="助手ID"),
 def get_conversation_detail(id: str = Query(description="会话id")) -> BaseResponse:
     conversation = get_conversation_by_id(conversation_id=id)
     return BaseResponse(code=200, data={'conversation': conversation})
+
+
+def create_message(conversation_id: str = Body(description="会话id"),
+                   chat_type: str = Body(default='llm_chat',
+                                         description="会话类型，可选值：llm_chat，knowledge_base_chat，search_engine_chat，agent_chat"),
+                   query: str = Body(description="用户提问内容"),
+                   response: str = Body(default=None, description="助手回复内容"),
+                   assistant_id: int = Body(default=None, description="助手ID"),
+                   tag: str = Body(default=None, description="会话标签"),
+                   metadata: dict = Body(default={}, description="元数据"),
+                   create_time: str = Body(default=None, description="创建时间, 格式：yyyy-MM-dd HH:mm:ss"),
+                   response_time: str = Body(default=None, description="回复时间, 格式：yyyy-MM-dd HH:mm:ss")
+                   ) -> BaseResponse:
+    """
+    新增一条消息记录，同时确保所属会话存在（不存在则自动创建）。
+    """
+    try:
+        parsed_create_time = datetime.datetime.strptime(create_time, "%Y-%m-%d %H:%M:%S") if create_time else None
+        parsed_response_time = datetime.datetime.strptime(response_time, "%Y-%m-%d %H:%M:%S") if response_time else None
+        message_id = add_message_to_db(
+            conversation_id=conversation_id,
+            chat_type=chat_type or 'llm_chat',
+            query=query,
+            response=response,
+            assistant_id=assistant_id,
+            tag=tag,
+            metadata=metadata,
+            create_time=parsed_create_time,
+            response_time=parsed_response_time
+        )
+    except Exception as e:
+        msg = f"创建消息出错： {e}"
+        logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
+        return BaseResponse(code=500, msg=Message_I18N.API_CREATE_ERROR.value)
+    return BaseResponse(code=200, data={'message_id': message_id})
 
 
 def delete_message(message_id: str = Query(description="消息id")) -> BaseResponse:
