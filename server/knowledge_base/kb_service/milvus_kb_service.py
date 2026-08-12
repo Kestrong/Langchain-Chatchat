@@ -1,16 +1,14 @@
-import shutil
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 from langchain.schema import Document
 from langchain.vectorstores.milvus import Milvus
-import os
 
 from configs import kbs_config
 from server.db.repository import list_file_num_docs_id_by_kb_name_and_file_name
-
 from server.knowledge_base.kb_service.base import KBService, SupportedVSType, EmbeddingsFunAdapter, \
     score_threshold_process
 from server.knowledge_base.utils import KnowledgeFile
+from server.utils import get_tool_config, aes_decrypt_placeholder
 
 
 class MilvusKBService(KBService):
@@ -47,9 +45,13 @@ class MilvusKBService(KBService):
         return SupportedVSType.MILVUS
 
     def _load_milvus(self):
+        key = get_tool_config().TOOL_CONFIG.get("aes", {}).get("key")
+        connection_args = kbs_config.get("milvus").copy()
+        connection_args["user"] = aes_decrypt_placeholder(connection_args.get("user", ""), key)
+        connection_args["password"] = aes_decrypt_placeholder(connection_args.get("password", ""), key)
         self.milvus = Milvus(embedding_function=EmbeddingsFunAdapter(self.embed_model),
                              collection_name=self.kb_name,
-                             connection_args=kbs_config.get("milvus"),
+                             connection_args=connection_args,
                              index_params=kbs_config.get("milvus_kwargs")["index_params"],
                              search_params=kbs_config.get("milvus_kwargs")["search_params"],
                              auto_id=True

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, func, Integer
+from sqlalchemy import Column, String, DateTime, func, Integer, BigInteger
 
 from server.db.base import Base
 
@@ -16,9 +16,10 @@ class ConversationModel(Base):
     chat_type = Column(String(50), comment='聊天类型')
     create_time = Column(DateTime, index=True, default=func.now(), server_default=func.now(), comment='创建时间')
     create_by = Column(String(50), index=True, comment='创建人id')
+    sort_id = Column(BigInteger, comment='排序字段')
 
     def __repr__(self):
-        return f"<Conversation(id='{self.id}', name='{self.name}', tag='{self.tag}', assistant_id='{self.assistant_id}', chat_type='{self.chat_type}', create_time='{self.create_time}', create_by='{self.create_by}')>"
+        return f"<Conversation(id='{self.id}', name='{self.name}', tag='{self.tag}', assistant_id='{self.assistant_id}', chat_type='{self.chat_type}', create_time='{self.create_time}', create_by='{self.create_by}', sort_id='{self.sort_id}')>"
 
     def dict(self):
         return {
@@ -28,5 +29,6 @@ class ConversationModel(Base):
             "assistant_id": self.assistant_id,
             "chat_type": self.chat_type,
             "create_by": self.create_by,
-            "create_time": self.create_time
+            "create_time": self.create_time,
+            "sort_id": str(self.sort_id)
         }

@@ -1,20 +1,22 @@
+import os
+from configs import NLTK_DATA_PATH
+os.environ["NLTK_DATA"] = NLTK_DATA_PATH
+os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(NLTK_DATA_PATH, "tokenizers", "cl100k_base")
+
+try:
+    n_cores = os.cpu_count() or 1
+    os.environ["NUMEXPR_MAX_THREADS"] = str(n_cores)
+except:
+    pass
+
 import asyncio
 import multiprocessing as mp
-import os
-import subprocess
 import sys
+import argparse
 from multiprocessing import Process
 from datetime import datetime
 from pprint import pprint
 from langchain_core._api import deprecated
-
-try:
-    import numexpr
-
-    n_cores = numexpr.utils.detect_number_of_cores()
-    os.environ["NUMEXPR_MAX_THREADS"] = str(n_cores)
-except:
-    pass
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from configs import (
@@ -29,15 +31,13 @@ from configs import (
     FSCHAT_MODEL_WORKERS,
     API_SERVER,
     WEBUI_SERVER,
-    HTTPX_DEFAULT_TIMEOUT, MAX_TOKENS_INPUT,
+    HTTPX_DEFAULT_TIMEOUT, MAX_TOKENS_INPUT, VERSION
 )
 from server.utils import (fschat_controller_address, fschat_model_worker_address,
-                          fschat_openai_api_address, get_httpx_client, get_model_worker_config,
+                          fschat_openai_api_address, get_model_worker_config,
                           MakeFastAPIOffline, FastAPI, llm_device, embedding_device)
 from server.knowledge_base.migrate import create_tables
-import argparse
-from typing import List, Dict
-from configs import VERSION
+from typing import List, Dict, Tuple
 
 
 @deprecated(
@@ -146,7 +146,7 @@ def create_model_worker_app(log_level: str = "INFO", **kwargs) -> FastAPI:
             # 0.2.2 vllm需要新加的参数
             args.max_paddings = 256
 
-            #0.3.0 vllm需要新加的参数
+            # 0.3.0 vllm需要新加的参数
             args.kv_cache_dtype = 'auto'
             args.disable_custom_all_reduce = False
             args.enable_lora = False
@@ -297,11 +297,10 @@ def _set_app_event(app: FastAPI, started_event: mp.Event = None):
 
 def run_controller(log_level: str = "INFO", started_event: mp.Event = None):
     import uvicorn
-    import httpx
     from fastapi import Body
     import time
     import sys
-    from server.utils import set_httpx_config
+    from server.utils import set_httpx_config, get_httpx_client
     set_httpx_config()
 
     app = create_controller_app(
@@ -449,7 +448,7 @@ def run_api_server(started_event: mp.Event = None, run_mode: str = None):
     import uvicorn
     from server.utils import set_httpx_config
     set_httpx_config()
-
+    create_tables()
     app = create_app(run_mode=run_mode)
     _set_app_event(app, started_event)
 
@@ -459,32 +458,43 @@ def run_api_server(started_event: mp.Event = None, run_mode: str = None):
     uvicorn.run(app, host=host, port=port)
 
 
-def run_webui(started_event: mp.Event = None, run_mode: str = None):
+def run_webui(log_level: str = "INFO", started_event: mp.Event = None, run_mode: str = None):
     from server.utils import set_httpx_config
     set_httpx_config()
 
     host = WEBUI_SERVER["host"]
     port = WEBUI_SERVER["port"]
 
-    cmd = ["streamlit", "run", "webui.py",
-           "--server.address", host,
-           "--server.port", str(port),
-           "--theme.base", "light",
-           "--theme.primaryColor", "#165dff",
-           "--theme.secondaryBackgroundColor", "#f5f5f5",
-           "--theme.textColor", "#000000",
-           ]
+    # 构造 streamlit CLI 参数
+    args = [
+        "streamlit", "run", "webui.py",
+        "--server.address", host,
+        "--server.port", str(port),
+        "--logger.level", log_level.lower(),
+        "--theme.base", "light",
+        "--theme.primaryColor", "#165dff",
+        "--theme.secondaryBackgroundColor", "#f5f5f5",
+        "--theme.textColor", "#000000",
+    ]
     if run_mode == "lite":
-        cmd += [
-            "--",
-            "lite",
-        ]
-    p = subprocess.Popen(cmd)
-    started_event.set()
-    p.wait()
+        args += ["--", "lite"]
+
+    # 在子进程中设置 sys.argv 并调用 streamlit 入口
+    import sys
+    sys.argv = args
+
+    try:
+        from streamlit.web.cli import main as st_main
+        started_event.set()
+        st_main()
+    except SystemExit:
+        # streamlit 正常退出时会抛出 SystemExit(0)，属于预期行为
+        pass
+    except Exception as e:
+        logger.error(f"WebUI 启动失败: {e}")
 
 
-def parse_args() -> argparse.ArgumentParser:
+def parse_args() -> Tuple[argparse.Namespace, argparse.ArgumentParser]:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-a",
@@ -633,12 +643,11 @@ async def start_main_server():
     signal.signal(signal.SIGTERM, handler("SIGTERM"))
 
     mp.set_start_method("spawn")
-    manager = mp.Manager()
     run_mode = None
 
-    queue = manager.Queue()
+    queue = mp.Queue()
     args, parser = parse_args()
-
+    start_time = time.monotonic()
     if args.all_webui:
         args.openai_api = True
         args.model_worker = True
@@ -680,7 +689,7 @@ async def start_main_server():
     else:
         log_level = "INFO"
 
-    controller_started = manager.Event()
+    controller_started = mp.Event()
     if args.openai_api:
         process = Process(
             target=run_controller,
@@ -702,7 +711,7 @@ async def start_main_server():
         for model_name in args.model_name:
             config = get_model_worker_config(model_name)
             if not config.get("online_api"):
-                e = manager.Event()
+                e = mp.Event()
                 model_worker_started.append(e)
                 process = Process(
                     target=run_model_worker,
@@ -722,7 +731,7 @@ async def start_main_server():
             if (config.get("online_api")
                     and config.get("worker_class")
                     and model_name in FSCHAT_MODEL_WORKERS):
-                e = manager.Event()
+                e = mp.Event()
                 model_worker_started.append(e)
                 process = Process(
                     target=run_model_worker,
@@ -736,7 +745,7 @@ async def start_main_server():
                 )
                 processes["online_api"][model_name] = process
 
-    api_started = manager.Event()
+    api_started = mp.Event()
     if args.api:
         process = Process(
             target=run_api_server,
@@ -746,12 +755,12 @@ async def start_main_server():
         )
         processes["api"] = process
 
-    webui_started = manager.Event()
+    webui_started = mp.Event()
     if args.webui:
         process = Process(
             target=run_webui,
             name=f"WEBUI Server",
-            kwargs=dict(started_event=webui_started, run_mode=run_mode),
+            kwargs=dict(log_level=log_level, started_event=webui_started, run_mode=run_mode),
             daemon=True,
         )
         processes["webui"] = process
@@ -792,12 +801,15 @@ async def start_main_server():
                 webui_started.wait()
 
             dump_server_info(after_start=True, args=args)
+            print(f"启动耗时：{round(time.monotonic() - start_time, 3)}s")
 
             while True:
                 cmd = queue.get()
-                e = manager.Event()
-                if isinstance(cmd, list):
-                    model_name, cmd, new_model_name = cmd
+                e = mp.Event()
+                if not isinstance(cmd, list) or len(cmd) != 3:
+                    continue
+                model_name, action, new_model_name = cmd
+                try:
                     if cmd == "start":  # 运行新模型
                         logger.info(f"准备启动新模型进程：{new_model_name}")
                         process = Process(
@@ -848,19 +860,8 @@ async def start_main_server():
                             logger.info(f"成功启动新模型进程：{new_model_name}。用时：{timing}。")
                         else:
                             logger.error(f"未找到模型进程：{model_name}")
-
-            # for process in processes.get("model_worker", {}).values():
-            #     process.join()
-            # for process in processes.get("online_api", {}).values():
-            #     process.join()
-
-            # for name, process in processes.items():
-            #     if name not in ["model_worker", "online_api"]:
-            #         if isinstance(p, dict):
-            #             for work_process in p.values():
-            #                 work_process.join()
-            #         else:
-            #             process.join()
+                except Exception as e:
+                    logger.exception(f"处理指令时发生异常: {cmd}, 错误: {e}")
         except Exception as e:
             logger.error(e)
             logger.warning("Caught KeyboardInterrupt! Setting stop event...")
@@ -882,7 +883,6 @@ async def start_main_server():
 
 
 if __name__ == "__main__":
-    create_tables()
     if sys.version_info < (3, 10):
         loop = asyncio.get_event_loop()
     else:
@@ -894,18 +894,3 @@ if __name__ == "__main__":
         asyncio.set_event_loop(loop)
 
     loop.run_until_complete(start_main_server())
-
-# 服务启动后接口调用示例：
-# import openai
-# openai.api_key = "EMPTY" # Not support yet
-# openai.api_base = "http://localhost:8888/v1"
-
-# model = "chatglm3-6b"
-
-# # create a chat completion
-# completion = openai.ChatCompletion.create(
-#   model=model,
-#   messages=[{"role": "user", "content": "Hello! What is your name?"}]
-# )
-# # print the completion
-# print(completion.choices[0].message.content)

@@ -42,7 +42,7 @@ def compress_base64_image(base64_string, output_format='PNG', output_quality=85)
 def add_assistant_to_db(session, name: str, name_en: str, code: str, avatar: str, prompt: str, model_name: str,
                         prologue: str, history_len: int, top_k: int, score_threshold: float, knowledge_base_ids: str,
                         force_feedback: str, state: str, extra: dict, model_config: dict, tool_config: dict,
-                        workflow_config: dict, sort_id: int):
+                        workflow_config: dict, sort_id: int, region_id: str = None, system_id: str = None):
     if not code:
         code = str(uuid())
     c = WorkflowAssistantModel(name=name, name_en=name_en, code=code, avatar=compress_base64_image(avatar),
@@ -51,7 +51,7 @@ def add_assistant_to_db(session, name: str, name_en: str, code: str, avatar: str
                                history_len=history_len, top_k=top_k, score_threshold=score_threshold,
                                create_by=get_token_info().get("userId"), extra=extra,
                                model_config=model_config, tool_config=tool_config, workflow_config=workflow_config,
-                               sort_id=sort_id)
+                               sort_id=sort_id, region_id=region_id, system_id=system_id)
     session.add(c)
     session.flush()
     return c.id
@@ -93,7 +93,8 @@ def merge_config(old_config, new_config):
 def update_assistant_to_db(session, name: str, name_en: str, code: str, assistant_id: int, avatar: str, prompt: str,
                            model_name: str, history_len: int, top_k: int, score_threshold: float, prologue: str,
                            knowledge_base_ids: str, force_feedback: str, state: str, extra: dict, model_config: dict,
-                           tool_config: dict, workflow_config: dict, sort_id: int):
+                           tool_config: dict, workflow_config: dict, sort_id: int, region_id: str = None,
+                           system_id: str = None):
     assistant: WorkflowAssistantModel = session.query(WorkflowAssistantModel).filter(
         WorkflowAssistantModel.id == assistant_id).first()
     if assistant is not None:
@@ -120,6 +121,8 @@ def update_assistant_to_db(session, name: str, name_en: str, code: str, assistan
         assistant.tool_config = tool_config if tool_config else assistant.tool_config
         assistant.workflow_config = workflow_config if workflow_config else assistant.workflow_config
         assistant.sort_id = sort_id
+        assistant.region_id = region_id
+        assistant.system_id = system_id
     else:
         raise ValueError("Assistant with id {} does not exist".format(assistant_id))
     return assistant.id

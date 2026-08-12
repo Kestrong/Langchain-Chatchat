@@ -24,13 +24,14 @@ from sqlalchemy.sql.ddl import CreateTable
 from sqlalchemy.sql.sqltypes import NullType
 
 from common.exceptions import ChatBusinessException
-from configs import logger, log_verbose, MAX_TOKENS_INPUT
-from server.agent import get_model_container, ModelContainer
+from configs import logger, log_verbose
+from server.agent import create_model_container
 from server.agent.tools_select import register_tool
+from server.chat.utils import get_max_token_limit, get_tiktoken_num
 from server.db.base import create_engine_wrapper
 from server.knowledge_base.kb_doc_api import search_docs
 from server.memory.message_i18n import Message_I18N
-from server.utils import get_ChatOpenAI, get_tool_config, parse_json_md, parse_sql_md
+from server.utils import get_ChatOpenAI, parse_json_md, parse_sql_md, get_tool_config
 
 _DECIDER_TEMPLATE = """Given a question and a JSON map below where the key is the table name and the value is the table description. 
 Table Map: {table_names}
@@ -740,30 +741,25 @@ class Text2SqlInput(BaseModel):
 @register_tool(title="文本转SQL",
                description="Use this tool to answer questions about the database by natural language. This tool will convert the natural language question into SQL, execute it, and return the result.",
                args_schema=Text2SqlInput)
-def text2sql(natural_language_question: str):
-    model_container = get_model_container() or ModelContainer()
-    model_container.TOOL_RERUN = False
+def text2sql(tool_config: dict, natural_language_question: str):
+    model_container = create_model_container()
+    callbacks = model_container.CALLBACK_HANDLERS
     query = natural_language_question
     origin_query = query
-
-    text2sql_config_bak = get_tool_config().TOOL_CONFIG.get("text2sql", {})
-    text2sql_config: dict = model_container.TOOL_CONFIG.get('text2sql', {})
-    model_name = text2sql_config.get('model_name', text2sql_config_bak.get('model_name'))
-    db_infos = text2sql_config.get('db_infos', text2sql_config_bak.get('db_infos', {}))
-    read_only = text2sql_config_bak.get('read_only', True)
-    return_sql = text2sql_config.get('return_sql', text2sql_config_bak.get('return_sql', False))
-    return_format = text2sql_config.get('return_format', text2sql_config_bak.get('return_format', 'str'))
-    top_k = text2sql_config.get("top_k", text2sql_config_bak.get("top_k", 3))
-    use_query_checker = text2sql_config.get("use_query_checker", text2sql_config_bak.get("use_query_checker", False))
-    max_string_length = text2sql_config.get("max_string_length", text2sql_config_bak.get("max_string_length", 100))
-    sample_rows_in_table_info = text2sql_config.get("sample_rows_in_table_info",
-                                                    text2sql_config_bak.get("sample_rows_in_table_info", 0))
-    indexes_in_table_info = text2sql_config.get("indexes_in_table_info",
-                                                text2sql_config_bak.get("indexes_in_table_info", False))
-    use_vector_sample = text2sql_config.get('use_vector_sample', text2sql_config_bak.get('use_vector_sample', False))
-    vector_score_threshold = text2sql_config.get('vector_score_threshold',
-                                                 text2sql_config_bak.get('vector_score_threshold'))
-    vector_search_top_k = text2sql_config.get('vector_search_top_k', text2sql_config_bak.get('vector_search_top_k'))
+    text2sql_config: dict = tool_config
+    model_name = text2sql_config.get('model_name')
+    db_infos = text2sql_config.get('db_infos')
+    read_only = text2sql_config.get('read_only', True)
+    return_sql = text2sql_config.get('return_sql', False)
+    return_format = text2sql_config.get('return_format', 'str')
+    top_k = text2sql_config.get("top_k", 3)
+    use_query_checker = text2sql_config.get("use_query_checker", False)
+    max_string_length = text2sql_config.get("max_string_length", 100)
+    sample_rows_in_table_info = text2sql_config.get("sample_rows_in_table_info", 0)
+    indexes_in_table_info = text2sql_config.get("indexes_in_table_info", False)
+    use_vector_sample = text2sql_config.get('use_vector_sample', False)
+    vector_score_threshold = text2sql_config.get('vector_score_threshold')
+    vector_search_top_k = text2sql_config.get('vector_search_top_k')
     engine = None
 
     try:
@@ -772,13 +768,16 @@ def text2sql(natural_language_question: str):
             temperature=0,
             streaming=True,
             verbose=True,
+            enable_thinking=False,
+            callbacks=callbacks,
+            extra_body={"extra": model_container.EXTRA_ARGS},
         )
-        sql_cmd = model_container.TOOL_ARGS.get("sql_cmd")
+        sql_cmd = model_container.EXTRA_ARGS.get("sql_cmd")
         if not sql_cmd:
             db_infos = {k: v for k, v in db_infos.items() if v.get("generation", True) is True}
         database_comments = {k: v.get("description") for k, v in db_infos.items()}
         if len(db_infos) > 1:
-            db_name_from_chain = model_container.TOOL_ARGS.get("db_name")
+            db_name_from_chain = model_container.EXTRA_ARGS.get("db_name")
             if db_name_from_chain not in db_infos:
                 decider_db_chain = LLMChain(llm=llm, prompt=DECIDER_DB_PROMPT)
                 db_name_from_chain = decider_db_chain.predict(
@@ -875,9 +874,9 @@ def text2sql(natural_language_question: str):
             return_intermediate_steps=True,
         )
 
-        report_prompt = model_container.TOOL_ARGS.get("report_prompt")
+        report_prompt = model_container.EXTRA_ARGS.get("report_prompt")
         if not report_prompt:
-            report_prompt = text2sql_config.get('report_prompt', text2sql_config_bak.get('report_prompt'))
+            report_prompt = text2sql_config.get('report_prompt')
 
         if sql_cmd:
             db_chain.fill_table_in_prompt = False
@@ -917,14 +916,15 @@ def text2sql(natural_language_question: str):
             summarize = "很抱歉，本次查询没有返回数据。请检查您提供的查询条件是否准确、数据库是否存在此类数据。如果您已经检查过以上几点并确认无误，可以重新提问一次或者换个问题尝试。"
         elif report_prompt:
             records = records[:top_k]
-            summarize_template = PromptTemplate(input_variables=["query", "records", "report_prompt"],
+            summarize_template = PromptTemplate(input_variables=["query", "records"],
                                                 template=report_prompt, template_format="jinja2")
             summarize_chain = LLMChain(llm=llm, prompt=summarize_template)
-            used_token_count = len(origin_query) + len(report_prompt) + 1500
+            used_token = get_tiktoken_num(report_prompt + origin_query)
+            max_token_limit = get_max_token_limit(model_name)
             with ThreadPoolExecutor() as executor:
                 summarize = executor.submit(summarize_chain.predict,
                                             **{"query": origin_query,
-                                               "records": f"{shorter_records(records, used_token_count)}",
+                                               "records": f"{shorter_records(records, max_token_limit, used_token)}",
                                                "report_prompt": report_prompt})
         column_map = {}
         if isinstance(records, list) and len(records) > 0:
@@ -983,19 +983,21 @@ def text2sql(natural_language_question: str):
                 pass
 
 
-def shorter_records(records: list, used_count: int = 0):
+def shorter_records(records: list, max_token_limit: int, used_count: int = 0):
     result = []
     length = 0
+    max_token_limit = int(max_token_limit * 0.95)
     for rr in records:
         r_str = json_dumps(rr)
-        length += len(r_str)
-        if length > MAX_TOKENS_INPUT - used_count:
+        length += get_tiktoken_num(r_str)
+        if length > max_token_limit - used_count:
             break
         result.append(r_str)
     return result
 
 
 if __name__ == '__main__':
+    tool_config = get_tool_config().TOOL_CONFIG.get("text2sql")
     for i in range(10):
-        r = text2sql("查看海涛和程丽上个月的告警明细")
+        r = text2sql(tool_config, "查看海涛和程丽上个月的告警明细")
         print(r)

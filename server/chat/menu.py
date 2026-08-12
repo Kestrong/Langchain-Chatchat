@@ -14,12 +14,15 @@ def create_menu(menu_icon: str = Body(None, description="菜单图标"),
                 menu_name: str = Body(description="中文菜单名称"),
                 menu_name_en: str = Body(description="英文菜单名称"),
                 url: str = Body(None, description="菜单地址"),
+                open_type: str = Body(None, description="嵌入方式：router、iframe"),
+                component_url: str = Body(None, description="iframe嵌入地址"),
                 auth_level: int = Body(0, description="权限级别：0所有人可见、1管理员可见"),
                 auth_users: str = Body(description="授权用户id"),
                 enabled: str = Body("0BT", description="是否启用：0BT是、0BF否"),
                 sort_id: int = Body(0, description="排序顺序,值越小越靠前"), ) -> BaseResponse:
     try:
         menu_id = add_menu_to_db(menu_icon=menu_icon, menu_name=menu_name, menu_name_en=menu_name_en, url=url,
+                                 open_type=open_type, component_url=component_url,
                                  auth_level=auth_level, enabled=enabled, sort_id=sort_id, auth_users=auth_users)
     except Exception as e:
         msg = f"创建菜单出错： {e}"
@@ -33,6 +36,8 @@ def update_menu(id: int = Body(description="菜单id"),
                 menu_name: str = Body(description="中文菜单名称"),
                 menu_name_en: str = Body(description="英文菜单名称"),
                 url: str = Body(None, description="菜单地址"),
+                open_type: str = Body(None, description="嵌入方式：router、iframe"),
+                component_url: str = Body(None, description="iframe嵌入地址"),
                 auth_level: int = Body(0, description="权限级别：0所有人可见、1管理员可见"),
                 auth_users: str = Body(description="授权用户id"),
                 enabled: str = Body("0BT", description="是否启用：0BT是、0BF否"),
@@ -40,7 +45,7 @@ def update_menu(id: int = Body(description="菜单id"),
     try:
         menu_id = update_menu_to_db(menu_id=id, menu_icon=menu_icon, menu_name=menu_name, menu_name_en=menu_name_en,
                                     url=url, auth_level=auth_level, enabled=enabled, sort_id=sort_id,
-                                    auth_users=auth_users)
+                                    auth_users=auth_users, open_type=open_type, component_url=component_url)
     except Exception as e:
         msg = f"修改菜单出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)

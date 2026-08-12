@@ -55,6 +55,21 @@ def check_app_code(app_code):
     return app
 
 
+def is_internal_request(request: Request) -> bool:
+    # 优先从 X-Forwarded-For 获取真实 IP（兼容 Nginx 等反向代理）
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+    else:
+        client_ip = request.client.host
+
+    # 校验 IP 是否在白名单中
+    if client_ip in ("127.0.0.1", "::1"):
+        return True
+
+    return False
+
+
 class LocaleVariableMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         app_code = request.headers.get('X-App-Code')
@@ -87,7 +102,8 @@ class LocaleVariableMiddleware(BaseHTTPMiddleware):
                     )
             set_token_context(
                 {'token_type': 'sign',
-                 'token': json.dumps({'appCode': app_code, 'userId': user_id, 'tenantId': None})})
+                 'token': json.dumps({'appCode': app_code, 'userId': user_id, 'timestamp': timestamp, 'nonce': nonce,
+                                      'algorithm': algorithm, 'sign': sign, 'tenantId': None})})
             logger.info(f"Operator by sign user: {user_id}, app code: {app_code}")
         else:
             token = request.headers.get("Authorization")
@@ -101,7 +117,7 @@ class LocaleVariableMiddleware(BaseHTTPMiddleware):
                     if isinstance(app, JSONResponse):
                         return app
                     set_token_context(
-                        {'token_type': 'sign',
+                        {'token_type': 'api_key',
                          'token': json.dumps(
                              {'appCode': app_code, 'userId': f"app-{app.get('id')}", 'tenantId': None})})
                     logger.info(f"Operator by app code: {app_code}")
@@ -109,12 +125,19 @@ class LocaleVariableMiddleware(BaseHTTPMiddleware):
                     set_token_context({'token_type': 'jwt', 'token': token})
                     logger.info(f"Operator by user: {get_token_info().get('userId')}")
             else:
-                if not MOCK_TOKEN_INFO_ENABLED or "/openapi/" in request.url.path:
+                if MOCK_TOKEN_INFO_ENABLED and not "/openapi/" in request.url.path:
+                    logger.info(f"Operator by mock user: {get_token_info().get('userId')}")
+                elif is_internal_request(request):
+                    set_token_context(
+                        {'token_type': 'mock',
+                         'token': json.dumps({'appCode': 'flm-chat', 'userId': f"INTERNAL", 'tenantId': None})})
+                    logger.info(f"Operator by flm-chat self internal")
+                else:
                     return JSONResponse(
                         status_code=401,
                         content={"code": 401, "msg": "Missing Jwt token or signature"}
                     )
-                logger.info(f"Operator by mock user: {get_token_info().get('userId')}")
+
         locale = request.cookies.get('LOCALE')
         if locale:
             i18n_context.set(locale)

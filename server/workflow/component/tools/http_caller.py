@@ -2,11 +2,11 @@ from typing import Dict, Any, Union
 
 import httpx
 
-from configs import logger
+from configs import logger, log_verbose
 from server.utils import get_httpx_client
 from server.workflow.component.base.component import Component
 from server.workflow.utils.inputs import TextInput, IntegerInput, DictInput
-from server.workflow.utils.outputs import DictOutput
+from server.workflow.utils.outputs import DictOutput, IntOutput
 
 
 class HttpCallerComponent(Component):
@@ -63,6 +63,10 @@ class HttpCallerComponent(Component):
         DictOutput(
             name='data',
             display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_DATA}",
+        ),
+        IntOutput(
+            display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_TOTAL_TOKENS}",
+            name="total_tokens",
         )
     ]
 
@@ -78,6 +82,7 @@ class HttpCallerComponent(Component):
         body = inputs.get("body")
         params = inputs.get("params")
         data = body or None
+        total_tokens = None
 
         try:
             async with get_httpx_client(follow_redirects=True, timeout=timeout, use_async=True) as client:
@@ -85,6 +90,8 @@ class HttpCallerComponent(Component):
                                                 json=data)
                 try:
                     result = response.json()
+                    if isinstance(result, dict) and "total_tokens" in result:
+                        total_tokens = result.pop("total_tokens")
                 except Exception:  # noqa: BLE001
                     logger.opt(exception=True).debug("Error decoding JSON response")
                     result = response.text
@@ -95,6 +102,7 @@ class HttpCallerComponent(Component):
                         "status_code": response.status_code,
                         "result": result,
                     },
+                    "total_tokens": total_tokens,
                 }
         except httpx.TimeoutException:
             return {
@@ -104,9 +112,10 @@ class HttpCallerComponent(Component):
                     "status_code": 408,
                     "error": "Request timed out",
                 },
+                "total_tokens": None,
             }
         except Exception as exc:  # noqa: BLE001
-            logger.opt(exception=True).debug(f"Error making request to {url}")
+            logger.error(f"Error making request to {url}", exc_info=exc if log_verbose else None)
             return {
                 "data": {
                     "source": url,
@@ -114,4 +123,5 @@ class HttpCallerComponent(Component):
                     "status_code": 500,
                     "error": str(exc),
                 },
+                "total_tokens": None,
             }

@@ -10,7 +10,7 @@ from configs import (kbs_config)
 from server.knowledge_base.kb_service.base import get_kb_details, get_kb_file_details
 from server.knowledge_base.oss import default_oss
 from server.knowledge_base.utils import LOADER_DICT
-from server.utils import list_embed_models, list_online_embed_models
+from server.utils import list_embed_models, list_online_embed_models, get_chat_file_kb
 from webui_pages.utils import *
 
 cell_renderer = JsCode("""function(params) {if(params.value==true){return '✓'}else{return '×'}}""")
@@ -54,8 +54,8 @@ def file_exists(kb: str, selected_rows: List) -> Tuple[str, str]:
 def knowledge_base_page(api: ApiRequest, is_lite: bool = None):
     try:
         kb_list = {x["kb_name"]: x for x in get_kb_details()}
-        if "temp" in kb_list:
-            del kb_list["temp"]
+        if get_chat_file_kb() in kb_list:
+            del kb_list[get_chat_file_kb()]
     except Exception as e:
         st.error(
             "获取知识库信息错误，请检查是否已按照 `README.md` 中 `4 知识库初始化与迁移` 步骤完成初始化或迁移，或是否为数据库连接错误。")

@@ -31,7 +31,8 @@ class LangflowWorker(ApiModelWorker):
         params = params.load_config(self.model_names[0])
         role_meta = params.role_meta
         content = params.messages[-1].get('content')
-        contentObj = json.loads(content)
+        contentObj = params.extra or {}
+        contentObj['question'] = content
         assistant_id = contentObj.get('assistant_id')
         assistant = None
         if assistant_id and assistant_id >= 0:
@@ -39,6 +40,9 @@ class LangflowWorker(ApiModelWorker):
         model_config = {}
         if assistant:
             model_config = assistant.get('model_config', {})
+            for k, v in (model_config.get('extra') or {}).items():
+                if k not in contentObj:
+                    contentObj[k] = v
         url = model_config.get('api_proxy', params.api_proxy)
         api_key = model_config.get('api_key') or contentObj.get('api_key') or params.api_key
         stream = model_config.get('stream', contentObj.get('stream'))
@@ -56,15 +60,10 @@ class LangflowWorker(ApiModelWorker):
         query = contentObj.get('question', '')
         inputs = model_config.get('inputs') or role_meta.get("inputs", {})
         cookie = contentObj.get('cookie')
-        token_info = json.dumps(get_token_info(contentObj.get('token')), ensure_ascii=False)
+        token_info = contentObj.get('token_info')
         tweaks = contentObj.get('tweaks', inputs.get('tweaks', {}))
-        parse_inputs_expr(tweaks, query, contentObj)
-        for key, value in tweaks.items():
-            if isinstance(value, dict):
-                if 'cookie' in value and value.get('cookie') == "{cookie}":
-                    value['cookie'] = cookie
-                if 'token_info' in value and value.get('token_info') == "{token_info}":
-                    value['token_info'] = token_info
+        parse_inputs_expr(tweaks, query, contentObj, assistant)
+
         data = {
             "input_value": query,
             "input_type": contentObj.get('input_type') or inputs.get('input_type', 'chat'),
@@ -80,6 +79,13 @@ class LangflowWorker(ApiModelWorker):
         try:
             logger.debug(f"请求Langflow接口参数：{data}")
             logger.debug(f"请求Langflow URL: {url}")
+
+            for key, value in tweaks.items():
+                if isinstance(value, dict):
+                    if 'cookie' in value and value.get('cookie') == "{cookie}":
+                        value['cookie'] = cookie
+                    if 'token_info' in value and value.get('token_info') == "{token_info}":
+                        value['token_info'] = json.dumps(token_info, ensure_ascii=False)
 
             with requests.post(langflow_url, headers=headers, params=query_params, json=data, stream=stream,
                                verify=False, timeout=timeout) as response:

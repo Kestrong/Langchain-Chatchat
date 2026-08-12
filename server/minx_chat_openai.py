@@ -5,11 +5,12 @@ from typing import (
     Tuple, Dict, List
 )
 
-import tiktoken
 from langchain.chains import LLMChain
 from langchain_community.chat_models import ChatOpenAI
 from langchain_community.utils.openai import is_openai_v1
 from langchain_core.outputs import LLMResult
+
+from configs import ONLINE_LLM_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -169,10 +170,12 @@ fetch_timeout = aiohttp.ClientTimeout(total=3 * 3600)
 
 class MyChatCompletionRequest(ChatCompletionRequest):
     enable_thinking: Optional[bool] = None
+    extra: Optional[Dict[str, Any]] = None
 
 
 class MyAPIChatCompletionRequest(APIChatCompletionRequest):
     enable_thinking: Optional[bool] = None
+    extra: Optional[Dict[str, Any]] = None
 
 
 async def fetch_remote(url, pload=None, name=None):
@@ -271,7 +274,7 @@ async def check_length(request, prompt, max_tokens, worker_addr):
         {"model": request.model, "prompt": prompt},
         "count",
     )
-    length = min(max_tokens, context_len - token_num)
+    length = min(max_tokens, int(context_len) - int(token_num))
 
     if length <= 0:
         return None, create_error_response(
@@ -385,6 +388,7 @@ async def get_gen_params(
         best_of: Optional[int] = None,
         use_beam_search: Optional[bool] = None,
         enable_thinking: Optional[bool] = None,
+        extra: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     conv = await get_conv(model_name, worker_addr)
     conv = Conversation(
@@ -402,6 +406,9 @@ async def get_gen_params(
     )
 
     if isinstance(messages, str):
+        prompt = messages
+        images = []
+    elif model_name in ONLINE_LLM_MODEL:
         prompt = messages
         images = []
     else:
@@ -451,6 +458,7 @@ async def get_gen_params(
         "max_new_tokens": max_tokens,
         "echo": echo,
         "stop_token_ids": conv.stop_token_ids,
+        "extra": extra,
     }
 
     if enable_thinking is not None:
@@ -543,6 +551,7 @@ async def create_chat_completion(request: MyChatCompletionRequest):
         echo=False,
         stop=request.stop,
         enable_thinking=request.enable_thinking,
+        extra=request.extra,
     )
 
     max_new_tokens, error_check_ret = await check_length(
@@ -695,7 +704,6 @@ async def create_completion(request: CompletionRequest):
                 stop=request.stop,
                 best_of=request.best_of,
                 use_beam_search=request.use_beam_search,
-                enable_thinking=request.enable_thinking,
             )
             for i in range(request.n):
                 content = asyncio.create_task(
@@ -752,7 +760,6 @@ async def generate_completion_stream_generator(
                 logprobs=request.logprobs,
                 echo=request.echo,
                 stop=request.stop,
-                enable_thinking=request.enable_thinking,
             )
             async for content in generate_completion_stream(gen_params, worker_addr):
                 if content["error_code"] != 0:
@@ -936,6 +943,7 @@ async def create_chat_completion(request: MyAPIChatCompletionRequest):
         echo=False,
         stop=request.stop,
         enable_thinking=request.enable_thinking,
+        extra=request.extra,
     )
 
     if request.repetition_penalty is not None:

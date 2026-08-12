@@ -4,18 +4,17 @@ from fastapi import Body, BackgroundTasks
 from starlette.requests import Request
 
 from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD, HISTORY_LEN, TOP_P
-from server.agent import create_model_container
-from server.chat.agent_chat import agent_chat, tool_chat
+from server.chat.agent_chat import agent_chat
 from server.chat.chat import chat
 from server.chat.chat_type import ChatType
 from server.chat.completion import completion
-from server.chat.file_chat import file_chat
 from server.chat.knowledge_base_chat import knowledge_base_chat
 from server.chat.search_engine_chat import search_engine_chat
-from server.chat.utils import History, un_format_online_llm_model
+from server.chat.utils import History
 from server.chat.workflow_chat import do_workflow_chat
 from server.db.repository import get_assistant_detail_from_db
-from server.memory.token_info_memory import get_token
+from server.knowledge_base.oss import default_oss
+from server.utils import get_chat_file_kb
 
 
 async def chat_router(query: str = Body(..., description="用户输入", examples=["恼羞成怒"]),
@@ -55,7 +54,6 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                       split_result: bool = Body(False,
                                                 description="是否对搜索结果进行拆分（主要用于metaphor搜索引擎）"),
                       tool_names: List[str] = Body([], description="工具的名称"),
-                      api_names: List[str] = Body([], description="api的名称"),
                       request: Request = None,
                       background_tasks: BackgroundTasks = None,
                       ):
@@ -67,7 +65,7 @@ async def chat_router(query: str = Body(..., description="用户输入", example
     if chat_type == ChatType.WORKFLOW_CHAT.value or (workflow_config is not None and len(workflow_config) > 0):
         return await do_workflow_chat(query=query, stream=stream, assistant_id=assistant_id, knowledge_id=knowledge_id,
                                       conversation_id=conversation_id, extra=extra, store_message=store_message,
-                                      workflow_config=workflow_config, tag=tag)
+                                      workflow_config=workflow_config, tag=tag, request=request)
     return await do_chat_router(query=query, chat_type=chat_type, extra=extra, conversation_id=conversation_id,
                                 assistant_id=assistant_id, assistant=assistant, knowledge_id=knowledge_id,
                                 knowledge_base_names=knowledge_base_names, search_engine_name=search_engine_name,
@@ -75,7 +73,28 @@ async def chat_router(query: str = Body(..., description="用户输入", example
                                 stream=stream, model_name=model_name, tag=tag, top_p=top_p,
                                 temperature=temperature, max_tokens=max_tokens, prompt_name=prompt_name,
                                 store_message=store_message, split_result=split_result, tool_names=tool_names,
-                                api_names=api_names, request=request, background_tasks=background_tasks)
+                                request=request, background_tasks=background_tasks)
+
+
+def check_file_type(knowledge_id: str = "", third_party_files: list = None, uploader: dict = None):
+    if not uploader:
+        return True
+    allowed_types = uploader.get("allowed_types")
+    if not allowed_types:
+        return True
+    msg = f"File type not allowed. Please upload files in {allowed_types} format."
+    if knowledge_id:
+        files = default_oss().list_objects(bucket_name=get_chat_file_kb(), object_name=knowledge_id)
+        for filename in files:
+            ext = filename.rsplit('.', 1)[-1].strip() if filename and '.' in filename else ''
+            if ext not in allowed_types:
+                raise ValueError(msg)
+    if third_party_files:
+        for f in third_party_files:
+            filename = f.get("name")
+            ext = filename.rsplit('.', 1)[-1].strip() if filename and '.' in filename else ''
+            if ext not in allowed_types:
+                raise ValueError(msg)
 
 
 async def do_chat_router(query: str,
@@ -102,16 +121,14 @@ async def do_chat_router(query: str,
                          store_message: bool = True,
                          split_result: bool = False,
                          tool_names: List[str] = None,
-                         api_names: List[str] = None,
                          request: Request = None,
                          background_tasks: BackgroundTasks = None,
                          ):
-    if un_format_online_llm_model(model_name):
-        extra["knowledge_id"] = knowledge_id
-        extra["token"] = get_token()
     if assistant is None and assistant_id >= 0:
         assistant = get_assistant_detail_from_db(assistant_id=assistant_id)
     if assistant:
+        check_file_type(knowledge_id=knowledge_id, third_party_files=extra.get("files"),
+                        uploader=assistant.get("model_config", {}).get("uploader", {}))
         if assistant.get('extra') is not None:
             extra.update(assistant.get('extra'))
         extra['assistant_id'] = assistant_id
@@ -140,10 +157,7 @@ async def do_chat_router(query: str,
                 score_threshold = assistant.get("score_threshold")
             tool_config_db = assistant.get("tool_config", {})
             if not tool_names and tool_config_db is not None and len(tool_config_db) > 0:
-                tool_names = [k for k, v in assistant.get("tool_config").items() if v.get("selected", False)]
-                api_names = [t.get("name") for t in assistant.get("tool_config").get("http_request", {}).get("apis", [])
-                             if
-                             t.get("selected", False)]
+                tool_names = tool_config_db.get("tool_names", [])
 
     if chat_type == ChatType.SEARCH_ENGINE_CHAT.value or (
             search_engine_name is not None and search_engine_name != ''):
@@ -152,32 +166,16 @@ async def do_chat_router(query: str,
                                         search_engine_name=search_engine_name, top_k=top_k, assistant_id=assistant_id,
                                         history_len=history_len, history=history, stream=stream, model_name=model_name,
                                         temperature=temperature, max_tokens=max_tokens, prompt_name=prompt_name,
-                                        split_result=split_result, tag=tag, extra=extra, top_p=top_p, request=request, )
+                                        split_result=split_result, tag=tag, extra=extra, top_p=top_p, request=request,
+                                        knowledge_id=knowledge_id)
 
     elif chat_type == ChatType.AGENT_CHAT.value or tool_names:
-        if assistant:
-            tool_config = assistant.get("tool_config")
-            if tool_config and len(tool_config) > 0:
-                model_container = create_model_container()
-                model_container.TOOL_CONFIG.update(tool_config)
-                if len(tool_names) == 1 and tool_config.get(tool_names[0], {}).get("call_direct", False):
-                    return await tool_chat(query=query, knowledge_id=knowledge_id, conversation_id=conversation_id,
-                                           extra=extra, tool_names=tool_names, api_names=api_names, stream=stream,
-                                           store_message=store_message, assistant_id=assistant_id, tag=tag,
-                                           request=request, )
 
         return await agent_chat(query=query, history_len=history_len, history=history, stream=stream,
                                 model_name=model_name, temperature=temperature, tool_names=tool_names,
-                                conversation_id=conversation_id, extra=extra, top_p=top_p,
+                                conversation_id=conversation_id, extra=extra, top_p=top_p, knowledge_id=knowledge_id,
                                 store_message=store_message, max_tokens=max_tokens, prompt_name=prompt_name,
-                                api_names=api_names, assistant_id=assistant_id, tag=tag, request=request, )
-
-    elif chat_type == ChatType.FILE_CHAT.value or (knowledge_id and not un_format_online_llm_model(model_name)):
-
-        return await file_chat(query=query, knowledge_id=knowledge_id, history_len=history_len, history=history,
-                               stream=stream, model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                               prompt_name=prompt_name, conversation_id=conversation_id, store_message=store_message,
-                               assistant_id=assistant_id, tag=tag, extra=extra, top_p=top_p, request=request, )
+                                assistant_id=assistant_id, tag=tag, request=request, )
 
     elif chat_type == ChatType.KNOWLEDGE_BASE_CHAT.value or knowledge_base_names:
 
@@ -186,17 +184,19 @@ async def do_chat_router(query: str,
                                          score_threshold=score_threshold, history_len=history_len, history=history,
                                          stream=stream, model_name=model_name, temperature=temperature, tag=tag,
                                          max_tokens=max_tokens, prompt_name=prompt_name, store_message=store_message,
-                                         top_p=top_p, background_tasks=background_tasks, request=request, )
+                                         top_p=top_p, background_tasks=background_tasks, request=request,
+                                         knowledge_id=knowledge_id)
 
     elif chat_type == ChatType.COMPLETION.value:
 
-        return await completion(query=query, extra=extra, stream=stream, top_p=top_p,
-                                model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                                prompt_name=prompt_name, request=request, )
+        return await completion(query=query, assistant_id=assistant_id, tag=tag, extra=extra, stream=stream,
+                                top_p=top_p, model_name=model_name, temperature=temperature, max_tokens=max_tokens,
+                                prompt_name=prompt_name, store_message=store_message, request=request, )
 
     else:
 
         return await chat(query=query, extra=extra, conversation_id=conversation_id, tag=tag, top_p=top_p,
                           history_len=history_len, history=history, stream=stream, request=request,
                           model_name=model_name, temperature=temperature, max_tokens=max_tokens,
-                          prompt_name=prompt_name, store_message=store_message, assistant_id=assistant_id)
+                          prompt_name=prompt_name, store_message=store_message, assistant_id=assistant_id,
+                          knowledge_id=knowledge_id)

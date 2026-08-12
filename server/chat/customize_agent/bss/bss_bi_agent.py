@@ -6,21 +6,23 @@ from typing import Dict, Any, List, Optional
 
 from fastapi import Body
 from langchain.chains import LLMChain
-from langchain.memory import ConversationBufferWindowMemory
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import PromptTemplate
 from starlette.requests import Request
 
 from configs import TEMPERATURE, LLM_MODELS, HISTORY_LEN, TOP_P
-from server.agent import create_model_container, text2sql, AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
+from server.agent import create_model_container, AgentExecutorAsyncIteratorCallbackHandler, AgentStatus
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.callback_handler.token_callback_handler import TokenCallbackHandler
+from server.chat.chat import process_extra
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, create_agent_executor, parse_llm_token_inner_json, \
-    choose_response
+    choose_response, get_tiktoken_num, un_format_online_llm_model
 from server.db.repository import add_message_to_db, update_message
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
+from server.memory.conversation_window_buffer_memory import ConversationBufferWindowMemory
 from server.utils import wrap_done, get_prompt_template, get_ChatOpenAI
 
 
@@ -28,6 +30,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                        tag: str = Body(default="", description="会话标签"),
                        extra: Dict[str, Any] = Body({}, description="额外的属性"),
                        assistant_id: int = Body(-1, description="助手ID"),
+                       knowledge_id: str = Body("", description="临时知识库ID"),
                        conversation_id: str = Body("", description="对话框ID"),
                        history_len: int = Body(-1, description="从数据库中取历史消息的数量"),
                        history: List[History] = Body([],
@@ -47,28 +50,29 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                        prompt_name: str = Body("default",
                                                description="使用的prompt模板名称(在configs/prompt_config.py中配置)"),
                        tool_names: List[str] = Body([], description="工具的名称"),
-                       api_names: List[str] = Body([], description="api的名称"),
                        store_message: bool = Body(True, description="是否保存消息到数据库"),
                        request: Request = None
                        ):
     if isinstance(max_tokens, int) and max_tokens <= 0:
         max_tokens = None
+    history = [History.from_data(h) for h in history]
     model_container = create_model_container()
-    if extra:
-        model_container.TOOL_ARGS.update(extra)
-    model_container.TOOL_ARGS["query"] = query
+    un_format = un_format_online_llm_model(model_name)
+    chat_type = ChatType.AGENT_CHAT.value
 
     async def agent_chat_iterator():
-        message_id = add_message_to_db(chat_type=ChatType.AGENT_CHAT.value, query=query,
-                                       conversation_id=conversation_id, tag=tag,
+        message_id = add_message_to_db(chat_type=chat_type, query=query, conversation_id=conversation_id, tag=tag,
                                        store=store_message, assistant_id=assistant_id)
         waiting_tips = extra.get("waiting_tips", "正在查询相关信息，请耐心等待，我们将尽快为您提供答案...")
-        yield json.dumps(obj={"thought": waiting_tips, "message_id": message_id,
+        yield json.dumps(obj={"event": "agent_thought", "thought": waiting_tips, "message_id": message_id,
                               "conversation_id": conversation_id}, ensure_ascii=False)
+        model_container.EXTRA_ARGS.update(extra)
+        from server.agent.tools_select import get_available_tools
+        available_tools, _ = await get_available_tools(tool_name_ens=['text2sql'])
         if extra and extra.get("sql_cmd"):
 
             async def co():
-                return text2sql(query)
+                return available_tools[0].func_or_co(query)
 
             task = asyncio.create_task(co())
             task_manager.put(message_id, task)
@@ -84,25 +88,27 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                 result = sql_result
             update_message(message_id=message_id, response=result, metadata=metadata,
                            response_time=datetime.datetime.now(), )
-            yield json.dumps({"answer": result, "message_id": message_id,
+            yield json.dumps({"event": "agent_message", "answer": result, "message_id": message_id,
                               "conversation_id": conversation_id}, ensure_ascii=False)
         else:
-            from server.chat.agent_chat import get_available_tools
-            available_tools = get_available_tools(tool_names=['text2sql'], api_names=[],
-                                                  tool_config=model_container.TOOL_CONFIG)
-            callback = AgentExecutorAsyncIteratorCallbackHandler()
+            callback = AgentExecutorAsyncIteratorCallbackHandler(model_name=model_name, )
             conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
-                                                                message_id=message_id,
-                                                                chat_type=ChatType.AGENT_CHAT.value,
+                                                                message_id=message_id, chat_type=chat_type,
                                                                 query=query, agent=True)
             task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id, agent=True)
-            callbacks = [callback, conversation_callback, task_callback]
+            token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id)
+            model_container.CALLBACK_HANDLERS.append(token_callback)
+            callbacks = [callback, conversation_callback, task_callback, token_callback]
+            process_extra(stream=stream, model_name=model_name, extra=extra, conversation_id=conversation_id,
+                          request=request)
+            model_container.EXTRA_ARGS.update(extra)
             model = get_ChatOpenAI(
                 model_name=model_name,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 top_p=top_p,
-                enable_thinking=False
+                enable_thinking=False,
+                extra_body={"extra": extra} if un_format else None,
             )
 
             def parse_history_message(content: str):
@@ -111,29 +117,29 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                     return content_obj.get('summarize')
                 return content
 
-            memory = ConversationBufferWindowMemory(k=max(HISTORY_LEN * 2, len(history) if history else 0))
-            history_var = []
+            prompt_template = get_prompt_template(chat_type, prompt_name)
+            prompt_length = get_tiktoken_num(query + prompt_template + str(available_tools))
+            memory = ConversationBufferWindowMemory(model_name=model_name, return_messages=True,
+                                                    message_limit=max(HISTORY_LEN * 2, len(history) if history else 0),
+                                                    prompt_length=prompt_length)
             if history:
                 for message in history:
                     if message.role == 'user':
                         memory.chat_memory.add_user_message(message.content)
-                        history_var.append({"role": message.role, "content": message.content})
                     else:
                         parse_message = parse_history_message(message.content)
                         memory.chat_memory.add_user_message(parse_message)
-                        history_var.append({"role": message.role, "content": parse_message})
             elif conversation_id and history_len > 0:
                 memory_ = ConversationBufferDBMemory(conversation_id=conversation_id,
-                                                     llm=model,
+                                                     model_name=model_name, return_messages=True,
+                                                     prompt_length=prompt_length,
                                                      message_limit=history_len)
                 for a in memory_.buffer:
                     if isinstance(a, HumanMessage):
                         memory.chat_memory.add_user_message(a.content)
-                        history_var.append({"role": a.type, "content": a.content})
                     else:
                         parse_message = parse_history_message(a.content)
                         memory.chat_memory.add_ai_message(parse_message)
-                        history_var.append({"role": a.type, "content": parse_message})
             step_prompt0 = """你是一个资深的python程序员，请仔细阅读以下输入的问题和历史对话上下文。
                             历史对话上下文: {{ history }}
                             问题: {{ input }}
@@ -174,7 +180,7 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                                             template_format="jinja2")
             step_chain0 = LLMChain(llm=model, prompt=step_template0)
             continue_flag = True
-            flag = step_chain0.predict(input=query, history=f"{history_var}" if history_var else "")
+            flag = step_chain0.predict(input=query, history=memory.buffer_as_str)
             if "false" in flag.lower():
                 continue_flag = False
                 question_alarm = ['查看某人上周的告警明细', '查看某人本月的告警统计',
@@ -183,21 +189,19 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                                      '查询某人上月的调度单处理及时性统计']
                 question1 = random.choice(question_alarm)
                 question2 = random.choice(question_schedule)
-                d = {"message_id": message_id, "conversation_id": conversation_id,
+                d = {"event": "agent_message", "message_id": message_id, "conversation_id": conversation_id,
                      "answer": f"请确保您的提问跟数据库的查询与分析有关，您可以提问有关告警或者调度单查询方面的问题。请确保您提供了以下查询条件之一：时间范围、员工姓名、省份区域。您也可以尝试提问以下内容：\n1. {question1}；\n2. {question2}。\n\n💡**小提示**：有时候是我没理解您的意思，重新提问一次也许会得到更好的结果。"}
                 update_message(message_id=message_id, response=d.get("answer"), metadata=None,
                                response_time=datetime.datetime.now())
                 yield json.dumps(d, ensure_ascii=False)
 
             if continue_flag:
-                model.callbacks = [callback]
-                prompt_template = get_prompt_template("agent_chat", prompt_name)
                 agent_executor = create_agent_executor(model, memory, available_tools, prompt_template,
                                                        max_iterations=1)
                 while True:
                     try:
                         task = asyncio.create_task(wrap_done(
-                            agent_executor.acall(query, callbacks=callbacks, include_run_info=True),
+                            agent_executor.acall({"input": query}, callbacks=callbacks, include_run_info=True),
                             callback.done))
                         break
                     except:
@@ -212,8 +216,12 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                             continue
                         elif data["status"] == AgentStatus.agent_finish:
                             final_answer = data["final_answer"]
-                            yield json.dumps({"answer": final_answer, "message_id": message_id,
-                                              "conversation_id": conversation_id}, ensure_ascii=False)
+                            yield json.dumps(
+                                {"event": "agent_message", "answer": final_answer, "message_id": message_id,
+                                 "conversation_id": conversation_id}, ensure_ascii=False)
+                    yield json.dumps(
+                        {"event": "message_end", "message_id": message_id, "conversation_id": conversation_id,
+                         "total_tokens": token_callback.total_tokens}, ensure_ascii=False)
                 else:
                     answer = ""
                     async for chunk in callback.aiter():
@@ -223,8 +231,9 @@ async def bss_bi_agent(query: str = Body(..., description="用户输入", exampl
                         elif data["status"] == AgentStatus.agent_finish:
                             answer += data["final_answer"]
 
-                    yield json.dumps({"answer": answer, "message_id": message_id,
-                                      "conversation_id": conversation_id}, ensure_ascii=False)
+                    yield json.dumps({"event": "agent_message", "answer": answer, "message_id": message_id,
+                                      "conversation_id": conversation_id, "total_tokens": token_callback.total_tokens},
+                                     ensure_ascii=False)
                 await task
 
     return await choose_response(stream, agent_chat_iterator(), request)

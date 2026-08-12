@@ -1,14 +1,14 @@
 import json
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, ClassVar
 
 from common.exceptions import ChatBusinessException
 from configs import LLM_MODELS, TEMPERATURE, VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD
-from server.agent.tools_select import get_all_tools
-from server.db.repository import list_kbs_from_db, get_assistant_simple_by_code_from_db
+from server.db.repository import get_assistant_simple_by_code_from_db
 from server.utils import api_address, get_httpx_client
 from server.workflow.component.base.component import Component
+from server.workflow.utils.event_manager import AsyncPubSub, SSEEvent, SSEEventType
 from server.workflow.utils.inputs import TextInput, IntegerInput, FloatInput, ListInput
-from server.workflow.utils.outputs import TextOutput, ListOutput
+from server.workflow.utils.outputs import TextOutput, ListOutput, IntOutput
 
 
 class LocalLLMComponent(Component):
@@ -17,6 +17,7 @@ class LocalLLMComponent(Component):
     name = "local_llm"
     tag = "${WORKFLOW_TAG_MODEL}"
     icon: Union[str, None]
+    streamable: ClassVar[bool] = True
 
     inputs = [
         TextInput(
@@ -50,6 +51,12 @@ class LocalLLMComponent(Component):
             info="${WORKFLOW_INPUT_INFO_MAX_TOKENS}",
         ),
         IntegerInput(
+            name='history_len',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_HISTORY_LEN}",
+            info="${WORKFLOW_INPUT_INFO_HISTORY_LEN}",
+            value=-1
+        ),
+        IntegerInput(
             name='top_k',
             display_name="${WORKFLOW_INPUT_DISPLAYNAME_TOP_K}",
             info="${WORKFLOW_INPUT_INFO_TOP_K}",
@@ -75,18 +82,18 @@ class LocalLLMComponent(Component):
             name='knowledge_base_names',
             display_name="${WORKFLOW_INPUT_DISPLAYNAME_KNOWLEDGE_BASE_NAMES}",
             info="${WORKFLOW_INPUT_INFO_KNOWLEDGE_BASE_NAMES}",
-            options=[k["kb_name"] for k in list_kbs_from_db(all_kbs=True)[0]]
+            options=[]
         ),
         ListInput(
             name='tool_names',
             display_name="${WORKFLOW_INPUT_DISPLAYNAME_TOOL_NAMES}",
             info="${WORKFLOW_INPUT_INFO_TOOL_NAMES}",
-            options=[t.name for t in get_all_tools()]
+            options=[]
         ),
         ListInput(
-            name='api_names',
-            display_name="${WORKFLOW_INPUT_DISPLAYNAME_API_NAMES}",
-            info="${WORKFLOW_INPUT_INFO_API_NAMES}",
+            name='enable_thinking',
+            display_name="${WORKFLOW_INPUT_DISPLAYNAME_ENABLE_THINKING}",
+            info="${WORKFLOW_INPUT_INFO_ENABLE_THINKING}",
         ),
     ]
 
@@ -102,70 +109,88 @@ class LocalLLMComponent(Component):
         TextOutput(
             display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_THOUGHT}",
             name="thought",
+        ),
+        IntOutput(
+            display_name="${WORKFLOW_OUTPUT_DISPLAYNAME_TOTAL_TOKENS}",
+            name="total_tokens",
         )
     ]
 
     async def _run(self, state: Dict[str, Any]):
-
-        inputs = self.get_context()[self.id]["inputs"]
-        query = inputs.get("query") or state.get("query")
-        extra = inputs.get("extra") or state.get("extra", {})
-        conversation_id = state.get("conversation_id")
-        knowledge_id = inputs.get("knowledge_id")
-        assistant_code = inputs.get("assistant_code")
-        assistant_id = -1
-        if assistant_code:
-            assistant = get_assistant_simple_by_code_from_db(assistant_code=assistant_code)
-            if assistant and not assistant.get('workflow_config'):
-                assistant_id = assistant["id"]
-        history_len = state.get("history_len") or -1
-        stream = False
-        store_message = False
-        prompt = inputs.get("prompt") or state.get("prompt")
-        if not prompt:
-            prompt = "default"
-        if "prompt" in inputs:
-            del inputs["prompt"]
-        model_name = inputs.get("model_name")
-        max_tokens = inputs.get("max_tokens") or -1
-        temperature = inputs.get("temperature") or TEMPERATURE
-        knowledge_base_names = inputs.get("knowledge_base_names")
-        top_k = inputs.get("top_k") or VECTOR_SEARCH_TOP_K
-        score_threshold = inputs.get("score_threshold") or SCORE_THRESHOLD
-        tool_names = inputs.get("tool_names")
-        api_names = inputs.get("api_names")
-
-        api_base_url = api_address()
-        data = dict(query=query, extra=extra, conversation_id=conversation_id,
-                    default_value_from_assistant=False, assistant_id=assistant_id,
-                    stream=stream, model_name=model_name, knowledge_id=knowledge_id,
-                    temperature=temperature, max_tokens=max_tokens, history_len=history_len,
-                    top_k=top_k, score_threshold=score_threshold,
-                    prompt_name=prompt, knowledge_base_names=knowledge_base_names,
-                    store_message=store_message, tool_names=tool_names,
-                    api_names=api_names)
-        result = {}
-        answer = ''
-        async with get_httpx_client(use_async=True) as client:
-            response = await client.post(url=f"{api_base_url}/chat/chat", json=data)
-            for line in response.iter_lines():
-                if not line or not line.startswith("data:"):
-                    continue
-                event = json.loads(line[6:])
-                if event.get("error"):
-                    err = ChatBusinessException(event.get("answer"))
-                    if event.get("error_info"):
-                        err.__cause__ = ChatBusinessException(event.get("error_info"))
-                    raise err
-                if "answer" in event:
-                    answer += event["answer"]
-                elif "msg" in event:
-                    answer += event["msg"]
-                elif "docs" in event:
-                    result['docs'] = event["docs"]
-                elif "thought" in event:
-                    result['thought'] = event["thought"]
-        result.setdefault("docs", [])
-        result.setdefault("thought", None)
-        result['answer'] = answer
-        return result
+        pubsub: AsyncPubSub = state.get("pubsub")
+        try:
+            inputs = self.get_context()[self.id]["inputs"]
+            query = inputs.get("query") or state.get("query")
+            extra = inputs.get("extra") or state.get("extra", {})
+            if inputs.get("enable_thinking") is not None:
+                extra['enable_thinking'] = inputs.get("enable_thinking")
+            conversation_id = state.get("conversation_id")
+            knowledge_id = inputs.get("knowledge_id")
+            assistant_code = inputs.get("assistant_code")
+            assistant_id = -1
+            if assistant_code:
+                assistant = get_assistant_simple_by_code_from_db(assistant_code=assistant_code)
+                if assistant and not assistant.get('workflow_config'):
+                    assistant_id = assistant["id"]
+            history_len = state.get("history_len") or -1
+            stream = True
+            store_message = False
+            prompt = inputs.get("prompt") or state.get("prompt")
+            if not prompt:
+                prompt = "default"
+            model_name = inputs.get("model_name")
+            max_tokens = inputs.get("max_tokens") or -1
+            temperature = inputs.get("temperature") or TEMPERATURE
+            knowledge_base_names = inputs.get("knowledge_base_names")
+            top_k = inputs.get("top_k") or VECTOR_SEARCH_TOP_K
+            score_threshold = inputs.get("score_threshold") or SCORE_THRESHOLD
+            tool_names = inputs.get("tool_names")
+            api_names = inputs.get("api_names")
+            api_base_url = api_address()
+            data = dict(query=query, extra=extra, conversation_id=conversation_id,
+                        default_value_from_assistant=False, assistant_id=assistant_id,
+                        stream=stream, model_name=model_name, knowledge_id=knowledge_id,
+                        temperature=temperature, max_tokens=max_tokens, history_len=history_len,
+                        top_k=top_k, score_threshold=score_threshold,
+                        prompt_name=prompt, knowledge_base_names=knowledge_base_names,
+                        store_message=store_message, tool_names=tool_names,
+                        api_names=api_names)
+            result = {}
+            answer = ''
+            thought = ''
+            headers = self.get_context().get('GLOBAL', {}).get('inputs', {}).get('headers')
+            async with get_httpx_client(use_async=True) as client:
+                async with client.stream("POST", url=f"{api_base_url}/chat/chat", json=data,
+                                         headers=headers) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line or not line.startswith("data:"):
+                            continue
+                        event = json.loads(line[6:])
+                        if pubsub:
+                            event.pop("conversation_id", None)
+                            event.pop("message_id", None)
+                            await pubsub.publish(self.id, SSEEvent(SSEEventType.DATA, self.id, event))
+                        if event.get("error"):
+                            err = ChatBusinessException(event.get("answer"))
+                            if event.get("error_info"):
+                                err.__cause__ = ChatBusinessException(event.get("error_info"))
+                            raise err
+                        if "answer" in event:
+                            answer += event["answer"]
+                        if "msg" in event:
+                            answer += event["msg"]
+                        if "docs" in event:
+                            result['docs'] = event["docs"]
+                        if "thought" in event:
+                            thought += event["thought"]
+                        if "total_tokens" in event:
+                            result['total_tokens'] = event["total_tokens"]
+            result.setdefault("docs", [])
+            result.setdefault("total_tokens", 0)
+            result['answer'] = answer
+            result['thought'] = thought
+            return result
+        finally:
+            if pubsub:
+                await pubsub.publish(self.id, SSEEvent(SSEEventType.DONE, self.id, None))

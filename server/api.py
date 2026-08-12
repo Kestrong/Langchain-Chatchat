@@ -2,7 +2,6 @@ import os
 import sys
 from typing import Literal
 
-import nltk
 from fastapi.security import APIKeyHeader
 
 from common.custom_gzip_middleware import CustomGZipMiddleware
@@ -11,7 +10,6 @@ from common.local_variable_middleware import LocaleVariableMiddleware
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from configs import VERSION
-from configs.model_config import NLTK_DATA_PATH
 from configs.server_config import OPEN_CROSS_DOMAIN
 import argparse
 import uvicorn
@@ -19,9 +17,6 @@ from fastapi import Depends, Security, APIRouter, Body
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 from server.utils import (BaseResponse, FastAPI, MakeFastAPIOffline)
-
-nltk.data.path = [NLTK_DATA_PATH] + nltk.data.path
-os.environ["TIKTOKEN_CACHE_DIR"] = os.path.join(NLTK_DATA_PATH, "tokenizers", "cl100k_base")
 
 
 def create_app(run_mode: str = None):
@@ -85,7 +80,6 @@ def mount_chat_routes(app: FastAPI):
     from server.chat.chat import chat, recommend_question
     from server.chat.search_engine_chat import search_engine_chat
     from server.chat.knowledge_base_chat import knowledge_base_chat
-    from server.chat.file_chat import file_chat
     from server.chat.agent_chat import agent_chat
     from server.chat.workflow_chat import workflow_chat
     from server.chat.feedback import chat_feedback
@@ -104,7 +98,6 @@ def mount_chat_routes(app: FastAPI):
     chat_router.post("/llm_chat", summary="与llm模型对话(通过LLMChain)", )(chat)
     chat_router.post("/search_engine_chat", summary="与搜索引擎对话", )(search_engine_chat)
     chat_router.post("/knowledge_base_chat", summary="与知识库对话")(knowledge_base_chat)
-    chat_router.post("/file_chat", summary="文件对话")(file_chat)
     chat_router.post("/agent_chat", summary="与agent对话")(agent_chat)
     chat_router.post("/workflow_chat", summary="工作流对话", )(workflow_chat)
     chat_router.post("/recommend_question", summary="返回建议的问题列表", )(recommend_question)
@@ -121,7 +114,7 @@ def mount_chat_routes(app: FastAPI):
     chat_router.get("/list_feedbacks", summary="获取会话详情", )(list_feedback)
     chat_router.get("/export_feedbacks", summary="获取会话详情", )(export_feedback_to_excel)
     chat_router.get("/metrics", summary="获取会话指标", )(metrics)
-    chat_router.delete("/model_performance_metrics", summary="删除模型性能指标数据",)(delete_performance_metrics)
+    chat_router.delete("/model_performance_metrics", summary="删除模型性能指标数据", )(delete_performance_metrics)
     chat_router.get("/hot_query", summary="获取热门问题", )(get_hot_query)
     chat_router.get("/assistants", summary="获取助手列表", )(get_assistants)
     chat_router.get("/assistant", summary="获取助手详情", )(get_assistant_detail)
@@ -140,8 +133,8 @@ def mount_chat_routes(app: FastAPI):
 
 
 def mount_knowledge_routes(app: FastAPI):
-    from server.chat.file_chat import delete_temp_docs
-    from server.chat.file_chat import upload_temp_docs
+    from server.knowledge_base.kb_doc_api import delete_temp_docs
+    from server.knowledge_base.kb_doc_api import upload_temp_docs
     from server.knowledge_base.kb_api import list_kbs, create_kb, delete_kb, update_info, get_kb_detail
     from server.knowledge_base.kb_doc_api import (list_files, upload_docs, delete_docs, list_docs,
                                                   update_docs, download_doc, recreate_vector_store,
@@ -203,11 +196,18 @@ def mount_model_routes(app: FastAPI):
 
 def mount_tool_routes(app: FastAPI):
     from server.chat.agent_chat import call_tool
-    from server.agent.tools_select import get_tools_info
+    from server.agent.tools_select import built_in_tools, create_tool, update_tool, delete_tool, get_tools, \
+        get_tool_detail, child_tools
 
     tool_router = APIRouter(prefix="/tools", tags=["Toolkits"])
     # 工具相关
-    tool_router.post("/tools_info", summary="工具信息")(get_tools_info)
+    tool_router.post("/built_in", summary="内置工具信息")(built_in_tools)
+    tool_router.post("/create", summary="创建工具")(create_tool)
+    tool_router.put("/update", summary="更新工具")(update_tool)
+    tool_router.delete("/delete", summary="删除工具")(delete_tool)
+    tool_router.get("/list", summary="分页查询工具列表")(get_tools)
+    tool_router.get("/detail", summary="获取工具详情")(get_tool_detail)
+    tool_router.post("/child_tools", summary="子工具信息")(child_tools)
     tool_router.post("/call", summary="调用工具")(call_tool)
 
     app.include_router(tool_router)

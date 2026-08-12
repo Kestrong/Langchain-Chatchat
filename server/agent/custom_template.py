@@ -8,15 +8,14 @@ from langchain.agents import Tool
 from langchain.agents.structured_chat.output_parser import StructuredChatOutputParser
 from langchain.schema import AgentAction, AgentFinish
 from langchain_core.exceptions import OutputParserException
-from langchain_core.messages import HumanMessage, BaseMessage
-from langchain_core.prompts import BaseChatPromptTemplate
-from langchain_core.prompts.string import DEFAULT_FORMATTER_MAPPING
+from langchain_core.messages import BaseMessage
+from langchain_core.prompts import BaseChatPromptTemplate, HumanMessagePromptTemplate
 
-from configs import logger
+from configs import logger, LLM_MODELS
 
 
 class CustomPromptTemplate(BaseChatPromptTemplate):
-    template: str
+    template: HumanMessagePromptTemplate
     tools: List[Union[Tool, dict]]
     template_format: Literal["f-string", "jinja2"] = "f-string"
     """The format of the prompt template. Options are: 'f-string', 'jinja2'."""
@@ -59,7 +58,7 @@ class CustomPromptTemplate(BaseChatPromptTemplate):
         # kwargs["tools"] = "\n".join([str(format_tool_to_openai_function(tool)) for tool in self.tools])
         # Create a list of tool names for the tools provided
         kwargs["tool_names"] = ", ".join([t.name if isinstance(t, Tool) else t.get("name") for t in self.tools])
-        return [HumanMessage(content=DEFAULT_FORMATTER_MAPPING[self.template_format](self.template, **kwargs))]
+        return self.template.format_messages(**kwargs)
 
 
 def validate_json(json_data: str):
@@ -135,14 +134,18 @@ def parse_json(json_string: str, fallback: bool = True) -> Union[str, dict]:
 
 class CustomOutputParser(StructuredChatOutputParser):
     begin: bool = False
+    model_name: str = LLM_MODELS[0]
 
-    def __init__(self):
+    def __init__(self, model_name: str):
         super().__init__()
         self.begin = True
+        self.model_name = model_name
 
     def parse(self, text: str) -> Union[AgentAction, AgentFinish]:
         logger.debug(f"原始输入:{text},结束")
         try:
+            from server.chat.utils import parse_llm_token_inner_json
+            text = parse_llm_token_inner_json(model_name=self.model_name, token=text, throw_error=False).get("answer")
             if s := (re.findall(r"\n*Action\s*:\s*```(json)?\s*({.+})\s*```", text, flags=re.DOTALL) or
                      re.findall(r"\n*Action\s*:\s*({.+})", text, flags=re.DOTALL) or
                      re.findall(r"\s*({\s*\"action\"\s*:.+?\s*,\s*\"action_input\"\s*:.+\s*})\s*", text,

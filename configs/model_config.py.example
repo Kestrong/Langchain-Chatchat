@@ -100,7 +100,7 @@ ONLINE_LLM_MODEL = {
         "top_p": 0.8,
         "embed_model": "bge-large-zh-v1.5",  # embedding 模型名称,
         "role_meta": {
-            # "truncate_mark": "</think>",
+            # "truncate_mark": "<think>,</think>",
             # "think_mark": "/no_think",
             "extra_headers": {},
             "extra_body": {"enable_thinking": False, "chat_template_kwargs": {"enable_thinking": False}}
@@ -148,20 +148,6 @@ ONLINE_LLM_MODEL = {
         "version": "2023-06-01",
         "model_name":"claude-3-opus-20240229", 
         "provider": "ClaudeWorker",
-    },
-    "iotqwen-api": {
-        "version": "iotqwen-v1",
-        "api_proxy": "http://ip:port/v1/chat-messages",
-        "api_key": "app-xxxx",
-        "feedbackUrl": "http://ip:port/v1/messages/{message_id}/feedbacks",
-        "provider": "IotQwenWorker",
-        "role_meta": {
-            "user_id": "xxx",
-            "user": "xxx",
-            "kb_name": "IT",
-            "topk": 5,
-            "score_threshold": "0.5"
-        }
     },
     "qiming-api": {
         "api_proxy": "ws://ip:port/serviceAgent/rest/ws/qiming_scene_v2",
@@ -228,19 +214,6 @@ ONLINE_LLM_MODEL = {
         "embed_model": "bge-large-zh-v1.5", # embedding 模型名称,
         "role_meta": {
             # "truncate_mark": "</think>"
-        }
-    },
-    "sichuanmass-api": {
-        "version": "sichuanmass-v1",
-        "api_proxy": "http://ip:port/whaleagent/knowledgeService/api/v1/chat/completions",
-        "api_key": "EMPTY",
-        "enable_thinking": False,
-        "provider": "SichuanMassWorker",
-        "role_meta": {
-            "truncate_mark": "</think>",
-            "timeout": 30,
-            "refs": [],
-            "agentlink": {}
         }
     },
 }

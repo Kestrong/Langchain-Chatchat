@@ -38,9 +38,11 @@ def create_conversation(chat_type: str = Body(
 
 def update_conversation(id: str = Body(description="会话id"),
                         name: str = Body(description="会话名称"),
-                        tag: str = Body(default=None, description="会话标签，传null不更新")) -> BaseResponse:
+                        tag: str = Body(default=None, description="会话标签，传null不更新"),
+                        is_top: str = Body(default=None, description="会话置顶，0BT置顶0BF取消，传null不更新")
+                        ) -> BaseResponse:
     try:
-        conversation_id = update_conversation_to_db(conversation_id=id, name=name, tag=tag)
+        conversation_id = update_conversation_to_db(conversation_id=id, name=name, tag=tag, is_top=is_top)
     except Exception as e:
         msg = f"修改会话出错： {e}"
         logger.error(f'{e.__class__.__name__}: {msg}', exc_info=e if log_verbose else None)
@@ -75,11 +77,8 @@ def filter_message(id: str = Query(description="会话id"),
     for m in messages:
         metadata = m.get('meta_data')
         if metadata:
-            if 'user' in metadata:
-                del metadata['user']
-            if 'api_key' in metadata:
-                del metadata['api_key']
-            m['meta_data'] = metadata
+            for key in ['api_key', 'api_secret', 'appId', 'user']:
+                metadata.pop(key, None)
     return BaseResponse(code=200, data={'messages': messages, 'total': total})
 
 
@@ -325,7 +324,7 @@ def get_hot_query(assistant_id: int = Query(None, description="助手id"),
         cache_key = f"hot_query_{'self' if is_self is True else 'all'}_{assistant_id}"
         if cache_key in hot_query_cache:
             return BaseResponse(code=200, data=hot_query_cache[cache_key])
-        with hot_query_locks.setdefault(cache_key, threading.Lock()):
+        with hot_query_locks.setdefault(cache_key, threading.RLock()):
             if cache_key in hot_query_cache:
                 return BaseResponse(code=200, data=hot_query_cache[cache_key])
             limit = int(os.environ.get("HOT_QUERY_LIMIT", 100))

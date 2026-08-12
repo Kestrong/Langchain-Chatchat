@@ -18,15 +18,18 @@ from starlette.requests import Request
 from strsimpy.normalized_levenshtein import NormalizedLevenshtein
 
 from configs import (BING_SEARCH_URL, BING_SUBSCRIPTION_KEY, METAPHOR_API_KEY,
-                     LLM_MODELS, SEARCH_ENGINE_TOP_K, TEMPERATURE, OVERLAP_SIZE, TOP_P)
+                     LLM_MODELS, SEARCH_ENGINE_TOP_K, TEMPERATURE, OVERLAP_SIZE, TOP_P, HISTORY_LEN)
 from server.callback_handler.conversation_callback_handler import ConversationCallbackHandler
 from server.callback_handler.task_callback_handler import TaskCallbackHandler
+from server.callback_handler.token_callback_handler import TokenCallbackHandler
+from server.chat.chat import process_extra
 from server.chat.chat_type import ChatType
 from server.chat.task_manager import task_manager
 from server.chat.utils import History, un_format_online_llm_model, parse_llm_token_inner_json, \
-    choose_response
+    choose_response, unify_chat_files, get_tiktoken_num, has_input_memory_key
 from server.db.repository import add_message_to_db
 from server.memory.conversation_db_buffer_memory import ConversationBufferDBMemory
+from server.memory.conversation_window_buffer_memory import ConversationBufferWindowMemory
 from server.memory.message_i18n import Message_I18N
 from server.utils import BaseResponse, get_prompt_template
 from server.utils import wrap_done, get_ChatOpenAI
@@ -127,6 +130,7 @@ async def lookup_search_engine(
 async def search_engine_chat(query: str = Body(..., description="用户输入", examples=["你好"]),
                              tag: str = Body(default="", description="会话标签"),
                              assistant_id: int = Body(-1, description="助手ID"),
+                             knowledge_id: str = Body("", description="临时知识库ID"),
                              extra: dict = Body({}, description="额外的属性"),
                              conversation_id: str = Body("", description="对话框ID"),
                              search_engine_name: str = Body(..., description="搜索引擎名称", examples=["duckduckgo"]),
@@ -160,14 +164,13 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
 
     if search_engine_name == "bing" and not BING_SUBSCRIPTION_KEY:
         return BaseResponse(code=500, msg=f"要使用Bing搜索引擎，需要设置 `BING_SUBSCRIPTION_KEY`")
-
-    if un_format_online_llm_model(model_name):
-        return BaseResponse(code=500, msg=Message_I18N.API_CHAT_TYPE_NOT_SUPPORT.value.format(
-            chat_type=ChatType.SEARCH_ENGINE_CHAT.value, model_name=model_name))
+    un_format = un_format_online_llm_model(model_name)
+    chat_type = ChatType.SEARCH_ENGINE_CHAT.value
 
     history = [History.from_data(h) for h in history]
     if not conversation_id:
         conversation_id = uuid.uuid4().hex
+    chat_files = unify_chat_files(third_party_files=extra.pop('files', []), knowledge_id=knowledge_id, request=request)
 
     async def search_engine_chat_iterator(query: str,
                                           search_engine_name: str,
@@ -181,14 +184,18 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
         if isinstance(max_tokens, int) and max_tokens <= 0:
             max_tokens = None
 
-        callbacks = [callback]
-        message_id = add_message_to_db(chat_type=ChatType.SEARCH_ENGINE_CHAT.value, query=query, tag=tag,
-                                       conversation_id=conversation_id, store=store_message, assistant_id=assistant_id)
+        callbacks = []
+        realtime_token_save = extra.get("realtime_token_save", False)
+        message_id = add_message_to_db(chat_type=chat_type, query=query, tag=tag,
+                                       response='' if realtime_token_save else None,
+                                       conversation_id=conversation_id, store=store_message, assistant_id=assistant_id,
+                                       metadata={'chat_files': chat_files} if chat_files else {}, )
         conversation_callback = ConversationCallbackHandler(model_name=model_name, conversation_id=conversation_id,
-                                                            message_id=message_id, query=query, stream=stream,
-                                                            chat_type=ChatType.SEARCH_ENGINE_CHAT.value, )
+                                                            message_id=message_id, query=query, chat_type=chat_type,
+                                                            stream=stream, realtime_token_save=realtime_token_save, )
         task_callback = TaskCallbackHandler(conversation_id=conversation_id, message_id=message_id)
-        callbacks.extend([conversation_callback, task_callback])
+        token_callback = TokenCallbackHandler(model_name=model_name, message_id=message_id)
+        callbacks.extend([conversation_callback, task_callback, token_callback])
         # Enable langchain-chatchat to support langfuse
         import os
         langfuse_secret_key = os.environ.get('LANGFUSE_SECRET_KEY')
@@ -198,13 +205,18 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
             from langfuse.callback import CallbackHandler
             langfuse_handler = CallbackHandler()
             callbacks.append(langfuse_handler)
+
+        process_extra(stream=stream, model_name=model_name, extra=extra, conversation_id=conversation_id,
+                      request=request)
+
         model = get_ChatOpenAI(
             model_name=model_name,
             temperature=temperature,
             max_tokens=max_tokens,
             callbacks=[callback],
             top_p=top_p,
-            enable_thinking=extra.get("enable_thinking")
+            enable_thinking=extra.get("enable_thinking"),
+            extra_body={"extra": extra} if un_format else None,
         )
 
         docs = await lookup_search_engine(query, search_engine_name, top_k, split_result=split_result)
@@ -219,44 +231,66 @@ async def search_engine_chat(query: str = Body(..., description="用户输入", 
                 exist_file.append(filename)
         conversation_callback.docs = source_documents
 
-        prompt_template = get_prompt_template("search_engine_chat", prompt_name)
-        input_msg = History(role="user", content=prompt_template).to_msg_template(False)
+        prompt_template = get_prompt_template(chat_type, prompt_name)
+        in_tuple = History(role="user", content=query, chat_files=chat_files).get_content_tuple(
+            format_openai=not un_format)
+        input_content, image_urls, input_len, _ = in_tuple
+        input_template = History(role="user", content=prompt_template, ).to_msg_template(format_openai=not un_format,
+                                                                                         image_urls=image_urls)
+        prompt_length = input_len + get_tiktoken_num(prompt_template + context)
         if history:  # 优先使用前端传入的历史消息
-            chat_prompt = ChatPromptTemplate.from_messages([i.to_msg_template() for i in history] + [input_msg])
+            if isinstance(history[-1].content, str) and history[-1].content == query:
+                history = history[:-1]
+            memory = ConversationBufferWindowMemory(model_name=model_name, input_key='question',
+                                                    message_limit=max(HISTORY_LEN * 2, len(history) if history else 0),
+                                                    prompt_length=prompt_length)
+            memory.return_messages = not has_input_memory_key(input_template.input_variables, memory.memory_variables)
+            for h in history:
+                if h.role in ["user", "human"]:
+                    memory.chat_memory.add_user_message(h.to_msg_tuple(format_openai=not un_format)[1])
+                else:
+                    memory.chat_memory.add_ai_message(h.content)
+            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_template])
         elif conversation_id and history_len > 0:  # 前端要求从数据库取历史消息
             # 根据conversation_id 获取message 列表进而拼凑 memory
-            memory = ConversationBufferDBMemory(conversation_id=conversation_id,
-                                                llm=model,
-                                                message_limit=history_len)
-            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_msg])
+            memory = ConversationBufferDBMemory(conversation_id=conversation_id, model_name=model_name,
+                                                prompt_length=prompt_length, message_limit=history_len,
+                                                input_key='question', )
+            memory.return_messages = not has_input_memory_key(input_template.input_variables, memory.memory_variables)
+            chat_prompt = ChatPromptTemplate.from_messages(memory.buffer + [input_template])
         else:
-            chat_prompt = ChatPromptTemplate.from_messages([input_msg])
-        chain = LLMChain(prompt=chat_prompt, llm=model)
+            chat_prompt = ChatPromptTemplate.from_messages([input_template])
+            memory = ConversationBufferWindowMemory(model_name=model_name, return_messages=False, message_limit=0,
+                                                    prompt_length=prompt_length, input_key='question', )
+        chain = LLMChain(prompt=chat_prompt, llm=model, memory=memory)
 
         # Begin a task that runs in the background.
         task = asyncio.create_task(wrap_done(
-            chain.acall({"context": context, "question": query}, callbacks=callbacks),
+            chain.acall({"context": context, "question": input_content}, callbacks=callbacks),
             callback.done),
         )
 
         task_manager.put(message_id, task)
 
-        d = {"message_id": message_id, "conversation_id": conversation_id, "answer": ""}
+        d = {"event": "message", "message_id": message_id, "conversation_id": conversation_id, "answer": ""}
         yield json.dumps(d, ensure_ascii=False)
-        if stream:
-            async for token in callback.aiter():
-                # Use server-sent-events to stream the response
-                d.update(parse_llm_token_inner_json(model_name, token))
+        if not extra.get('backend'):
+            if stream:
+                async for token in callback.aiter():
+                    # Use server-sent-events to stream the response
+                    d.update(parse_llm_token_inner_json(model_name, token))
+                    yield json.dumps(d, ensure_ascii=False)
+                yield json.dumps({"event": "message_end", "message_id": message_id, "conversation_id": conversation_id,
+                                  "docs": source_documents, "total_tokens": token_callback.total_tokens},
+                                 ensure_ascii=False)
+            else:
+                answer = ""
+                async for token in callback.aiter():
+                    answer += str(token)
+                d.update(parse_llm_token_inner_json(model_name, answer))
+                d["docs"] = source_documents
+                d["total_tokens"] = token_callback.total_tokens
                 yield json.dumps(d, ensure_ascii=False)
-            yield json.dumps({"message_id": message_id, "conversation_id": conversation_id, "docs": source_documents},
-                             ensure_ascii=False)
-        else:
-            answer = ""
-            async for token in callback.aiter():
-                answer += str(token)
-            d.update(parse_llm_token_inner_json(model_name, answer))
-            d["docs"] = source_documents
-            yield json.dumps(d, ensure_ascii=False)
         await task
 
     return await choose_response(stream, search_engine_chat_iterator(query=query,

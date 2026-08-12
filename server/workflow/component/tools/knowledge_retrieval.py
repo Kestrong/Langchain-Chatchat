@@ -1,7 +1,6 @@
 from typing import Dict, Any, Union
 
 from configs import VECTOR_SEARCH_TOP_K, SCORE_THRESHOLD
-from server.db.repository import list_kbs_from_db
 from server.knowledge_base.kb_doc_api import search_docs
 from server.workflow.component.base.component import Component
 from server.workflow.utils.inputs import TextInput, ListInput, IntegerInput, FloatInput, BooleanInput
@@ -26,7 +25,7 @@ class KnowledgeRetrievalComponent(Component):
             name='knowledge_base_names',
             display_name="${WORKFLOW_INPUT_DISPLAYNAME_KNOWLEDGE_BASE_NAMES}",
             info="${WORKFLOW_INPUT_INFO_KNOWLEDGE_BASE_NAMES}",
-            options=[k["kb_name"] for k in list_kbs_from_db(all_kbs=True)[0]]
+            options=[]
         ),
         IntegerInput(
             name='top_k',

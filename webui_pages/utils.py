@@ -336,7 +336,6 @@ class ApiRequest:
             max_tokens: int = None,
             prompt_name: str = "default",
             tool_names: List[str] = [],
-            api_names: List[str] = [],
     ):
         '''
         对应api.py/chat/agent_chat 接口
@@ -353,7 +352,6 @@ class ApiRequest:
             "max_tokens": max_tokens,
             "prompt_name": prompt_name,
             "tool_names": tool_names,
-            "api_names": api_names,
         }
 
         # print(f"received input message:")
@@ -448,7 +446,7 @@ class ApiRequest:
             prompt_name: str = "default",
     ):
         '''
-        对应api.py/chat/file_chat接口
+        对应api.py/chat/llm_chat接口
         '''
         data = {
             "query": query,
@@ -463,7 +461,7 @@ class ApiRequest:
         }
 
         response = self.post(
-            "/chat/file_chat",
+            "/chat/llm_chat",
             json=data,
             stream=True,
         )

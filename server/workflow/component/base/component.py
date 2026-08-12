@@ -1,6 +1,7 @@
+import json
 import re
 from copy import deepcopy
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, AsyncIterable
 
 import shortuuid
 from pydantic import BaseModel, Field
@@ -21,6 +22,11 @@ class Component(BaseModel):
     icon: Union[str, None]
     inputs: type(InputTypes) = []
     outputs: type(OutputTypes) = []
+    error_handler: str = "break"  # 错误处理方式 error_edges\ continue\ break
+    max_retries: int = 0
+    retry_delay: int = 1
+    default_outputs: type(OutputTypes) = []
+    timeout: Union[float, None] = None
     _context: Dict = Field(default_factory=dict)
 
     class Config:
@@ -69,17 +75,22 @@ class Component(BaseModel):
         for var_path in unique_matches:
             try:
                 # 使用安全的路径访问函数
-                var_val = self._get_nested_value(context, var_path)
+                var_val = self.get_nested_value(context, var_path)
                 if var_val is not None:
                     original_placeholder = f'{{{{{var_path}}}}}'
                     # 使用字符串替换
-                    value = value.replace(original_placeholder, str(var_val))
+                    if value == original_placeholder:
+                        value = var_val
+                    else:
+                        value = value.replace(original_placeholder,
+                                              json.dumps(var_val, ensure_ascii=False) if isinstance(var_val, (
+                                                  dict, list, tuple)) else str(var_val))
             except Exception:
                 continue
 
         return value
 
-    def _get_nested_value(self, obj, path):
+    def get_nested_value(self, obj, path):
         """安全获取嵌套字典值"""
         parts = path.split('.')
         current = obj
@@ -140,6 +151,9 @@ class Component(BaseModel):
             for i in self.outputs:
                 outputs[i.name] = i.value
         self.get_context()[self.id]["outputs"] = outputs
+
+    async def chunk_answer(self) -> AsyncIterable[str]:
+        yield None
 
     async def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
         self.prepare_input(state)

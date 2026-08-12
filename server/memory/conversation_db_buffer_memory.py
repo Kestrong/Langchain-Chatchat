@@ -1,80 +1,33 @@
-from typing import Any, List, Dict
+from typing import List
 
-from langchain.memory.chat_memory import BaseChatMemory
-from langchain.schema import get_buffer_string, BaseMessage, HumanMessage, AIMessage
-from langchain.schema.language_model import BaseLanguageModel
+from langchain.schema import BaseMessage, HumanMessage, AIMessage
 
-from configs import MAX_TOKENS_INPUT
+from server.chat.utils import History
 from server.db.repository.message_repository import filter_message
+from server.memory.conversation_window_buffer_memory import ConversationBufferWindowMemory
 
 
-class ConversationBufferDBMemory(BaseChatMemory):
+class ConversationBufferDBMemory(ConversationBufferWindowMemory):
     conversation_id: str
-    human_prefix: str = "Human"
-    ai_prefix: str = "Assistant"
-    llm: BaseLanguageModel
-    memory_key: str = "history"
-    max_token_limit: int = max(MAX_TOKENS_INPUT / 2, 2048)
-    message_limit: int = 10
 
     @property
-    def buffer(self) -> List[BaseMessage]:
+    def history_length(self):
+        return self.message_limit * 2
+
+    @property
+    def buffer_as_messages(self) -> List[BaseMessage]:
         """String buffer of memory."""
         # fetch limited messages desc, and return reversed
-
+        from server.chat.utils import un_format_online_llm_model
+        un_format = un_format_online_llm_model(self.model_name)
         messages = filter_message(conversation_id=self.conversation_id, limit=self.message_limit)
         # 返回的记录按时间倒序，转为正序
         messages = list(reversed(messages))
-        chat_messages: List[BaseMessage] = []
+        self.chat_memory.clear()
         for message in messages:
-            chat_messages.append(HumanMessage(content=message["query"]))
-            chat_messages.append(AIMessage(content=message["response"]))
-
-        if not chat_messages:
-            return []
-
-        # prune the chat message if it exceeds the max token limit
-        curr_buffer_length = self.get_num_tokens(chat_messages)
-        if curr_buffer_length > self.max_token_limit:
-            pruned_memory = []
-            while curr_buffer_length > self.max_token_limit and chat_messages:
-                pruned_memory.append(chat_messages.pop(0))
-                curr_buffer_length = self.get_num_tokens(chat_messages)
-
-        return chat_messages
-
-    def get_num_tokens(self, chat_messages):
-        try:
-            curr_buffer_length = self.llm.get_num_tokens(get_buffer_string(chat_messages))
-        except:
-            curr_buffer_length = len(get_buffer_string(chat_messages))
-        return curr_buffer_length
-
-    @property
-    def memory_variables(self) -> List[str]:
-        """Will always return list of memory variables.
-
-        :meta private:
-        """
-        return [self.memory_key]
-
-    def load_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Return history buffer."""
-        buffer: Any = self.buffer
-        if self.return_messages:
-            final_buffer: Any = buffer
-        else:
-            final_buffer = get_buffer_string(
-                buffer,
-                human_prefix=self.human_prefix,
-                ai_prefix=self.ai_prefix,
-            )
-        return {self.memory_key: final_buffer}
-
-    def save_context(self, inputs: Dict[str, Any], outputs: Dict[str, str]) -> None:
-        """Nothing should be saved or changed"""
-        pass
-
-    def clear(self) -> None:
-        """Nothing to clear, got a memory like a vault."""
-        pass
+            chat_files = (message.get('meta_data') or {}).get('chat_files')
+            msg_tuple = History(role="user", content=message["query"], chat_files=chat_files).to_msg_tuple(
+                format_openai=not un_format)
+            self.chat_memory.add_user_message(HumanMessage(content=msg_tuple[1]))
+            self.chat_memory.add_ai_message(AIMessage(content=message["response"]))
+        return super().buffer_as_messages

@@ -1,4 +1,5 @@
 import random
+import time
 import uuid
 from typing import List, Any
 
@@ -25,21 +26,24 @@ def add_conversation_to_db(session, chat_type, name="", tag="", conversation_id=
     name = name if name is None or len(name) <= 50 else name[:50]
     tag = tag if tag is None or len(tag) <= 100 else tag[:100]
     c = ConversationModel(id=conversation_id, chat_type=chat_type, name=name, tag=tag or None,
-                          assistant_id=assistant_id,
-                          create_by=get_token_info().get("userId"))
+                          assistant_id=assistant_id, create_by=get_token_info().get("userId"),
+                          sort_id=int(time.time()) - 2 ** 63)
 
     session.add(c)
     return c.id
 
 
 @with_session
-def update_conversation_to_db(session, name, tag, conversation_id):
+def update_conversation_to_db(session, name, tag, conversation_id, is_top):
     conversation = session.query(ConversationModel).filter(ConversationModel.id == conversation_id).first()
     if conversation is not None:
         if name is not None and name.strip() != '':
             conversation.name = name if name is None or len(name) <= 50 else name[:50]
         if tag is not None:
             conversation.tag = tag if tag is None or len(tag) <= 100 else tag[:100]
+        if is_top is not None:
+            timestamp = int(conversation.create_time.timestamp())
+            conversation.sort_id = timestamp if is_top == '0BT' else timestamp - 2 ** 63
     else:
         raise ValueError("Conversation with id {} does not exist".format(conversation_id))
     return conversation.id
@@ -88,8 +92,12 @@ def get_conversation_from_db(session, assistant_id: int = -1, page: int = 1, lim
         filters.append(ConversationModel.create_time >= parser.parse(start_time))
     if end_time is not None and end_time != '':
         filters.append(ConversationModel.create_time <= parser.parse(end_time))
-    conversations = (session.query(ConversationModel).filter(*filters)
-                     .order_by(ConversationModel.create_time.desc()).offset(offset).limit(page_size).all())
+    conversations = (session.query(ConversationModel)
+                     .filter(*filters)
+                     .order_by(ConversationModel.sort_id.desc())
+                     .offset(offset)
+                     .limit(page_size)
+                     .all())
     total = session.query(func.count(ConversationModel.id)).filter(*filters).scalar()
     data = []
     for c in conversations:
