@@ -33,7 +33,7 @@ WOLFRAM_ALPHA_API_KEY = ""
 
 TOOL_CONFIG = {
     "aes": {
-        "key": "ffcs@flmchat2024"
+        "key": "flmchat2024"
     },
     "shell": {
         "allow_command": [],
