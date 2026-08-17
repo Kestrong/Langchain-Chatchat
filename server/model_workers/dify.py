@@ -144,7 +144,8 @@ class DifyWorker(ApiModelWorker):
         event_data = json_data.get('data', {})
         inner_json = {"user": user, "api_key": api_key}
         if event == "error":
-            inner_json["answer"] = json_data.get('message', '')
+            logger.error(f"Dify error: {json_data}")
+            inner_json["answer"] = '服务暂不可用，请稍后重试。'
             return inner_json
         if event == "message_end":
             conversation_id = json_data.get('conversation_id')
