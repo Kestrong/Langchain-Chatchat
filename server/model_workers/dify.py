@@ -2,6 +2,7 @@ import copy
 import json
 import logging
 import re
+from functools import reduce
 from typing import List, Dict, Literal, Union
 
 import requests
@@ -69,7 +70,7 @@ def filter_sensitive_data(data: dict, target: str = "inputs") -> dict:
     """过滤敏感信息用于日志打印"""
     filtered_data = copy.deepcopy(data)
 
-    inputs = filtered_data.get(target)
+    inputs = reduce(lambda d, k: d.get(k, {}) if isinstance(d, dict) else {}, target.split("."), filtered_data)
     if inputs and isinstance(inputs, dict):
         for key in ["cookie", "token_info"]:
             if key in inputs and inputs[key]:
