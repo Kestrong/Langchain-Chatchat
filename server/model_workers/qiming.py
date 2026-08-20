@@ -236,7 +236,7 @@ class QimingWorker(DifyWorker):
         text = ''
         try:
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"请求qiming-v2接口参数: {filter_sensitive_data(data)}")
+                logger.debug(f"请求qiming-v2接口参数: {filter_sensitive_data(data, target='apiData.inputs')}")
             timeout = model_config.get("timeout") or params.role_meta.get("timeout", 30)
             # 发送POST请求
             with requests.post(uri, headers=headers, json=data, stream=stream, timeout=timeout,
