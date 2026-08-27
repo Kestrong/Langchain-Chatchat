@@ -84,8 +84,11 @@ class LocaleVariableMiddleware(BaseHTTPMiddleware):
             sign = request.headers.get('X-Sign')
             secret_key = app.get('secret_key')
             if secret_key:
-                signature_timeout_minutes = int(os.environ.get('SIGNATURE_TIMEOUT_MINUTES', 30))
-                time_diff = abs(datetime.datetime.now() - datetime.datetime.fromtimestamp(int(timestamp) / 1000))
+                # 参考OSS签名机制 15分钟窗口避免时钟不准 所有接口均幂等无需防止重放
+                signature_timeout_minutes = int(os.environ.get('SIGNATURE_TIMEOUT_MINUTES', 15))
+                server_now = datetime.datetime.now()
+                client_time = datetime.datetime.fromtimestamp(int(timestamp) / 1000)
+                time_diff = abs(server_now - client_time)
                 if time_diff > datetime.timedelta(minutes=signature_timeout_minutes):
                     return JSONResponse(
                         status_code=401,

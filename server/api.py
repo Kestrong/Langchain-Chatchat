@@ -21,6 +21,7 @@ from server.utils import (BaseResponse, FastAPI, MakeFastAPIOffline)
 
 def create_app(run_mode: str = None):
     async def verify_authorization(authorization: str = Security(APIKeyHeader(name='Authorization', auto_error=False))):
+        # 服务会通过网关认证后再转发 此处无需认证 只作为swagger开发环境时方便调试
         return authorization
 
     from configs import ENV
@@ -37,19 +38,25 @@ def create_app(run_mode: str = None):
     return app
 
 
-def add_middleware(app: FastAPI):
-    # Add CORS middleware to allow all origins
-    # 在config.py中设置OPEN_DOMAIN=True，允许跨域
-    # set OPEN_DOMAIN=True in config.py to allow cross-domain
+def add_cors_middleware(app: FastAPI):
+    # Add CORS middleware to allow specified origins
+    # 在config.py中设置OPEN_DOMAIN=True，允许跨域 默认False
+    # 生产会通过补丁环境变量配置文件 严格配置允许的域名、方法、头
     if OPEN_CROSS_DOMAIN:
+        # CORSMiddleware底层会自动处理*通配符
+        ALLOWED_ORIGINS = [origin for origin in os.environ.get("ALLOWED_ORIGINS", "*").split(",") if origin]
+        ALLOWED_METHODS = [method for method in os.environ.get("ALLOWED_METHODS", "*").split(",") if method]
+        ALLOWED_HEADERS = [header for header in os.environ.get("ALLOWED_HEADERS", "*").split(",") if header]
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            allow_origins=ALLOWED_ORIGINS,
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=ALLOWED_METHODS,
+            allow_headers=ALLOWED_HEADERS,
         )
 
+def add_middleware(app: FastAPI):
+    add_cors_middleware(app)
     app.add_middleware(CustomGZipMiddleware, minimum_size=1024)
     app.add_middleware(LocaleVariableMiddleware)
 
