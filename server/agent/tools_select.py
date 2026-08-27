@@ -286,6 +286,7 @@ def create_dynamic_tool(tool_config: dict, tool_name: str, tool_name_en: str, de
             args_schema = built_in_tool.args_schema
     else:
         if function_source:
+            # 工具上线会经过审核目前不对外开放 没有安全问题
             _locals = {}
             exec(function_source, _locals, _locals)
             func = _locals.get(func_name)
