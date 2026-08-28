@@ -16,9 +16,7 @@ def compile_dynamic_func(function_source: str, func_name: str):
         func_name: 要提取的函数名
 
     Returns:
-        tuple: (func, printed_output)
-            - func: 编译得到的函数对象，未找到时返回 None
-            - printed_output: print() 收集到的输出字符串，无输出时为 None
+        func: 编译得到的函数对象，未找到时返回 None
     """
     try:
         from RestrictedPython import compile_restricted
