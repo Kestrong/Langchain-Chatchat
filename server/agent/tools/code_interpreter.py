@@ -16,10 +16,9 @@ class CodeInput(BaseModel):
 def code_interpreter(code: str):
     f = StringIO()
     try:
-        exec_locals = {}
-        exec_globals = {}
         with contextlib.redirect_stdout(f):
-            exec(code, exec_globals, exec_locals)
+            from server.workflow.component.tools.python_repl import compile_dynamic_func
+            _, exec_locals = compile_dynamic_func(code, func_name="_")
         return f.getvalue() or exec_locals.get('result',
                                                "No result variable found, you must create a variable called `result` as the output of the code and print(result).")
     except Exception as e:

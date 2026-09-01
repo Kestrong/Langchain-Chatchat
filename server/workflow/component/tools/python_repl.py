@@ -66,14 +66,14 @@ def compile_dynamic_func(function_source: str, func_name: str):
     _locals = {}
     exec(byte_code, restricted_globals, _locals)
     func = _locals.get(func_name)
-    return func
+    return func, _locals
 
 
 async def exec_python_async(python_code: str, args: Dict[str, Any], _globals: Dict[str, Any],
                             _locals: Dict[str, Any]) -> Any:
     """执行异步 Python 代码"""
     try:
-        func = compile_dynamic_func(python_code, 'main')
+        func, _ = compile_dynamic_func(python_code, 'main')
         if not callable(func):
             return "Error: 'main' function not found in code"
 
