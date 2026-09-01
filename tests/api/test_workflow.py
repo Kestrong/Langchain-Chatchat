@@ -13,7 +13,7 @@ from configs import LLM_MODELS
 from server.workflow.component.inputs.chat_input import ChatInputComponent
 from server.workflow.component.models.local_llm import LocalLLMComponent
 from server.workflow.component.outputs.chat_output import ChatOutputComponent
-from server.workflow.component.tools.code import PythonREPLComponent
+from server.workflow.component.tools.python_repl import PythonREPLComponent
 from server.workflow.utils.inputs import *
 from server.workflow.utils.outputs import *
 
