@@ -286,9 +286,8 @@ def create_dynamic_tool(tool_config: dict, tool_name: str, tool_name_en: str, de
             args_schema = built_in_tool.args_schema
     else:
         if function_source:
-            _locals = {}
-            exec(function_source, _locals, _locals)
-            func = _locals.get(func_name)
+            from server.workflow.component.tools.python_repl import compile_dynamic_func
+            func, _ = compile_dynamic_func(function_source, func_name)
 
     if not func:
         raise ValueError(f"Function {func_name} not found")

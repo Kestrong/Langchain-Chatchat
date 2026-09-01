@@ -266,18 +266,13 @@ def create_openai_api_app(
 ) -> FastAPI:
     import fastchat.constants
     fastchat.constants.LOGDIR = LOG_PATH
-    from server.minx_chat_openai import app, CORSMiddleware, app_settings
+    from server.api import add_cors_middleware
+    from server.minx_chat_openai import app, app_settings
     from fastchat.utils import build_logger
     logger = build_logger("openai_api", "openai_api.log")
     logger.setLevel(log_level)
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_credentials=True,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    add_cors_middleware(app)
 
     sys.modules["server.minx_chat_openai"].logger = logger
     app_settings.controller_address = controller_address
